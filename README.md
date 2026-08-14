@@ -26,14 +26,16 @@
 
 ## 📥 安装
 
+> ⬇️ **直接下载**：[Releases 页面](https://github.com/dhb861832993-star/QuickMenu/releases) 提供 `QuickMenu-Setup.exe`（安装包）和 `QuickMenu.exe`（绿色版）。
+
 ### 方式一：安装包（推荐）
-运行 `dist/QuickMenu-Setup.exe`，一路下一步即可。可选“开机自动启动”和“桌面快捷方式”。
+运行 `QuickMenu-Setup.exe`，一路下一步即可。可选“开机自动启动”和“桌面快捷方式”。
 
 ### 方式二：便携版
 双击 `installer/安装QuickMenu.bat`：自动复制到 `%LOCALAPPDATA%\QuickMenu`，创建快捷方式并注册开机自启。卸载运行 `installer/卸载QuickMenu.bat`。
 
 ### 方式三：绿色直用
-直接把 `dist/app/QuickMenu.exe` 复制到任意位置双击运行（首次运行自动生成配置）。
+直接把 `QuickMenu.exe` 复制到任意位置双击运行（首次运行自动生成配置）。
 
 ---
 
