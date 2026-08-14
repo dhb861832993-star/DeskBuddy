@@ -1,6 +1,13 @@
 # QuickMenu 快启
 
-一个 **macOS 风格**的 Windows 快速启动器：**连续快速按两次 Ctrl**（可配置），立即呼出毛玻璃质感的功能菜单，搜索并启动常用软件、网页、文件夹、命令。
+> 双击一下，一键呼出。像手机桌面一样管理，像 Spotlight 一样搜索。
+
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Version](https://img.shields.io/badge/version-1.5.0-brightgreen.svg)
+![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-blue.svg)
+[![Release](https://img.shields.io/badge/download-Releases-orange)](https://github.com/dhb861832993-star/QuickMenu/releases)
+
+一个 **macOS 风格**的 Windows 快速启动器：**连续快速双击热键**（默认 Ctrl，可配置），立即呼出**手机桌面式的图标宫格菜单**，搜索并启动常用软件、网页、文件夹——比翻桌面、找开始菜单快得多。内置 **AI 对话**，搜不到的直接问 AI。
 
 无需安装 .NET 运行时 —— 发布为**自包含单文件 exe**，复制到任何 Win10 / Win11 电脑即可运行；也提供 **Inno Setup 安装包**（免管理员）。
 
