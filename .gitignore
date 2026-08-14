@@ -1,0 +1,18 @@
+# ===== 构建产物 =====
+bin/
+obj/
+dist/
+
+# ===== 运行时生成 =====
+*.log
+qm_debug.log
+qm_trigger.txt
+
+# 运行时生成的配置（含个人 API 密钥，不提交）
+QuickMenu.config.json
+
+# ===== IDE =====
+.vs/
+.idea/
+*.user
+*.suo

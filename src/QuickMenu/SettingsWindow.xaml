@@ -1,0 +1,359 @@
+<Window x:Class="QuickMenu.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="设置"
+        Width="480" Height="780"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True"
+        WindowStartupLocation="CenterScreen"
+        PreviewKeyDown="OnPreviewKeyDown">
+
+    <Window.Resources>
+        <SolidColorBrush x:Key="TextPrimary" Color="#F2F2F7"/>
+        <SolidColorBrush x:Key="TextSecondary" Color="#A8A8B0"/>
+        <SolidColorBrush x:Key="HoverBg" Color="#1FFFFFFF"/>
+        <SolidColorBrush x:Key="SelectedBg" Color="#3D5EB2FF"/>
+        <SolidColorBrush x:Key="CardBorder" Color="#2EFFFFFF"/>
+        <SolidColorBrush x:Key="SeparatorBrush" Color="#33FFFFFF"/>
+        <SolidColorBrush x:Key="FooterBrush" Color="#909098"/>
+        <SolidColorBrush x:Key="CardBg" Color="#CC1E1E1E"/>
+        <SolidColorBrush x:Key="BtnBg" Color="#26FFFFFF"/>
+        <SolidColorBrush x:Key="BtnBgHover" Color="#3DFFFFFF"/>
+        <SolidColorBrush x:Key="AccentBg" Color="#2A6DF4"/>
+
+        <Style x:Key="MacButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="Background" Value="{DynamicResource BtnBg}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="12,5"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="7"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource BtnBgHover}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.75"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource MacButton}">
+            <Setter Property="Background" Value="{DynamicResource AccentBg}"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <Style x:Key="SegmentRadio" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="bd" CornerRadius="6" Padding="12,4" Background="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource SelectedBg}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBg}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="DotButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Margin" Value="0,0,7,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <ContentPresenter/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="GlyphStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="RootCard" CornerRadius="24" BorderThickness="1"
+            BorderBrush="{DynamicResource CardBorder}"
+            Background="{DynamicResource CardBg}">
+        <Grid Margin="20,16,20,18" MouseLeftButtonDown="OnCardMouseDown">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- 标题栏（macOS 红黄绿） -->
+            <Grid Grid.Row="0" Margin="0,0,0,10">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Style="{StaticResource DotButton}" Tag="close" Click="OnDotClick">
+                        <Ellipse Width="12" Height="12" Fill="#FF5F57"/>
+                    </Button>
+                    <Button Style="{StaticResource DotButton}" Tag="min" Click="OnDotClick">
+                        <Ellipse Width="12" Height="12" Fill="#FEBC2E"/>
+                    </Button>
+                    <Button Style="{StaticResource DotButton}" Tag="zoom" Click="OnDotClick">
+                        <Ellipse Width="12" Height="12" Fill="#28C840"/>
+                    </Button>
+                </StackPanel>
+                <TextBlock Text="设置" FontSize="16" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimary}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Grid>
+
+            <Rectangle Grid.Row="1" Height="1" Fill="{DynamicResource SeparatorBrush}" Margin="0,0,0,12"/>
+
+            <!-- 呼出快捷键 -->
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                    <TextBlock Text="呼出快捷键" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
+                    <TextBlock x:Name="HotkeyHint"
+                               Text="点击右侧按钮，再直接按下 Ctrl / Alt / Shift / CapsLock / Win"
+                               FontSize="11" Foreground="{DynamicResource TextSecondary}"
+                               Margin="0,3,0,0" TextWrapping="Wrap"/>
+                </StackPanel>
+                <Button x:Name="HotkeyBtn" Grid.Column="1" Style="{StaticResource MacButton}"
+                        MinWidth="112" Height="36" Click="OnHotkeyCaptureClick"
+                        Content="Ctrl" FontSize="13"/>
+            </Grid>
+
+            <!-- 双击间隔 -->
+            <Grid Grid.Row="3" Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                    <TextBlock Text="双击判定间隔" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
+                    <TextBlock x:Name="IntervalLabel" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,3,0,0"/>
+                </StackPanel>
+                <Slider x:Name="IntervalSlider" Grid.Column="1" Width="176" Minimum="200" Maximum="600"
+                        TickFrequency="20" IsSnapToTickEnabled="True" VerticalAlignment="Center"
+                        ValueChanged="OnIntervalChanged"/>
+            </Grid>
+
+            <!-- 主题 -->
+            <Grid Grid.Row="4" Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                    <TextBlock Text="外观主题" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
+                    <TextBlock Text="跟随系统 / 浅色 / 深色" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,3,0,0"/>
+                </StackPanel>
+                <Border Grid.Column="1" CornerRadius="8" Background="{DynamicResource BtnBg}" Padding="2" VerticalAlignment="Center">
+                    <UniformGrid Columns="3">
+                        <RadioButton x:Name="ThemeAuto" Content="自动" GroupName="ThemeGroup"
+                                     Style="{StaticResource SegmentRadio}" IsChecked="True" Checked="OnThemeChanged"/>
+                        <RadioButton x:Name="ThemeLight" Content="浅色" GroupName="ThemeGroup"
+                                     Style="{StaticResource SegmentRadio}" Checked="OnThemeChanged"/>
+                        <RadioButton x:Name="ThemeDark" Content="深色" GroupName="ThemeGroup"
+                                     Style="{StaticResource SegmentRadio}" Checked="OnThemeChanged"/>
+                    </UniformGrid>
+                </Border>
+            </Grid>
+
+            <Rectangle Grid.Row="5" Height="1" Fill="{DynamicResource SeparatorBrush}" Margin="0,14,0,0"/>
+
+            <!-- AI 对话 -->
+            <Grid Grid.Row="6" Margin="0,12,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                    <StackPanel>
+                        <TextBlock Text="AI 对话（✨）" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
+                        <TextBlock x:Name="AiHint" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,3,0,0"/>
+                    </StackPanel>
+                </Grid>
+                <Grid Grid.Row="1" Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="76"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="接口地址" FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                    <TextBox x:Name="AiBaseUrlBox" Grid.Column="1" Height="28" FontSize="12"
+                             Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
+                             Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,3"/>
+                </Grid>
+                <Grid Grid.Row="2" Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="76"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="模型" FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                    <TextBox x:Name="AiModelBox" Grid.Column="1" Height="28" FontSize="12"
+                             Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
+                             Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,3"/>
+                </Grid>
+                <Grid Grid.Row="3" Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="76"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="API 密钥" FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                    <TextBox x:Name="AiKeyBox" Grid.Column="1" Height="28" FontSize="12"
+                             Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
+                             Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,3"/>
+                </Grid>
+                <Grid Grid.Row="4" Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="76"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="系统提示" FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                    <TextBox x:Name="AiPromptBox" Grid.Column="1" Height="28" FontSize="12"
+                             Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
+                             Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,3"/>
+                </Grid>
+            </Grid>
+
+            <Rectangle Grid.Row="7" Height="1" Fill="{DynamicResource SeparatorBrush}" Margin="0,14,0,0"/>
+
+            <!-- 菜单项 -->
+            <Grid Grid.Row="8" Margin="0,12,0,0"
+                  AllowDrop="True"
+                  DragEnter="OnItemsDragEnter" DragOver="OnItemsDragOver"
+                  DragLeave="OnItemsDragLeave" Drop="OnItemsDrop">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                    <StackPanel>
+                        <TextBlock Text="菜单项" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
+                        <TextBlock x:Name="ItemsHint" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,3,0,0"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="AddItemBtn" Style="{StaticResource MacButton}" Content="添加" Click="OnAddItem" Margin="0,0,6,0"/>
+                        <Button x:Name="EditItemBtn" Style="{StaticResource MacButton}" Content="编辑" Click="OnEditItem" Margin="0,0,6,0"/>
+                        <Button x:Name="DelItemBtn" Style="{StaticResource MacButton}" Content="删除" Click="OnDeleteItem"/>
+                    </StackPanel>
+                </Grid>
+
+                <Border x:Name="DropHighlight" Grid.Row="1" CornerRadius="9"
+                        BorderBrush="{DynamicResource AccentBg}" BorderThickness="2"
+                        Margin="0,8,0,6" Visibility="Collapsed" IsHitTestVisible="False" Opacity="0.65">
+                    <TextBlock Text="松开以添加" FontSize="12" FontWeight="SemiBold" Foreground="White"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+
+                <ListBox x:Name="ItemList" Grid.Row="1" Margin="0,8,0,6" BorderThickness="0" Background="Transparent"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         SelectionChanged="OnItemsSelectionChanged" MouseDoubleClick="OnItemDoubleClick"
+                         PreviewMouseLeftButtonDown="OnListPreviewMouseDown" PreviewMouseLeftButtonUp="OnListPreviewMouseUp">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="8,5"/>
+                            <Setter Property="Margin" Value="0,1"/>
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="BorderThickness" Value="0"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border x:Name="Bd" CornerRadius="8"
+                                                Background="{TemplateBinding Background}"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBg}"/>
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectedBg}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="32"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Width="26" Height="26" CornerRadius="7"
+                                        Background="{Binding IconBg}" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Glyph}" Style="{StaticResource GlyphStyle}"/>
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding Subtitle}" FontSize="10.5"
+                                               Foreground="{DynamicResource TextSecondary}"
+                                               TextTrimming="CharacterEllipsis" Margin="0,1,0,0"/>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="UpBtn" Style="{StaticResource MacButton}" Content="上移" Click="OnMoveUp" Margin="0,0,6,0"/>
+                    <Button x:Name="DownBtn" Style="{StaticResource MacButton}" Content="下移" Click="OnMoveDown"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- 底部按钮 -->
+            <Grid Grid.Row="9" Margin="0,10,0,0">
+                <TextBlock x:Name="SaveHint" Text="保存后立即生效"
+                           FontSize="11" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="CancelBtn" Style="{StaticResource MacButton}" Content="取消"
+                            Click="OnCancel" Margin="0,0,10,0"/>
+                    <Button x:Name="SaveBtn" Style="{StaticResource AccentButton}" Content="保存"
+                            Click="OnSave"/>
+                </StackPanel>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>
