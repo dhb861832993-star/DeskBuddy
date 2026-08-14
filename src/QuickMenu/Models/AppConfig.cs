@@ -21,20 +21,29 @@ public class AppConfig
     /// <summary>菜单条目。</summary>
     public List<QuickMenuItem> Items { get; set; } = new();
 
-    // ===== AI 对话（OpenAI 兼容接口，默认 DeepSeek 官方） =====
+    // ===== AI 对话 =====
 
-    /// <summary>API 基础地址，如 https://api.deepseek.com/v1</summary>
+    /// <summary>接入方式：harness（本机 DeepSeek Harness）| openai（OpenAI 兼容 API）</summary>
+    public string AiMode { get; set; } = "harness";
+
+    /// <summary>本机 Harness 地址（默认本地 3080 端口）。</summary>
+    public string HarnessBaseUrl { get; set; } = "http://127.0.0.1:3080";
+
+    /// <summary>Harness 会话策略：留空=用最近更新的会话；"new"=每次都新建；或填具体 sessionId。</summary>
+    public string HarnessSessionId { get; set; } = "";
+
+    /// <summary>API 基础地址，如 https://api.deepseek.com/v1（openai 模式）。</summary>
     public string AiBaseUrl { get; set; } = "https://api.deepseek.com/v1";
 
-    /// <summary>API 密钥（DeepSeek 开放平台申请）。</summary>
+    /// <summary>API 密钥（openai 模式）。</summary>
     public string AiApiKey { get; set; } = "";
 
-    /// <summary>模型名，如 deepseek-chat（也兼容任意 OpenAI 兼容端点）。</summary>
+    /// <summary>模型名（openai 模式）。</summary>
     public string AiModel { get; set; } = "deepseek-chat";
 
-    /// <summary>系统提示词。</summary>
+    /// <summary>系统提示词（openai 模式）。</summary>
     public string AiSystemPrompt { get; set; } = "你是一个简洁的 AI 助手，用中文回答，回答尽量精炼。";
 
-    /// <summary>AI 是否已可用（配了密钥）。</summary>
-    public bool AiEnabled => !string.IsNullOrWhiteSpace(AiApiKey);
+    /// <summary>AI 是否已可用（harness 模式始终可用；openai 模式需密钥）。</summary>
+    public bool AiEnabled => AiMode == "harness" || !string.IsNullOrWhiteSpace(AiApiKey);
 }

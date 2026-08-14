@@ -58,19 +58,19 @@
 
 ## 🤖 AI 对话
 
-在 **设置 → AI 对话** 中填写：
-- **接口地址**：默认 `https://api.deepseek.com/v1`（DeepSeek 官方，兼容任意 OpenAI 接口）
-- **API 密钥**：DeepSeek 开放平台申请（https://platform.deepseek.com）
-- **模型**：`deepseek-chat`（或你接入的端点支持的模型）
-- **系统提示**：可选，默认中文精炼风格
+默认**本机 Harness 模式**：直接和本机运行的 [DeepSeek Harness](https://github.com/deepseek-ai) agent 对话（零配置，点 ✨ 即聊，无需 API 密钥）。在 **设置 → AI 对话** 可切换：
+
+- **接入方式**
+  - **本机 Harness**（默认）：调用 `http://127.0.0.1:3080` 的 Harness，会话策略：留空=最近更新的会话、`new`=每次新建、或填具体 sessionId
+  - **OpenAI API**：标准 OpenAI 兼容接口，默认 DeepSeek 官方（需填 API 密钥，DeepSeek 开放平台申请）
+- **Harness 地址 / 会话策略**（Harness 模式）
+- **接口地址 / 模型 / API 密钥 / 系统提示**（OpenAI 模式）
 
 用法：
 - 呼出菜单 → 点搜索框右侧 **✨** → 打开 AI 对话窗口
-- 输入问题 Enter 发送，流式输出，可多轮追问；「停止」中断、「清空」重来
+- 输入问题 Enter 发送，**流式输出**，可多轮追问；「停止」中断、「清空」重来
 - 搜索**无结果**时，菜单里会出现「✨ 用 AI 回答：xxx」，点击直接把问题交给 AI
 - Esc 关闭对话窗口
-
-> 说明：AI 通过标准 OpenAI 兼容接口调用。本工具所在机器的 DeepSeek Harness 内部 API 是私有 RPC 协议，暂不对外提供聊天接口；如 Harness 后续开放兼容端点，把「接口地址」改过去即可无缝切换。
 
 ## ⚙️ 图形化设置
 

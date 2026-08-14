@@ -51,15 +51,31 @@ public partial class SettingsWindow : Window
         UpdateItemsHint();
 
         // AI 配置
+        ModeHarness.IsChecked = config.AiMode != "openai";
+        ModeOpenAi.IsChecked = config.AiMode == "openai";
+        HarnessBaseUrlBox.Text = config.HarnessBaseUrl;
+        HarnessSessionBox.Text = config.HarnessSessionId;
         AiBaseUrlBox.Text = config.AiBaseUrl;
         AiModelBox.Text = config.AiModel;
         AiKeyBox.Text = config.AiApiKey;
         AiPromptBox.Text = config.AiSystemPrompt;
-        AiHint.Text = config.AiEnabled
-            ? "已配置 · 搜索框 ✨ 按钮打开 AI 对话"
-            : "未配置密钥 · 搜索框 ✨ 按钮可用（无结果时可“用 AI 回答”）";
+        UpdateAiHint();
 
         Loaded += (_, _) => ApplyTheme();
+    }
+
+    private void OnAiModeChanged(object sender, RoutedEventArgs e) => UpdateAiHint();
+
+    private void UpdateAiHint()
+    {
+        if (ModeHarness?.IsChecked == true)
+        {
+            AiHint.Text = "本机 Harness 模式：直接和本机运行的 DeepSeek Harness 对话（零配置）。会话策略留空=最近会话，new=每次新建，或填 sessionId。";
+        }
+        else
+        {
+            AiHint.Text = "OpenAI 兼容模式：需在下面填写 API 密钥（DeepSeek 开放平台申请）。";
+        }
     }
 
     private static string NormalizeHotkey(string h) => h?.ToUpperInvariant() switch
@@ -372,6 +388,9 @@ public partial class SettingsWindow : Window
             WindowWidth = _config.WindowWidth,
             MaxWindowHeight = _config.MaxWindowHeight,
             Items = _draftRows.Select(r => r.Source).ToList(),
+            AiMode = ModeOpenAi?.IsChecked == true ? "openai" : "harness",
+            HarnessBaseUrl = HarnessBaseUrlBox.Text.Trim(),
+            HarnessSessionId = HarnessSessionBox.Text.Trim(),
             AiBaseUrl = AiBaseUrlBox.Text.Trim(),
             AiModel = AiModelBox.Text.Trim(),
             AiApiKey = AiKeyBox.Text.Trim(),

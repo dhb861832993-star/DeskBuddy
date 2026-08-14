@@ -130,12 +130,15 @@ public partial class ChatWindow : Window
         if (!cfg.AiEnabled)
         {
             AppendMessage("user", text);
-            AppendMessage("assistant", "⚠️ 尚未配置 AI API 密钥。\n请到 设置 → AI 对话 中填写 API 密钥（DeepSeek 开放平台申请），或在配置文件 QuickMenu.config.json 的 \"aiApiKey\" 字段填写。");
+            AppendMessage("assistant", "⚠️ AI 未就绪。\n本机 Harness 模式需在本机运行 DeepSeek Harness（127.0.0.1:3080）；OpenAI 模式需在 设置 → AI 对话 填写 API 密钥。");
             return;
         }
 
         AppendMessage("user", text);
-        _history.Add(("user", text));
+        if (cfg.AiMode != "harness")
+        {
+            _history.Add(("user", text));
+        }
 
         var assistant = AppendMessage("assistant", "");
         _busy = true;
@@ -149,16 +152,27 @@ public partial class ChatWindow : Window
         {
             try
             {
-                await AiClient.AskAsync(cfg, _history, text, progress, _cts.Token);
-                Dispatcher.Invoke(() => _history.Add(("assistant", assistant.Text)));
+                if (cfg.AiMode == "harness")
+                {
+                    await HarnessClient.AskAsync(cfg, text, progress, _cts.Token);
+                }
+                else
+                {
+                    await AiClient.AskAsync(cfg, _history, text, progress, _cts.Token);
+                    Dispatcher.Invoke(() => _history.Add(("assistant", assistant.Text)));
+                }
             }
             catch (OperationCanceledException)
             {
-                Dispatcher.Invoke(() => _history.Add(("assistant", assistant.Text)));
+                if (cfg.AiMode != "harness") Dispatcher.Invoke(() => _history.Add(("assistant", assistant.Text)));
             }
             catch (Exception ex)
             {
-                Dispatcher.Invoke(() => assistant.Text = $"⚠️ {ex.Message}");
+                Dispatcher.Invoke(() =>
+                {
+                    if (assistant.Text.Length == 0) assistant.Text = $"⚠️ {ex.Message}";
+                    else assistant.Append($"\n\n⚠️ {ex.Message}");
+                });
             }
             finally
             {
@@ -179,6 +193,11 @@ public partial class ChatWindow : Window
     private void OnStop(object sender, RoutedEventArgs e)
     {
         _cts?.Cancel();
+        var cfg = ((App)Application.Current).CurrentConfig;
+        if (cfg.AiMode == "harness")
+        {
+            _ = Task.Run(async () => { try { await HarnessClient.CancelAsync(cfg, CancellationToken.None); } catch { } });
+        }
     }
 
     private void OnClear(object sender, RoutedEventArgs e)
