@@ -134,6 +134,7 @@ public partial class ChatWindow : Window, IHarnessObserver
             _sessions.Clear();
             _sessions.AddRange(await HarnessClient.ListSessionsAsync(cfg, CancellationToken.None));
             SessionCombo.ItemsSource = _sessions.Select(s => s.Display).ToList();
+            DebugLog.Write("sessions: " + string.Join(" | ", _sessions.Select(s => $"{s.Display} ({s.SessionId[..8]})")));
 
             var target = await HarnessClient.ResolveSessionIdAsync(cfg, CancellationToken.None);
             _currentSessionId = target;

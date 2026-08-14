@@ -14,7 +14,7 @@ public sealed class HarnessSession
     public long UpdatedAt { get; init; }
     public bool Running { get; init; }
 
-    public string Display => string.IsNullOrWhiteSpace(Title) ? SessionId : Title;
+    public string Display => string.IsNullOrWhiteSpace(Title) ? "新会话" : Title;
 }
 
 /// <summary>一次工具授权请求。</summary>
@@ -108,12 +108,30 @@ public static class HarnessClient
             result.Add(new HarnessSession
             {
                 SessionId = sidEl.GetString() ?? "",
-                Title = it.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "",
+                Title = ReadTitle(it),
                 UpdatedAt = it.TryGetProperty("updatedAt", out var u) && u.ValueKind == JsonValueKind.Number ? u.GetInt64() : 0,
                 Running = it.TryGetProperty("running", out var run) && run.GetBoolean()
             });
         }
         return result.OrderByDescending(s => s.UpdatedAt).ToList();
+    }
+
+    /// <summary>会话主题：优先 projections.values.title（Harness 自动总结），其次顶层 title。</summary>
+    private static string ReadTitle(JsonElement it)
+    {
+        if (it.TryGetProperty("projections", out var proj) &&
+            proj.TryGetProperty("values", out var vals) &&
+            vals.TryGetProperty("title", out var t) && t.ValueKind == JsonValueKind.String)
+        {
+            var s = t.GetString();
+            if (!string.IsNullOrWhiteSpace(s)) return s;
+        }
+        if (it.TryGetProperty("title", out var top) && top.ValueKind == JsonValueKind.String)
+        {
+            var s2 = top.GetString();
+            if (!string.IsNullOrWhiteSpace(s2)) return s2;
+        }
+        return "";
     }
 
     public static async Task<string> CreateSessionAsync(AppConfig cfg, CancellationToken ct)
