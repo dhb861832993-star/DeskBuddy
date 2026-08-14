@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -151,6 +152,7 @@ public partial class ChatWindow : Window, IHarnessObserver
 
             var target = await HarnessClient.ResolveSessionIdAsync(cfg, CancellationToken.None);
             _currentSessionId = target;
+            DebugLog.Write($"resolved session: {target}");
             var idx = _sessions.FindIndex(s => s.SessionId == target);
             if (idx < 0)
             {
@@ -187,6 +189,7 @@ public partial class ChatWindow : Window, IHarnessObserver
 
     private void OnSessionChanged(object sender, SelectionChangedEventArgs e)
     {
+        DebugLog.Write($"session combo changed: guard={_sessionSwitching} idx={SessionCombo.SelectedIndex}");
         if (_sessionSwitching || SessionCombo.SelectedIndex < 0) return;
         if (SessionCombo.SelectedIndex < _sessions.Count)
         {
@@ -387,8 +390,22 @@ public partial class ChatWindow : Window, IHarnessObserver
         }));
 
     void IHarnessObserver.OnApproval(HarnessApproval approval) =>
-        Dispatcher.BeginInvoke(new Action(() =>
+        Dispatcher.BeginInvoke(new Action(async () =>
         {
+            // 只处理当前会话的授权；其它会话（含重放）的挂起授权自动取消清理
+            if (_currentSessionId.Length > 0 && approval.SessionId.Length > 0 &&
+                approval.SessionId != _currentSessionId)
+            {
+                DebugLog.Write($"忽略其它会话授权：{approval.SessionId}");
+                try
+                {
+                    var cfg = ((App)Application.Current).CurrentConfig;
+                    await HarnessClient.RejectApprovalAsync(cfg.HarnessBaseUrl, approval.RpcId,
+                        approval.SessionId, approval.ApprovalId, CancellationToken.None);
+                }
+                catch { }
+                return;
+            }
             _pendingApproval = approval;
             AppendMessage("status", $"⚠️ 需要授权：使用工具【{approval.ToolName}】{(string.IsNullOrEmpty(approval.Reason) ? "" : $"（{approval.Reason}）")}");
             ActionText.Text = $"是否允许 Harness 使用工具【{approval.ToolName}】？";
@@ -398,18 +415,72 @@ public partial class ChatWindow : Window, IHarnessObserver
         }));
 
     void IHarnessObserver.OnQuestion(HarnessQuestion question) =>
-        Dispatcher.BeginInvoke(new Action(() =>
+        Dispatcher.BeginInvoke(new Action(async () =>
         {
+            DebugLog.Write($"question handler: current={_currentSessionId} qSession={question.SessionId}");
+            // 只处理当前会话的提问；其它会话（含重放）的挂起提问自动取消清理
+            if (_currentSessionId.Length > 0 && question.SessionId.Length > 0 &&
+                question.SessionId != _currentSessionId)
+            {
+                DebugLog.Write($"忽略其它会话提问：{question.SessionId}");
+                try
+                {
+                    var cfg = ((App)Application.Current).CurrentConfig;
+                    await HarnessClient.CancelPendingAsync(cfg.HarnessBaseUrl, question.RpcId, CancellationToken.None);
+                }
+                catch { }
+                return;
+            }
             _pendingQuestion = question;
             AppendMessage("status", $"❓ {question.Question}");
-            ActionText.Text = question.Options is { Count: > 0 }
-                ? $"{question.Question}\n可选：{string.Join(" / ", question.Options)}"
-                : question.Question;
+            ActionText.Text = question.Question;
+
+            // 选择题：渲染可点击选项（单选/多选），可配合“其他”自定义输入
+            BuildQuestionOptions(question);
+
             ApprovalBtns.Visibility = Visibility.Collapsed;
             QuestionBox.Visibility = Visibility.Visible;
             ActionBar.Visibility = Visibility.Visible;
+            AnswerInput.Clear();
             AnswerInput.Focus();
         }));
+
+    private readonly HashSet<string> _selectedOptions = new();
+    private readonly List<ToggleButton> _optionButtons = new();
+
+    private void BuildQuestionOptions(HarnessQuestion question)
+    {
+        QuestionOptions.Children.Clear();
+        _optionButtons.Clear();
+        _selectedOptions.Clear();
+
+        if (question.Options is not { Count: > 0 }) return;
+        foreach (var label in question.Options)
+        {
+            var btn = new ToggleButton
+            {
+                Content = label,
+                Style = (Style)FindResource("OptionChip"),
+                Tag = label
+            };
+            btn.Checked += (_, _) =>
+            {
+                _selectedOptions.Add(label);
+                if (!question.MultiSelect)
+                {
+                    foreach (var other in _optionButtons)
+                    {
+                        if (!ReferenceEquals(other, btn)) other.IsChecked = false;
+                    }
+                    _selectedOptions.Clear();
+                    _selectedOptions.Add(label);
+                }
+            };
+            btn.Unchecked += (_, _) => _selectedOptions.Remove(label);
+            _optionButtons.Add(btn);
+            QuestionOptions.Children.Add(btn);
+        }
+    }
 
     // ==================== 授权 / 提问回复 ====================
 
@@ -427,7 +498,8 @@ public partial class ChatWindow : Window, IHarnessObserver
         try
         {
             await HarnessClient.RespondAsync(cfg.HarnessBaseUrl, approval.RpcId,
-                new { approvalId = approval.ApprovalId, outcome }, CancellationToken.None);
+                new { sessionId = approval.SessionId, approvalId = approval.ApprovalId, outcome },
+                CancellationToken.None);
             AppendMessage("status", outcome == "allowed-once" ? "✅ 已允许" : "🚫 已拒绝");
         }
         catch (Exception ex)
@@ -440,18 +512,43 @@ public partial class ChatWindow : Window, IHarnessObserver
     {
         if (_pendingQuestion == null) return;
         var question = _pendingQuestion;
-        var answer = AnswerInput.Text.Trim();
-        if (answer.Length == 0) return;
+        var custom = AnswerInput.Text.Trim();
+        var selected = _selectedOptions.ToArray();
+        if (custom.Length == 0 && selected.Length == 0)
+        {
+            ActionText.Text = "请选择一个选项，或在“其他/自定义”中输入内容";
+            AnswerInput.Focus();
+            return;
+        }
         _pendingQuestion = null;
         AnswerInput.Clear();
+        _selectedOptions.Clear();
         ActionBar.Visibility = Visibility.Collapsed;
         var cfg = ((App)Application.Current).CurrentConfig;
         try
         {
-            await HarnessClient.RespondAsync(cfg.HarnessBaseUrl, question.RpcId,
-                new { answer = new { answers = new[] { new { id = question.QuestionId, answer } } } },
-                CancellationToken.None);
-            AppendMessage("user", answer);
+            // 答案格式（与 Harness 客户端一致）：{ sessionId, answer: { answers: [ { id, selected, [custom] } ] } }
+            // 有自定义文本 → selected=[] + custom；否则 → selected=[选项]，且【不包含】custom 字段
+            var item = new Dictionary<string, object> { ["id"] = question.QuestionId };
+            if (custom.Length > 0)
+            {
+                item["selected"] = Array.Empty<string>();
+                item["custom"] = custom;
+            }
+            else
+            {
+                item["selected"] = selected;
+            }
+            var payload = new Dictionary<string, object>
+            {
+                ["sessionId"] = question.SessionId,
+                ["answer"] = new Dictionary<string, object>
+                {
+                    ["answers"] = new[] { item }
+                }
+            };
+            await HarnessClient.RespondAsync(cfg.HarnessBaseUrl, question.RpcId, payload, CancellationToken.None);
+            AppendMessage("user", custom.Length > 0 ? custom : string.Join("、", selected));
         }
         catch (Exception ex)
         {

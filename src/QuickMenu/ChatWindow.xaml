@@ -71,6 +71,31 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- 选择题选项按钮 -->
+        <Style x:Key="OptionChip" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="bd" Background="{DynamicResource BtnBg}" CornerRadius="9" Padding="12,6" Margin="0,0,6,6">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource BtnBgHover}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource AccentBg}"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Border x:Name="RootCard" CornerRadius="24" BorderThickness="1"
@@ -159,11 +184,16 @@
                         <Button x:Name="AllowBtn" Style="{StaticResource AccentButton}" Content="允许一次" Click="OnAllow" Margin="0,0,8,0"/>
                         <Button x:Name="RejectBtn" Style="{StaticResource MacButton}" Content="拒绝" Click="OnReject"/>
                     </StackPanel>
-                    <StackPanel x:Name="QuestionBox" Orientation="Horizontal" Margin="0,9,0,0" Visibility="Collapsed">
-                        <TextBox x:Name="AnswerInput" MinWidth="220" Height="30" FontSize="12"
-                                 Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
-                                 Background="#33FFFFFF" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,4"/>
-                        <Button x:Name="AnswerSendBtn" Style="{StaticResource AccentButton}" Content="提交" Click="OnAnswerSend" Margin="8,0,0,0"/>
+                    <StackPanel x:Name="QuestionBox" Margin="0,9,0,0" Visibility="Collapsed">
+                        <WrapPanel x:Name="QuestionOptions" Margin="0,0,0,4"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="其他/自定义：" FontSize="12" Foreground="{DynamicResource TextSecondary}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBox x:Name="AnswerInput" MinWidth="180" Height="30" FontSize="12"
+                                     Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
+                                     Background="#33FFFFFF" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,4"/>
+                            <Button x:Name="AnswerSendBtn" Style="{StaticResource AccentButton}" Content="提交" Click="OnAnswerSend" Margin="8,0,0,0"/>
+                        </StackPanel>
                     </StackPanel>
                 </StackPanel>
             </Border>

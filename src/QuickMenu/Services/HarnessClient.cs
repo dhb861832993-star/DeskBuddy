@@ -22,6 +22,7 @@ public sealed class HarnessSession
 public sealed class HarnessApproval
 {
     public required string RpcId { get; init; }
+    public required string SessionId { get; init; }
     public required string ApprovalId { get; init; }
     public required string ToolName { get; init; }
     public string? Reason { get; init; }
@@ -31,10 +32,12 @@ public sealed class HarnessApproval
 public sealed class HarnessQuestion
 {
     public required string RpcId { get; init; }
+    public required string SessionId { get; init; }
     public required string QuestionId { get; init; }
     public required string Question { get; init; }
     public string? Header { get; init; }
     public List<string>? Options { get; init; }
+    public bool MultiSelect { get; init; }
 }
 
 /// <summary>对话过程的观察者（由 UI 实现）。</summary>
@@ -93,13 +96,29 @@ public static class HarnessClient
 
     /// <summary>向 /api/respond 发送 client-response（授权决定 / 问题答案）。</summary>
     public static async Task RespondAsync(string baseUrl, string rpcId, object value, CancellationToken ct)
+        => await SendRespondAsync(baseUrl, rpcId, new { ok = true, value }, ct);
+
+    /// <summary>取消一个挂起的提问（对非当前会话的重放事件做清理）。
+    /// 服务端 cancelled 错误分支要求 details 字段必须存在（rpcErrorSchema discriminatedUnion）。</summary>
+    public static async Task CancelPendingAsync(string baseUrl, string rpcId, CancellationToken ct)
+        => await SendRespondAsync(baseUrl, rpcId, new { ok = false, error = new { code = "cancelled", message = "cancelled by QuickMenu", details = new { } } }, ct);
+
+    /// <summary>拒绝一个挂起的授权（对非当前会话的重放事件做清理）。
+    /// 授权不支持 ok:false 取消，必须回 outcome=rejected 的有效答案。</summary>
+    public static async Task RejectApprovalAsync(string baseUrl, string rpcId, string sessionId, string approvalId, CancellationToken ct)
+        => await SendRespondAsync(baseUrl, rpcId, new { ok = true, value = new { sessionId, approvalId, outcome = "rejected" } }, ct);
+
+    private static async Task SendRespondAsync(string baseUrl, string rpcId, object result, CancellationToken ct)
     {
-        var envelope = new { type = "client-response", rpcId, result = new { ok = true, value } };
+        var envelope = new { type = "client-response", rpcId, result };
+        DebugLog.Write($"respond rpc={rpcId} result={JsonSerializer.Serialize(result)}");
         using var req = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl.TrimEnd('/')}/api/respond")
         {
             Content = new StringContent(JsonSerializer.Serialize(envelope), Encoding.UTF8, "application/json")
         };
         using var resp = await Http.SendAsync(req, ct);
+        var body = await resp.Content.ReadAsStringAsync(ct);
+        DebugLog.Write($"respond status={(int)resp.StatusCode} body={body[..Math.Min(200, body.Length)]}");
         resp.EnsureSuccessStatusCode();
     }
 
@@ -258,115 +277,125 @@ public static class HarnessClient
             if (res.MessageType != WebSocketMessageType.Text) continue;
 
             var text = Encoding.UTF8.GetString(buf, 0, res.Count);
-            ProcessFrame(text, observer, ct);
+            if (ProcessFrame(text, observer, ct))
+            {
+                break; // 回合结束（turn/end），不再继续读流，避免卡住
+            }
         }
 
         try { await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", CancellationToken.None); }
         catch { }
     }
 
-    /// <summary>处理一帧 WS 文本（server-request 信封）。</summary>
-    private static void ProcessFrame(string frame, IHarnessObserver observer, CancellationToken ct)
+    /// <summary>处理一帧 WS 文本（server-request 信封）。返回 true 表示回合已结束。</summary>
+    private static bool ProcessFrame(string frame, IHarnessObserver observer, CancellationToken ct)
     {
         try
         {
             using var doc = JsonDocument.Parse(frame);
             var root = doc.RootElement;
-            if (root.GetProperty("type").GetString() != "server-request") return;
+            if (root.GetProperty("type").GetString() != "server-request") return false;
             var rpcId = root.GetProperty("rpcId").GetString() ?? "";
             var method = root.GetProperty("method").GetString() ?? "";
 
             if (method == "session/event")
             {
                 var ev = root.GetProperty("payload").GetProperty("event");
-                HandleEvent(ev, rpcId, observer);
+                return HandleEvent(ev, rpcId, observer);
             }
-            else
-            {
-                // 顶层帧类型（approval/requested、question/requested 等）
-                if (!root.TryGetProperty("payload", out var payload)) return;
-                var pt = payload.TryGetProperty("type", out var t) ? t.GetString() : null;
-                if (pt == "approval/requested") HandleApproval(payload, rpcId, observer);
-                else if (pt == "question/requested") HandleQuestion(payload, rpcId, observer);
-            }
+
+            // 顶层帧类型（approval/requested、question/requested 等）
+            if (!root.TryGetProperty("payload", out var payload)) return false;
+            var pt = payload.TryGetProperty("type", out var t) ? t.GetString() : null;
+            if (pt == "approval/requested") HandleApproval(payload, rpcId, observer);
+            else if (pt == "question/requested") HandleQuestion(payload, rpcId, observer);
+            return false;
         }
         catch
         {
-            // 忽略无法解析的帧
+            return false;
         }
     }
 
-    private static void HandleEvent(JsonElement ev, string rpcId, IHarnessObserver observer)
+    private static bool HandleEvent(JsonElement ev, string rpcId, IHarnessObserver observer)
     {
-        if (!ev.TryGetProperty("type", out var t)) return;
+        if (!ev.TryGetProperty("type", out var t)) return false;
         var type = t.GetString();
 
         switch (type)
         {
             case "assistant/chunk":
-                if (!ev.TryGetProperty("data", out var d) || !d.TryGetProperty("chunk", out var chunk)) return;
+                if (!ev.TryGetProperty("data", out var d) || !d.TryGetProperty("chunk", out var chunk)) return false;
                 var chunkType = chunk.TryGetProperty("type", out var ct) ? ct.GetString() : null;
                 if (chunkType == "text-delta" && chunk.TryGetProperty("text", out var tx) &&
                     tx.ValueKind == JsonValueKind.String)
                 {
-                    DebugLog.Write($"text-delta: {tx.GetString()?.Length} chars");
                     observer.OnTextDelta(tx.GetString() ?? "");
                 }
                 else if (chunkType == "reasoning-delta")
                 {
                     observer.OnStatus("🧠 思考中…");
                 }
-                break;
+                return false;
 
             case "tool/call":
                 var name = ev.TryGetProperty("data", out var d2) && d2.TryGetProperty("name", out var n) ? n.GetString() : "";
                 observer.OnStatus(string.IsNullOrEmpty(name) ? "🔧 正在调用工具…" : $"🔧 正在使用工具：{name}");
-                break;
+                return false;
 
             case "step/start":
                 observer.OnStatus("⏳ 开始处理…");
-                break;
+                return false;
 
             case "approval/requested":
                 HandleApproval(ev.TryGetProperty("data", out var ad) ? ad : ev, rpcId, observer);
-                break;
+                return false;
 
             case "question/requested":
                 HandleQuestion(ev.TryGetProperty("data", out var qd) ? qd : ev, rpcId, observer);
-                break;
+                return false;
 
             case "turn/end":
+                DebugLog.Write("turn/end received");
                 observer.OnStatus("✅ 完成");
-                break;
+                return true;
         }
+        return false;
     }
 
     private static void HandleApproval(JsonElement data, string rpcId, IHarnessObserver observer)
     {
         if (!data.TryGetProperty("approvalId", out var aid)) return;
-        observer.OnApproval(new HarnessApproval
+        var approval = new HarnessApproval
         {
             RpcId = rpcId,
+            SessionId = data.TryGetProperty("sessionId", out var sid) ? sid.GetString() ?? "" : "",
             ApprovalId = aid.GetString() ?? "",
             ToolName = data.TryGetProperty("toolName", out var tn) ? tn.GetString() ?? "" : "",
             Reason = data.TryGetProperty("reason", out var r) ? r.GetString() : null
-        });
+        };
+        DebugLog.Write($"approval/requested: tool={approval.ToolName} session={approval.SessionId} id={approval.ApprovalId} rpc={rpcId}");
+        observer.OnApproval(approval);
     }
 
     private static void HandleQuestion(JsonElement data, string rpcId, IHarnessObserver observer)
     {
         if (!data.TryGetProperty("questions", out var qs) || qs.GetArrayLength() == 0) return;
         var q = qs[0];
-        observer.OnQuestion(new HarnessQuestion
+        var question = new HarnessQuestion
         {
             RpcId = rpcId,
+            SessionId = data.TryGetProperty("sessionId", out var sid) ? sid.GetString() ?? "" : "",
             QuestionId = q.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
             Question = q.TryGetProperty("question", out var qq) ? qq.GetString() ?? "（问题）" : "（问题）",
             Header = q.TryGetProperty("header", out var h) ? h.GetString() : null,
             Options = q.TryGetProperty("options", out var opts)
                 ? opts.EnumerateArray().Select(o => o.TryGetProperty("label", out var l) ? l.GetString() ?? "" : "").ToList()
-                : null
-        });
+                : null,
+            MultiSelect = q.TryGetProperty("multiSelect", out var ms) && ms.GetBoolean()
+        };
+        DebugLog.Write($"question/requested: session={question.SessionId} id={question.QuestionId} multi={question.MultiSelect} options={(question.Options is null ? "none" : string.Join(",", question.Options))} q={question.Question} rpc={rpcId}");
+        observer.OnQuestion(question);
     }
 
     /// <summary>停止当前回合。</summary>

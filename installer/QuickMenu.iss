@@ -4,7 +4,7 @@
 
 #define MyAppName "QuickMenu 快启"
 #define MyAppExeName "QuickMenu.exe"
-#define MyAppVersion "1.8.0"
+#define MyAppVersion "1.8.1"
 
 [Setup]
 AppId={{8F2E1C4A-5B7D-4E9A-9C3D-0A1B2C3D4E5F}
