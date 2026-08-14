@@ -11,6 +11,7 @@ public sealed class HarnessSession
 {
     public required string SessionId { get; init; }
     public string Title { get; init; } = "";
+    public string Cwd { get; init; } = "";
     public long UpdatedAt { get; init; }
     public bool Running { get; init; }
 
@@ -55,6 +56,14 @@ public static class HarnessClient
 
     /// <summary>最近一次对话使用的会话 ID。</summary>
     public static string? LastSessionId { get; private set; }
+
+    /// <summary>「桌面助手」分组标记：桌面路径。QuickMenu 创建的会话都在此 cwd 下。</summary>
+    public static string GroupCwd =>
+        Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+
+    /// <summary>会话是否属于「桌面助手」分组（cwd 为桌面路径）。</summary>
+    public static bool InGroup(HarnessSession s) =>
+        string.Equals(s.Cwd.TrimEnd('\\'), GroupCwd.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
 
     // ==================== 底层 RPC ====================
 
@@ -109,6 +118,7 @@ public static class HarnessClient
             {
                 SessionId = sidEl.GetString() ?? "",
                 Title = ReadTitle(it),
+                Cwd = it.TryGetProperty("cwd", out var c) ? c.GetString() ?? "" : "",
                 UpdatedAt = it.TryGetProperty("updatedAt", out var u) && u.ValueKind == JsonValueKind.Number ? u.GetInt64() : 0,
                 Running = it.TryGetProperty("running", out var run) && run.GetBoolean()
             });
@@ -137,11 +147,11 @@ public static class HarnessClient
     public static async Task<string> CreateSessionAsync(AppConfig cfg, CancellationToken ct)
     {
         var baseUrl = BaseUrl(cfg);
-        var created = await RpcAsync(baseUrl, "session.create", new { }, ct);
+        var created = await RpcAsync(baseUrl, "session.create", new { cwd = GroupCwd }, ct);
         return created.GetProperty("sessionId").GetString() ?? throw new InvalidOperationException("创建会话失败");
     }
 
-    /// <summary>按配置解析会话：指定 ID / "new" 新建 / 留空用最近更新的会话。</summary>
+    /// <summary>按配置解析会话：指定 ID / "new" 新建 / 留空用最近的「桌面助手」会话。</summary>
     public static async Task<string> ResolveSessionIdAsync(AppConfig cfg, CancellationToken ct)
     {
         var id = cfg.HarnessSessionId?.Trim() ?? "";
@@ -152,7 +162,8 @@ public static class HarnessClient
         if (id.Length > 0) return id;
 
         var sessions = await ListSessionsAsync(cfg, ct);
-        if (sessions.Count > 0) return sessions[0].SessionId;
+        var inGroup = sessions.Where(InGroup).ToList();
+        if (inGroup.Count > 0) return inGroup[0].SessionId;
         return await CreateSessionAsync(cfg, ct);
     }
 

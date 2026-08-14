@@ -92,13 +92,15 @@
                     <TextBlock Text="✨" FontSize="15" VerticalAlignment="Center"/>
                     <TextBlock Text="AI 助手" FontSize="14" FontWeight="SemiBold"
                                Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                    <ComboBox x:Name="SessionCombo" Width="170" Height="28" Margin="10,0,0,0"
+                    <ComboBox x:Name="SessionCombo" Width="190" Height="28" Margin="10,0,0,0"
                               VerticalAlignment="Center" FontSize="12" Visibility="Collapsed"
                               SelectionChanged="OnSessionChanged"
-                              Foreground="{DynamicResource TextPrimary}" Background="{DynamicResource BtnBg}">
+                              Foreground="#111111" Background="#F4F4F5"
+                              BorderBrush="#B0B0B4" BorderThickness="1">
                         <ComboBox.ItemContainerStyle>
                             <Style TargetType="ComboBoxItem">
-                                <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+                                <Setter Property="Foreground" Value="#111111"/>
+                                <Setter Property="Background" Value="#F4F4F5"/>
                             </Style>
                         </ComboBox.ItemContainerStyle>
                     </ComboBox>
@@ -111,7 +113,7 @@
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,14,0" VerticalAlignment="Center">
                     <TextBlock x:Name="ModelText" FontSize="11" Foreground="{DynamicResource TextSecondary}"
                                VerticalAlignment="Center" Margin="0,1,10,0"/>
-                    <Button x:Name="ClearBtn" Style="{StaticResource MacButton}" Content="清空" Click="OnClear" Margin="0,0,8,0"/>
+                    <Button x:Name="NewSessionBtn" Style="{StaticResource MacButton}" Content="新建会话" Click="OnClearOrNew" Margin="0,0,8,0"/>
                     <Button x:Name="CloseBtn" Style="{StaticResource GhostButton}" Click="OnClose">
                         <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="11"
                                    Foreground="{DynamicResource TextSecondary}"/>

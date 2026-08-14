@@ -29,8 +29,11 @@ public class AppConfig
     /// <summary>本机 Harness 地址（默认本地 3080 端口）。</summary>
     public string HarnessBaseUrl { get; set; } = "http://127.0.0.1:3080";
 
-    /// <summary>Harness 会话策略：留空=用最近更新的会话；"new"=每次都新建；或填具体 sessionId。</summary>
+    /// <summary>Harness 会话策略：留空=最近桌面助手会话；"new"=每次都新建；或填具体 sessionId。</summary>
     public string HarnessSessionId { get; set; } = "";
+
+    /// <summary>会话下拉框是否显示全部会话（false=只显示「桌面助手」分组）。</summary>
+    public bool HarnessShowAllSessions { get; set; }
 
     /// <summary>API 基础地址，如 https://api.deepseek.com/v1（openai 模式）。</summary>
     public string AiBaseUrl { get; set; } = "https://api.deepseek.com/v1";

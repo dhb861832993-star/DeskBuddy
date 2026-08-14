@@ -105,6 +105,7 @@ public partial class ChatWindow : Window, IHarnessObserver
 
         SessionCombo.Visibility = IsHarness ? Visibility.Visible : Visibility.Collapsed;
         RefreshSessionsBtn.Visibility = SessionCombo.Visibility;
+        NewSessionBtn.Content = IsHarness ? "新建会话" : "清空";
 
         Show();
         Activate();
@@ -131,14 +132,36 @@ public partial class ChatWindow : Window, IHarnessObserver
         try
         {
             var cfg = ((App)Application.Current).CurrentConfig;
+            var all = await HarnessClient.ListSessionsAsync(cfg, CancellationToken.None);
+
+            // 默认只显示「桌面助手」分组（cwd=桌面）；设置里可改为显示全部
             _sessions.Clear();
-            _sessions.AddRange(await HarnessClient.ListSessionsAsync(cfg, CancellationToken.None));
-            SessionCombo.ItemsSource = _sessions.Select(s => s.Display).ToList();
+            _sessions.AddRange(cfg.HarnessShowAllSessions
+                ? all
+                : all.Where(HarnessClient.InGroup).ToList());
+            if (_sessions.Count == 0 && !cfg.HarnessShowAllSessions)
+            {
+                _sessions.AddRange(all); // 分组为空时兜底显示全部，避免空白
+            }
+
+            SessionCombo.ItemsSource = _sessions
+                .Select(s => cfg.HarnessShowAllSessions && !HarnessClient.InGroup(s) ? "🌐 " + s.Display : s.Display)
+                .ToList();
             DebugLog.Write("sessions: " + string.Join(" | ", _sessions.Select(s => $"{s.Display} ({s.SessionId[..8]})")));
 
             var target = await HarnessClient.ResolveSessionIdAsync(cfg, CancellationToken.None);
             _currentSessionId = target;
             var idx = _sessions.FindIndex(s => s.SessionId == target);
+            if (idx < 0)
+            {
+                // 目标会话不在列表（如指定了网页会话）→ 加入并选中
+                var t = all.FirstOrDefault(s => s.SessionId == target);
+                if (t != null)
+                {
+                    _sessions.Insert(0, t);
+                    idx = 0;
+                }
+            }
             if (idx >= 0)
             {
                 _sessionSwitching = true;
@@ -190,12 +213,34 @@ public partial class ChatWindow : Window, IHarnessObserver
         catch { }
     }
 
-    private void OnClear(object sender, RoutedEventArgs e)
+    /// <summary>新建会话（Harness 模式）/ 清空（OpenAI 模式）。</summary>
+    private async void OnClearOrNew(object sender, RoutedEventArgs e)
     {
         _cts?.Cancel();
-        _messages.Clear();
-        _openaiHistory.Clear();
-        ActionBar.Visibility = Visibility.Collapsed;
+        if (!IsHarness)
+        {
+            _messages.Clear();
+            _openaiHistory.Clear();
+            ActionBar.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        try
+        {
+            var cfg = ((App)Application.Current).CurrentConfig;
+            var sid = await HarnessClient.CreateSessionAsync(cfg, CancellationToken.None);
+            _currentSessionId = sid;
+            await LoadSessionsAsync(null);
+            _messages.Clear();
+            _openaiHistory.Clear();
+            ActionBar.Visibility = Visibility.Collapsed;
+            AppendMessage("status", "✨ 已新建「桌面助手」会话");
+            InputBox.Focus();
+        }
+        catch (Exception ex)
+        {
+            AppendMessage("status", $"⚠️ 新建会话失败：{ex.Message}");
+        }
     }
 
     private void OnClose(object sender, RoutedEventArgs e) => Hide();

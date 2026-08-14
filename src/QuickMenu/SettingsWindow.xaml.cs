@@ -55,6 +55,7 @@ public partial class SettingsWindow : Window
         ModeOpenAi.IsChecked = config.AiMode == "openai";
         HarnessBaseUrlBox.Text = config.HarnessBaseUrl;
         HarnessSessionBox.Text = config.HarnessSessionId;
+        ShowAllSessionsBox.IsChecked = config.HarnessShowAllSessions;
         AiBaseUrlBox.Text = config.AiBaseUrl;
         AiModelBox.Text = config.AiModel;
         AiKeyBox.Text = config.AiApiKey;
@@ -391,6 +392,7 @@ public partial class SettingsWindow : Window
             AiMode = ModeOpenAi?.IsChecked == true ? "openai" : "harness",
             HarnessBaseUrl = HarnessBaseUrlBox.Text.Trim(),
             HarnessSessionId = HarnessSessionBox.Text.Trim(),
+            HarnessShowAllSessions = ShowAllSessionsBox.IsChecked == true,
             AiBaseUrl = AiBaseUrlBox.Text.Trim(),
             AiModel = AiModelBox.Text.Trim(),
             AiApiKey = AiKeyBox.Text.Trim(),

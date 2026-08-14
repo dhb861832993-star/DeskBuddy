@@ -288,6 +288,9 @@
                              Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
                              Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,3"/>
                 </Grid>
+                <CheckBox x:Name="ShowAllSessionsBox" Grid.Row="8" Margin="76,8,0,0"
+                          Content="会话列表显示全部会话（默认只显示「桌面助手」分组）"
+                          FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
             </Grid>
 
             <Rectangle Grid.Row="7" Height="1" Fill="{DynamicResource SeparatorBrush}" Margin="0,14,0,0"/>
