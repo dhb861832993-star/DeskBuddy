@@ -31,7 +31,6 @@ public partial class MainWindow : Window
     private List<ItemVm> _filtered = new();
     private bool _justOpened;
     private bool _suppressHide;
-    private DateTime _lastSelectionChange = DateTime.MinValue;
     private DateTime _lastLaunchTime = DateTime.MinValue;
     private DispatcherTimer? _hideTimer;
 
@@ -381,9 +380,6 @@ public partial class MainWindow : Window
         FooterHint.Text = $"已添加 {added.Count} 项";
     }
 
-    private void OnSelectionChanged(object sender, SelectionChangedEventArgs e) =>
-        _lastSelectionChange = DateTime.UtcNow;
-
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
         switch (e.Key)
@@ -455,6 +451,8 @@ public partial class MainWindow : Window
     private void OnListDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (_isDragging) return;
+        // 单击已直接打开；双击的第二次触发在此拦截，避免重复启动
+        if ((DateTime.UtcNow - _lastLaunchTime).TotalMilliseconds < 600) return;
         var lbi = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
         if (lbi == null) return;
         if (ItemList.SelectedItem != lbi.DataContext) ItemList.SelectedItem = lbi.DataContext;
@@ -483,11 +481,10 @@ public partial class MainWindow : Window
         var item = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
         if (item == null) return;
 
-        // 单击已选中条目视为“再次点击”→ 启动（避免与双击冲突，限制频率）
-        if (ReferenceEquals(item.DataContext, ItemList.SelectedItem) &&
-            (DateTime.UtcNow - _lastSelectionChange).TotalMilliseconds > 400 &&
-            (DateTime.UtcNow - _lastLaunchTime).TotalMilliseconds > 600)
+        // 单击任意条目直接启动（统一单击打开，不再要求“已选中”或区分双击）
+        if ((DateTime.UtcNow - _lastLaunchTime).TotalMilliseconds > 600)
         {
+            if (ItemList.SelectedItem != item.DataContext) ItemList.SelectedItem = item.DataContext;
             LaunchSelected();
         }
     }

@@ -128,7 +128,6 @@
                 <ListBox x:Name="ItemList" Margin="10,8,10,4"
                          BorderThickness="0" Background="Transparent"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         SelectionChanged="OnSelectionChanged"
                          PreviewMouseLeftButtonDown="OnListPreviewLeftDown"
                          PreviewMouseMove="OnListPreviewMouseMove"
                          PreviewMouseLeftButtonUp="OnListMouseUp"
