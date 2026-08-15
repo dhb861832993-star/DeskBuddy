@@ -71,13 +71,20 @@ public static class ItemDropHandler
             if (ext == ".lnk")
             {
                 var name = Path.GetFileNameWithoutExtension(path);
-                var target = ResolveLnk(path);
+                var (target, args) = ResolveLnk(path);
                 if (!string.IsNullOrEmpty(target))
                 {
                     if (Directory.Exists(target))
                         return new QuickMenuItem { Name = name, Type = "folder", Path = target };
                     if (File.Exists(target))
+                    {
+                        // 带参数的快捷方式（典型如 cmd /c 启动脚本）：保留 .lnk 本体，
+                        // 由系统按快捷方式原始语义启动（目标+参数+工作目录+图标全部正确），
+                        // 避免只取目标路径导致参数丢失（例如只打开空 cmd 窗口）
+                        if (!string.IsNullOrWhiteSpace(args))
+                            return new QuickMenuItem { Name = name, Type = "file", Path = path };
                         return new QuickMenuItem { Name = name, Type = "app", Path = target };
+                    }
                 }
                 return new QuickMenuItem { Name = name, Type = "file", Path = path };
             }
@@ -128,8 +135,8 @@ public static class ItemDropHandler
         return null;
     }
 
-    /// <summary>解析 .lnk 快捷方式的目标路径（IShellLink COM）。</summary>
-    private static string? ResolveLnk(string lnkPath)
+    /// <summary>解析 .lnk 快捷方式的目标路径和参数（IShellLink COM）。</summary>
+    private static (string Target, string Args) ResolveLnk(string lnkPath)
     {
         try
         {
@@ -137,11 +144,13 @@ public static class ItemDropHandler
             ((IPersistFile)link).Load(lnkPath, 0);
             var sb = new StringBuilder(1024);
             link.GetPath(sb, sb.Capacity, IntPtr.Zero, 0);
-            return sb.Length > 0 ? sb.ToString() : null;
+            var args = new StringBuilder(1024);
+            link.GetArguments(args, args.Capacity);
+            return (sb.Length > 0 ? sb.ToString() : "", args.ToString());
         }
         catch
         {
-            return null;
+            return ("", "");
         }
     }
 
