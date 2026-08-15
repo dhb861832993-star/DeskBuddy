@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -62,7 +63,35 @@ public partial class SettingsWindow : Window
         AiPromptBox.Text = config.AiSystemPrompt;
         UpdateAiHint();
 
+        // MCP
+        McpEnabledBox.IsChecked = config.McpEnabled;
+        McpHint.Text = "供 Claude Desktop / Cursor / Cherry Studio 等 AI 工具连接，仅本机可访问。";
+        CopyMcpBtn.IsEnabled = config.McpEnabled;
+
         Loaded += (_, _) => ApplyTheme();
+    }
+
+    /// <summary>复制 MCP 客户端接入配置（JSON）到剪贴板。</summary>
+    private void OnCopyMcpConfig(object sender, RoutedEventArgs e)
+    {
+        var exe = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "QuickMenu.exe");
+        var json = "{\n" +
+                   "  \"mcpServers\": {\n" +
+                   "    \"quickmenu\": {\n" +
+                   "      \"command\": \"" + exe.Replace("\\", "\\\\") + "\",\n" +
+                   "      \"args\": [\"--mcp\"]\n" +
+                   "    }\n" +
+                   "  }\n" +
+                   "}";
+        try
+        {
+            Clipboard.SetText(json);
+            McpHint.Text = "已复制。把它填进 AI 工具的 MCP 服务器配置即可（如 Claude Desktop 的 claude_desktop_config.json、Cursor 的 mcp.json）。";
+        }
+        catch
+        {
+            McpHint.Text = "复制失败，请手动配置：command = " + exe + "，args = [\"--mcp\"]";
+        }
     }
 
     private void OnAiModeChanged(object sender, RoutedEventArgs e) => UpdateAiHint();
@@ -396,7 +425,8 @@ public partial class SettingsWindow : Window
             AiBaseUrl = AiBaseUrlBox.Text.Trim(),
             AiModel = AiModelBox.Text.Trim(),
             AiApiKey = AiKeyBox.Text.Trim(),
-            AiSystemPrompt = AiPromptBox.Text.Trim()
+            AiSystemPrompt = AiPromptBox.Text.Trim(),
+            McpEnabled = McpEnabledBox.IsChecked == true
         };
         ((App)Application.Current).ApplyConfig(cfg);
         Close();

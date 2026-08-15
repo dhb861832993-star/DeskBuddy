@@ -291,6 +291,23 @@
                 <CheckBox x:Name="ShowAllSessionsBox" Grid.Row="8" Margin="76,8,0,0"
                           Content="会话列表显示全部会话（默认只显示「桌面助手」分组）"
                           FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                <Grid Grid.Row="9" Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="76"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="AI 快捷添加" FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1">
+                        <CheckBox x:Name="McpEnabledBox" Content="允许 AI 工具通过 MCP 添加/删除快捷菜单（默认开启）"
+                                  FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <Button x:Name="CopyMcpBtn" Style="{StaticResource MacButton}" Content="复制接入配置"
+                                    Click="OnCopyMcpConfig" Margin="0,0,8,0"/>
+                            <TextBlock x:Name="McpHint" FontSize="10.5" Foreground="{DynamicResource TextSecondary}"
+                                       TextWrapping="Wrap" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
             </Grid>
 
             <Rectangle Grid.Row="7" Height="1" Fill="{DynamicResource SeparatorBrush}" Margin="0,14,0,0"/>

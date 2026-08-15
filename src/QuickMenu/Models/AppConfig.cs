@@ -49,4 +49,9 @@ public class AppConfig
 
     /// <summary>AI 是否已可用（harness 模式始终可用；openai 模式需密钥）。</summary>
     public bool AiEnabled => AiMode == "harness" || !string.IsNullOrWhiteSpace(AiApiKey);
+
+    // ===== MCP（AI 快捷添加菜单） =====
+
+    /// <summary>是否允许 AI 工具通过 MCP 添加/删除/查看快捷菜单（默认开启，仅本机可连）。</summary>
+    public bool McpEnabled { get; set; } = true;
 }

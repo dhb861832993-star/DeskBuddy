@@ -70,9 +70,34 @@
 - 呼出菜单 → 点搜索框右侧 **✨** → 打开 AI 对话窗口
 - **会话管理**：标题栏可选择/刷新会话，支持「最近会话 / 每次新建 / 指定 sessionId」，历史对话自动加载
 - 输入问题 Enter 发送，**流式输出**，实时显示 agent 状态（🧠 思考、🔧 工具调用、⏳ 步骤、✅ 完成）
-- agent 需要**授权/提问**时，对话窗口会出现操作条（允许/拒绝 / 输入回答）
+- agent 需要**授权/提问**时，对话窗口会出现操作条（允许/拒绝 / 输入回答；一次多个问题会逐个列出，全部答完再提交）
 - 搜索**无结果**时，菜单里会出现「✨ 用 AI 回答：xxx」，点击直接把问题交给 AI
 - Esc 关闭对话窗口
+
+## 🤖 MCP（AI 快捷添加菜单）
+
+QuickMenu 内置 **MCP 服务**（默认开启），任何支持 MCP 的 AI 工具（Claude Desktop、Cursor、Cherry Studio 等）都可以直接查看 / 添加 / 删除你的快捷菜单——让 AI 帮你把常用工具收进菜单，静默生效，无需重启。
+
+- **开关**：设置 → AI 对话 → 「AI 快捷添加（MCP）」；默认开启，仅本机可访问
+- **接入方式**：`QuickMenu.exe --mcp`（stdio 传输）。设置里有「复制接入配置」按钮，一键复制客户端配置
+- **工具**：
+  - `list_menu_items` — 列出所有条目（只读）
+  - `add_menu_item` — 添加条目：`name` / `type`(app/url/folder/file/command) / `path` / `args?` / `keywords?` / `icon?`（自定义图标路径 .ico/.png/.exe）
+  - `remove_menu_item` — 按名称删除条目
+- **实现原理**：`--mcp` 子进程通过命名管道把请求转发给已运行的主进程，由主进程统一读写配置并刷新菜单，避免并发写配置冲突
+
+客户端配置示例（Claude Desktop 的 `claude_desktop_config.json`）：
+
+```json
+{
+  "mcpServers": {
+    "quickmenu": {
+      "command": "C:\\Users\\<你的用户名>\\AppData\\Local\\QuickMenu\\QuickMenu.exe",
+      "args": ["--mcp"]
+    }
+  }
+}
+```
 
 ## ⚙️ 图形化设置
 

@@ -11,8 +11,8 @@
     <AssemblyName>QuickMenu</AssemblyName>
     <RootNamespace>QuickMenu</RootNamespace>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>1.8.8</Version>
-    <FileVersion>1.8.8.0</FileVersion>
+    <Version>1.8.9</Version>
+    <FileVersion>1.8.9.0</FileVersion>
     <Product>QuickMenu 快启</Product>
     <Description>双击热键快速呼出启动菜单（苹果风格快速启动器）</Description>
     <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>
@@ -23,6 +23,12 @@
     <!-- 移除隐式 using，避免 System.Windows.Forms / System.Drawing 与 WPF 的类型歧义 -->
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
   </ItemGroup>
 
 </Project>

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Text.Json;
 using System.Threading;
 using System.Windows;
 using QuickMenu.Models;
@@ -26,9 +27,19 @@ public partial class App : Application
     /// <summary>当前配置（供聊天窗口等读取）。</summary>
     public AppConfig CurrentConfig => _config;
 
+    private CancellationTokenSource? _mcpPipeCts;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // ---- MCP 无头模式：QuickMenu.exe --mcp（供 AI 工具通过 MCP 调用）----
+        if (e.Args.Contains("--mcp", StringComparer.OrdinalIgnoreCase))
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            RunMcpHeadless();
+            return;
+        }
 
         // ---- 单实例：已运行时，通知旧实例弹出菜单并退出 ----
         _mutex = new Mutex(true, MutexName, out var createdNew);
@@ -56,6 +67,7 @@ public partial class App : Application
         _config = ConfigManager.Load();
         _mainWindow = new MainWindow();
         _mainWindow.ConfigChanged += OnConfigChanged;
+        UpdateMcpPipe(); // 按配置决定是否监听 MCP 管道
 
         // ---- 托盘 ----
         _tray = new TrayService();
@@ -150,6 +162,81 @@ public partial class App : Application
             }
         }
         _tray?.UpdateHotkeyText(HotkeyDisplay(cfg.Hotkey));
+        UpdateMcpPipe(); // MCP 开关变化时启停管道监听
+    }
+
+    // ==================== MCP（AI 快捷添加菜单） ====================
+
+    /// <summary>按 McpEnabled 决定是否启动/停止 MCP 命名管道监听。</summary>
+    private void UpdateMcpPipe()
+    {
+        _mcpPipeCts?.Cancel();
+        _mcpPipeCts?.Dispose();
+        _mcpPipeCts = null;
+        if (_config.McpEnabled)
+        {
+            _mcpPipeCts = new CancellationTokenSource();
+            McpPipe.StartServer(HandleMcpRequest, _mcpPipeCts.Token);
+            DebugLog.Write("MCP pipe server started");
+        }
+        else
+        {
+            DebugLog.Write("MCP pipe server stopped");
+        }
+    }
+
+    /// <summary>处理 MCP 子进程转发来的请求（管道线程调用；配置操作切到 UI 线程）。</summary>
+    private string HandleMcpRequest(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            var op = root.TryGetProperty("op", out var opEl) ? opEl.GetString() : null;
+            switch (op)
+            {
+                case "ping":
+                    return "{\"ok\":true,\"message\":\"pong\"}";
+                case "add":
+                    if (!root.TryGetProperty("item", out var itemEl)) return McpErr("缺少 item 字段");
+                    var item = itemEl.Deserialize<QuickMenu.Models.QuickMenuItem>(McpJsonOpts);
+                    if (item == null) return McpErr("item 解析失败");
+                    return Dispatcher.Invoke(() => _mainWindow?.McpAddItem(item) ?? McpErr("主窗口未就绪"));
+                case "remove":
+                    var name = root.TryGetProperty("name", out var nEl) ? nEl.GetString() ?? "" : "";
+                    return Dispatcher.Invoke(() => _mainWindow?.McpRemoveItem(name) ?? McpErr("主窗口未就绪"));
+                case "list":
+                    return Dispatcher.Invoke(() => _mainWindow?.McpListItems() ?? McpErr("主窗口未就绪"));
+                default:
+                    return McpErr($"未知操作：{op}");
+            }
+        }
+        catch (Exception ex)
+        {
+            return McpErr(ex.Message);
+        }
+    }
+
+    private static readonly System.Text.Json.JsonSerializerOptions McpJsonOpts = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
+    private static string McpErr(string message) =>
+        System.Text.Json.JsonSerializer.Serialize(new { ok = false, message });
+
+    /// <summary>--mcp 无头模式：不建窗口/托盘/热键，只跑 MCP 服务，退出即关闭。</summary>
+    private async void RunMcpHeadless()
+    {
+        try
+        {
+            await McpService.RunAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            try { Console.Error.WriteLine($"QuickMenu MCP 错误：{ex.Message}"); } catch { }
+        }
+        Shutdown();
     }
 
     /// <summary>打开设置窗口（已打开则激活）。</summary>

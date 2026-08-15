@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -379,6 +380,86 @@ public partial class MainWindow : Window
         UpdateFilter();
         FooterHint.Text = $"已添加 {added.Count} 项";
     }
+
+    // ==================== MCP（AI 快捷添加菜单） ====================
+
+    /// <summary>MCP：添加一个条目（校验 + 去重 + 保存 + 刷新），返回 JSON 结果。</summary>
+    public string McpAddItem(QuickMenuItem item)
+    {
+        var name = item.Name?.Trim() ?? "";
+        var path = item.Path?.Trim() ?? "";
+        var type = item.Type?.Trim().ToLowerInvariant() ?? "";
+        if (name.Length == 0) return McpErr("名称不能为空");
+        if (path.Length == 0) return McpErr("路径不能为空");
+        if (type is not ("app" or "url" or "folder" or "file" or "command"))
+            return McpErr($"不支持的条目类型：{item.Type}（可选 app/url/folder/file/command）");
+
+        var cfg = ConfigManager.Load();
+        if (cfg.Items.Any(i => string.Equals(i.Name, name, StringComparison.OrdinalIgnoreCase)))
+            return McpErr($"已存在同名条目「{name}」，如需替换请先 remove_menu_item 删除");
+
+        var newItem = new QuickMenuItem
+        {
+            Name = name,
+            Type = type,
+            Path = path,
+            Args = item.Args ?? "",
+            Keywords = item.Keywords ?? "",
+            Icon = item.Icon ?? ""
+        };
+        cfg.Items.Add(newItem);
+        ((App)Application.Current).ApplyConfig(cfg);
+        _config = cfg;
+        RefreshItems();
+        UpdateFilter();
+        return McpOk($"已添加「{name}」（{type}）", newItem);
+    }
+
+    /// <summary>MCP：按名称删除条目（大小写不敏感），返回 JSON 结果。</summary>
+    public string McpRemoveItem(string name)
+    {
+        var cfg = ConfigManager.Load();
+        var idx = cfg.Items.FindIndex(i => string.Equals(i.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (idx < 0) return McpErr($"未找到条目「{name}」（可用 list_menu_items 查看现有条目）");
+        var removed = cfg.Items[idx];
+        cfg.Items.RemoveAt(idx);
+        ((App)Application.Current).ApplyConfig(cfg);
+        _config = cfg;
+        RefreshItems();
+        UpdateFilter();
+        return McpOk($"已删除「{removed.Name}」", null);
+    }
+
+    /// <summary>MCP：列出所有条目，返回 JSON 结果。</summary>
+    public string McpListItems()
+    {
+        var cfg = ConfigManager.Load();
+        var items = cfg.Items.Select(i => new
+        {
+            name = i.Name,
+            type = i.Type,
+            path = i.Path,
+            args = i.Args ?? "",
+            keywords = i.Keywords ?? "",
+            icon = i.Icon ?? "",
+            hidden = i.Hidden
+        }).ToList();
+        return JsonSerializer.Serialize(new { ok = true, count = items.Count, items });
+    }
+
+    private static string McpOk(string message, QuickMenuItem? item)
+    {
+        if (item == null) return JsonSerializer.Serialize(new { ok = true, message });
+        return JsonSerializer.Serialize(new
+        {
+            ok = true,
+            message,
+            item = new { name = item.Name, type = item.Type, path = item.Path, args = item.Args ?? "", keywords = item.Keywords ?? "", icon = item.Icon ?? "" }
+        });
+    }
+
+    private static string McpErr(string message) =>
+        JsonSerializer.Serialize(new { ok = false, message });
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
