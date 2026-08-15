@@ -103,6 +103,7 @@ public partial class ChatWindow : Window, IHarnessObserver
         Resources["SeparatorBrush"] = Frozen(theme.Separator);
         Resources["BtnBg"] = Frozen(theme.HoverBg);
         Resources["BtnBgHover"] = Frozen(Color.FromArgb(0x3D, theme.HoverBg.R, theme.HoverBg.G, theme.HoverBg.B));
+        Resources["CardBg"] = new SolidColorBrush(theme.CardTint) { Opacity = theme.CardAlpha };
         RootCard.Background = new SolidColorBrush(theme.CardTint) { Opacity = theme.CardAlpha };
 
         // 刷新已有消息气泡/文字颜色（它们直接绑定 ChatItem 属性，不走资源）

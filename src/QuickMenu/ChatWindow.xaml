@@ -96,6 +96,72 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- 主题化下拉框（与设置窗口类型下拉一致）：跟随深浅色主题 -->
+        <Style x:Key="MacCombo" TargetType="ComboBox">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton x:Name="ToggleBtn" Focusable="False" ClickMode="Press"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="bd" Background="{DynamicResource BtnBg}" CornerRadius="7"
+                                                BorderBrush="{DynamicResource CardBorder}" BorderThickness="1"/>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource BtnBgHover}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <ContentPresenter Content="{TemplateBinding SelectionBoxItem}"
+                                              Margin="10,0,22,0" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                              IsHitTestVisible="False"/>
+                            <TextBlock Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                       Foreground="{DynamicResource TextSecondary}"
+                                       HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,9,0" IsHitTestVisible="False"/>
+                            <Popup x:Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   AllowsTransparency="True" PopupAnimation="Fade" StaysOpen="False">
+                                <Border Background="{DynamicResource CardBg}" BorderBrush="{DynamicResource CardBorder}"
+                                        BorderThickness="1" CornerRadius="8" Margin="0,4,0,0"
+                                        MinWidth="{TemplateBinding ActualWidth}" Padding="4">
+                                    <ScrollViewer MaxHeight="220">
+                                        <ItemsPresenter/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="ItemContainerStyle">
+                <Setter.Value>
+                    <Style TargetType="ComboBoxItem">
+                        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+                        <Setter Property="Padding" Value="9,5"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ComboBoxItem">
+                                    <Border x:Name="bd" CornerRadius="6" Padding="{TemplateBinding Padding}" Background="Transparent">
+                                        <ContentPresenter/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsHighlighted" Value="True">
+                                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource SelectedBg}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Border x:Name="RootCard" CornerRadius="24" BorderThickness="1"
@@ -117,18 +183,9 @@
                     <TextBlock Text="✨" FontSize="15" VerticalAlignment="Center"/>
                     <TextBlock Text="AI 助手" FontSize="14" FontWeight="SemiBold"
                                Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                    <ComboBox x:Name="SessionCombo" Width="190" Height="28" Margin="10,0,0,0"
-                              VerticalAlignment="Center" FontSize="12" Visibility="Collapsed"
-                              SelectionChanged="OnSessionChanged"
-                              Foreground="#111111" Background="#F4F4F5"
-                              BorderBrush="#B0B0B4" BorderThickness="1">
-                        <ComboBox.ItemContainerStyle>
-                            <Style TargetType="ComboBoxItem">
-                                <Setter Property="Foreground" Value="#111111"/>
-                                <Setter Property="Background" Value="#F4F4F5"/>
-                            </Style>
-                        </ComboBox.ItemContainerStyle>
-                    </ComboBox>
+                    <ComboBox x:Name="SessionCombo" Style="{StaticResource MacCombo}" Width="190" Height="28"
+                              Margin="10,0,0,0" VerticalAlignment="Center" FontSize="12" Visibility="Collapsed"
+                              SelectionChanged="OnSessionChanged"/>
                     <Button x:Name="RefreshSessionsBtn" Style="{StaticResource GhostButton}" Click="OnRefreshSessions"
                             ToolTip="刷新会话列表" Visibility="Collapsed">
                         <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="12"
