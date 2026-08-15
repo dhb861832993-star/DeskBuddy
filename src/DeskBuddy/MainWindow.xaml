@@ -315,5 +315,22 @@
                 </StackPanel>
             </Border>
         </Popup>
+
+        <!-- 文件搜索结果右键菜单 -->
+        <Popup x:Name="FileMenuPopup" Placement="MousePoint" AllowsTransparency="True"
+               StaysOpen="True" PopupAnimation="Fade">
+            <Border CornerRadius="10" BorderThickness="1"
+                    BorderBrush="{DynamicResource CardBorder}"
+                    Background="{DynamicResource CardBg}" MinWidth="168" Padding="5">
+                <StackPanel>
+                    <Button x:Name="OpenFolderBtn" Style="{StaticResource MenuItemButton}" Click="OnOpenFileFolder">
+                        <TextBlock Text="打开文件所在目录" FontSize="13"/>
+                    </Button>
+                    <Button x:Name="CopyPathBtn" Style="{StaticResource MenuItemButton}" Click="OnCopyFilePath">
+                        <TextBlock Text="复制文件路径" FontSize="13"/>
+                    </Button>
+                </StackPanel>
+            </Border>
+        </Popup>
     </Grid>
 </Window>

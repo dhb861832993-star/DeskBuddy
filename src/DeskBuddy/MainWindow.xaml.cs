@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
@@ -715,6 +716,7 @@ public partial class MainWindow : Window
     {
         // 点击窗口其他位置 → 关闭右键菜单
         if (ItemMenuPopup.IsOpen) ItemMenuPopup.IsOpen = false;
+        if (FileMenuPopup.IsOpen) FileMenuPopup.IsOpen = false;
     }
 
     private void OnListPreviewLeftDown(object sender, MouseButtonEventArgs e)
@@ -745,9 +747,18 @@ public partial class MainWindow : Window
     {
         var lbi = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
         if (lbi == null) return;
-        if (lbi.DataContext is ItemVm { Kind: not "item" }) return; // 文件结果不做条目操作菜单
-        ItemList.SelectedItem = lbi.DataContext;
-        _contextItem = lbi.DataContext as ItemVm;
+        if (lbi.DataContext is not ItemVm vm) return;
+        ItemList.SelectedItem = vm;
+        if (vm.Kind == "file")
+        {
+            // 文件搜索结果：打开所在目录 / 复制路径
+            _contextFilePath = vm.LaunchPath;
+            FileMenuPopup.IsOpen = true;
+            e.Handled = true;
+            return;
+        }
+        if (vm.Kind != "item") return; // 分区头等不可操作
+        _contextItem = vm;
         _pendingDelete = null;
         CtxDeleteText.Text = "删除";
         ItemMenuPopup.IsOpen = true;
@@ -777,7 +788,49 @@ public partial class MainWindow : Window
             CloseItemMenu();
             return true;
         }
+        if (FileMenuPopup.IsOpen)
+        {
+            FileMenuPopup.IsOpen = false;
+            return true;
+        }
         return false;
+    }
+
+    // ==================== 文件搜索结果右键操作 ====================
+
+    private string? _contextFilePath;
+
+    /// <summary>在资源管理器中打开文件所在目录并选中该文件。</summary>
+    private void OnOpenFileFolder(object sender, RoutedEventArgs e)
+    {
+        FileMenuPopup.IsOpen = false;
+        if (string.IsNullOrEmpty(_contextFilePath)) return;
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"/select,\"{_contextFilePath}\"",
+                UseShellExecute = true
+            });
+        }
+        catch { }
+    }
+
+    /// <summary>复制文件完整路径到剪贴板。</summary>
+    private void OnCopyFilePath(object sender, RoutedEventArgs e)
+    {
+        FileMenuPopup.IsOpen = false;
+        if (string.IsNullOrEmpty(_contextFilePath)) return;
+        try
+        {
+            System.Windows.Clipboard.SetText(_contextFilePath);
+            FooterHint.Text = "已复制文件路径";
+            var t = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+            t.Tick += (_, _) => { t.Stop(); FooterHint.Text = ""; };
+            t.Start();
+        }
+        catch { }
     }
 
     private void OnCtxTop(object sender, RoutedEventArgs e) => MoveContextItemTo(0);
