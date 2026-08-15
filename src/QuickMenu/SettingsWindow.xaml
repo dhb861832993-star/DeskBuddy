@@ -254,7 +254,7 @@
                         </UniformGrid>
                     </Border>
                 </Grid>
-                <Grid Grid.Row="1" Margin="0,8,0,0">
+                <Grid x:Name="HarnessAddrRow" Grid.Row="1" Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="76"/>
                         <ColumnDefinition Width="*"/>
@@ -264,7 +264,7 @@
                              Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
                              Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,3"/>
                 </Grid>
-                <Grid Grid.Row="2" Margin="0,8,0,0">
+                <Grid x:Name="HarnessSessionRow" Grid.Row="2" Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="76"/>
                         <ColumnDefinition Width="*"/>
@@ -274,7 +274,7 @@
                              Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
                              Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,3"/>
                 </Grid>
-                <Grid Grid.Row="3" Margin="0,8,0,0">
+                <Grid x:Name="OpenAiBaseUrlRow" Grid.Row="3" Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="76"/>
                         <ColumnDefinition Width="*"/>
@@ -284,7 +284,7 @@
                              Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
                              Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,3"/>
                 </Grid>
-                <Grid Grid.Row="4" Margin="0,8,0,0">
+                <Grid x:Name="OpenAiModelRow" Grid.Row="4" Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="76"/>
                         <ColumnDefinition Width="*"/>
@@ -294,7 +294,7 @@
                              Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
                              Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,3"/>
                 </Grid>
-                <Grid Grid.Row="5" Margin="0,8,0,0">
+                <Grid x:Name="OpenAiKeyRow" Grid.Row="5" Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="76"/>
                         <ColumnDefinition Width="*"/>
@@ -304,7 +304,7 @@
                              Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
                              Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,3"/>
                 </Grid>
-                <Grid Grid.Row="6" Margin="0,8,0,0">
+                <Grid x:Name="OpenAiPromptRow" Grid.Row="6" Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="76"/>
                         <ColumnDefinition Width="*"/>
@@ -314,7 +314,7 @@
                              Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
                              Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,3"/>
                 </Grid>
-                <CheckBox x:Name="ShowAllSessionsBox" Grid.Row="7" Margin="76,8,0,0"
+                <CheckBox x:Name="ShowAllSessionsRow" Grid.Row="7" Margin="76,8,0,0"
                           Content="会话列表显示全部会话（默认只显示「桌面助手」分组）"
                           FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
             </Grid>

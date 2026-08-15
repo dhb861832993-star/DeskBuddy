@@ -56,12 +56,13 @@ public partial class SettingsWindow : Window
         ModeOpenAi.IsChecked = config.AiMode == "openai";
         HarnessBaseUrlBox.Text = config.HarnessBaseUrl;
         HarnessSessionBox.Text = config.HarnessSessionId;
-        ShowAllSessionsBox.IsChecked = config.HarnessShowAllSessions;
+        ShowAllSessionsRow.IsChecked = config.HarnessShowAllSessions;
         AiBaseUrlBox.Text = config.AiBaseUrl;
         AiModelBox.Text = config.AiModel;
         AiKeyBox.Text = config.AiApiKey;
         AiPromptBox.Text = config.AiSystemPrompt;
         UpdateAiHint();
+        UpdateAiFields();
 
         // MCP
         McpEnabledBox.IsChecked = config.McpEnabled;
@@ -94,7 +95,11 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void OnAiModeChanged(object sender, RoutedEventArgs e) => UpdateAiHint();
+    private void OnAiModeChanged(object sender, RoutedEventArgs e)
+    {
+        UpdateAiHint();
+        UpdateAiFields();
+    }
 
     private void UpdateAiHint()
     {
@@ -104,8 +109,22 @@ public partial class SettingsWindow : Window
         }
         else
         {
-            AiHint.Text = "OpenAI 兼容模式：需在下面填写 API 密钥（DeepSeek 开放平台申请）。";
+            AiHint.Text = "OpenAI 兼容模式：直连任意 OpenAI 兼容接口（如 DeepSeek 官方 API），需在下方填写接口地址、模型与 API 密钥。";
         }
+    }
+
+    /// <summary>按接入模式显示对应字段：Harness 模式只显示 Harness 相关项，OpenAI 模式只显示 API 相关项。</summary>
+    private void UpdateAiFields()
+    {
+        if (ModeHarness == null || HarnessAddrRow == null) return;
+        var harness = ModeHarness.IsChecked == true;
+        HarnessAddrRow.Visibility = harness ? Visibility.Visible : Visibility.Collapsed;
+        HarnessSessionRow.Visibility = harness ? Visibility.Visible : Visibility.Collapsed;
+        ShowAllSessionsRow.Visibility = harness ? Visibility.Visible : Visibility.Collapsed;
+        OpenAiBaseUrlRow.Visibility = harness ? Visibility.Collapsed : Visibility.Visible;
+        OpenAiModelRow.Visibility = harness ? Visibility.Collapsed : Visibility.Visible;
+        OpenAiKeyRow.Visibility = harness ? Visibility.Collapsed : Visibility.Visible;
+        OpenAiPromptRow.Visibility = harness ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private static string NormalizeHotkey(string h) => h?.ToUpperInvariant() switch
@@ -421,7 +440,7 @@ public partial class SettingsWindow : Window
             AiMode = ModeOpenAi?.IsChecked == true ? "openai" : "harness",
             HarnessBaseUrl = HarnessBaseUrlBox.Text.Trim(),
             HarnessSessionId = HarnessSessionBox.Text.Trim(),
-            HarnessShowAllSessions = ShowAllSessionsBox.IsChecked == true,
+            HarnessShowAllSessions = ShowAllSessionsRow.IsChecked == true,
             AiBaseUrl = AiBaseUrlBox.Text.Trim(),
             AiModel = AiModelBox.Text.Trim(),
             AiApiKey = AiKeyBox.Text.Trim(),
