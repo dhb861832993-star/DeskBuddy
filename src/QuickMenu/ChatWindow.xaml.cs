@@ -74,7 +74,9 @@ public partial class ChatWindow : Window, IHarnessObserver
     private string _currentSessionId = "";
     private bool _sessionSwitching;
     private HarnessApproval? _pendingApproval;
-    private HarnessQuestion? _pendingQuestion;
+    private List<HarnessQuestion>? _pendingQuestions;
+    private readonly Dictionary<string, HashSet<string>> _selectedByQuestion = new();
+    private readonly Dictionary<string, TextBox> _customByQuestion = new();
     private string _lastStatus = "";
     private bool _thinkingShown;
 
@@ -432,71 +434,126 @@ public partial class ChatWindow : Window, IHarnessObserver
             ActionBar.Visibility = Visibility.Visible;
         }));
 
-    void IHarnessObserver.OnQuestion(HarnessQuestion question) =>
+    void IHarnessObserver.OnQuestion(IReadOnlyList<HarnessQuestion> questions) =>
         Dispatcher.BeginInvoke(new Action(async () =>
         {
-            DebugLog.Write($"question handler: current={_currentSessionId} qSession={question.SessionId}");
+            if (questions.Count == 0) return;
+            var first = questions[0];
+            DebugLog.Write($"question handler: current={_currentSessionId} qSession={first.SessionId} count={questions.Count}");
             // 只处理当前会话的提问；其它会话（含重放）的挂起提问自动取消清理
-            if (_currentSessionId.Length > 0 && question.SessionId.Length > 0 &&
-                question.SessionId != _currentSessionId)
+            if (_currentSessionId.Length > 0 && first.SessionId.Length > 0 &&
+                first.SessionId != _currentSessionId)
             {
-                DebugLog.Write($"忽略其它会话提问：{question.SessionId}");
+                DebugLog.Write($"忽略其它会话提问：{first.SessionId}");
                 try
                 {
                     var cfg = ((App)Application.Current).CurrentConfig;
-                    await HarnessClient.CancelPendingAsync(cfg.HarnessBaseUrl, question.RpcId, CancellationToken.None);
+                    await HarnessClient.CancelPendingAsync(cfg.HarnessBaseUrl, first.RpcId, CancellationToken.None);
                 }
                 catch { }
                 return;
             }
-            _pendingQuestion = question;
-            AppendMessage("status", $"❓ {question.Question}");
-            ActionText.Text = question.Question;
+            _pendingQuestions = questions.ToList();
+            foreach (var q in questions)
+            {
+                AppendMessage("status", $"❓ {q.Question}");
+            }
+            ActionText.Text = string.IsNullOrWhiteSpace(first.Header) ? "请回答以下问题" : first.Header;
 
-            // 选择题：渲染可点击选项（单选/多选），可配合“其他”自定义输入
-            BuildQuestionOptions(question);
+            // 渲染所有问题（一次提问可能包含多个问题，必须全部回答才能提交）
+            BuildQuestionPanels(questions);
 
             ApprovalBtns.Visibility = Visibility.Collapsed;
             QuestionBox.Visibility = Visibility.Visible;
             ActionBar.Visibility = Visibility.Visible;
-            AnswerInput.Clear();
-            AnswerInput.Focus();
         }));
 
-    private readonly HashSet<string> _selectedOptions = new();
-    private readonly List<ToggleButton> _optionButtons = new();
-
-    private void BuildQuestionOptions(HarnessQuestion question)
+    /// <summary>为提问批次中的每个问题渲染：问题文本 + 可点击选项 + 自定义输入框。</summary>
+    private void BuildQuestionPanels(IReadOnlyList<HarnessQuestion> questions)
     {
-        QuestionOptions.Children.Clear();
-        _optionButtons.Clear();
-        _selectedOptions.Clear();
+        QuestionList.Children.Clear();
+        _selectedByQuestion.Clear();
+        _customByQuestion.Clear();
 
-        if (question.Options is not { Count: > 0 }) return;
-        foreach (var label in question.Options)
+        var textPrimary = (Brush)FindResource("TextPrimary");
+        var textSecondary = (Brush)FindResource("TextSecondary");
+        foreach (var q in questions)
         {
-            var btn = new ToggleButton
+            var selected = new HashSet<string>();
+            _selectedByQuestion[q.QuestionId] = selected;
+
+            var panel = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
+
+            var qText = new TextBlock
             {
-                Content = label,
-                Style = (Style)FindResource("OptionChip"),
-                Tag = label
+                Text = q.Question,
+                FontSize = 12.5,
+                FontWeight = FontWeights.SemiBold,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = textPrimary,
+                Margin = new Thickness(0, 2, 0, 4)
             };
-            btn.Checked += (_, _) =>
+            panel.Children.Add(qText);
+
+            if (q.Options is { Count: > 0 })
             {
-                _selectedOptions.Add(label);
-                if (!question.MultiSelect)
+                var chips = new WrapPanel { Margin = new Thickness(0, 0, 0, 2) };
+                var buttons = new List<ToggleButton>();
+                foreach (var label in q.Options)
                 {
-                    foreach (var other in _optionButtons)
+                    var btn = new ToggleButton
                     {
-                        if (!ReferenceEquals(other, btn)) other.IsChecked = false;
-                    }
-                    _selectedOptions.Clear();
-                    _selectedOptions.Add(label);
+                        Content = label,
+                        Style = (Style)FindResource("OptionChip"),
+                        Tag = label
+                    };
+                    btn.Checked += (_, _) =>
+                    {
+                        selected.Add(label);
+                        if (!q.MultiSelect)
+                        {
+                            foreach (var other in buttons)
+                            {
+                                if (!ReferenceEquals(other, btn)) other.IsChecked = false;
+                            }
+                            selected.Clear();
+                            selected.Add(label);
+                        }
+                    };
+                    btn.Unchecked += (_, _) => selected.Remove(label);
+                    buttons.Add(btn);
+                    chips.Children.Add(btn);
                 }
+                panel.Children.Add(chips);
+            }
+
+            var customRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
+            customRow.Children.Add(new TextBlock
+            {
+                Text = "其他/自定义：",
+                FontSize = 12,
+                Foreground = textSecondary,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0)
+            });
+            var input = new TextBox
+            {
+                MinWidth = 160,
+                Height = 30,
+                FontSize = 12,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                Foreground = textPrimary,
+                CaretBrush = textPrimary,
+                Background = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
+                BorderBrush = (Brush)FindResource("CardBorder"),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(8, 4, 8, 4)
             };
-            btn.Unchecked += (_, _) => _selectedOptions.Remove(label);
-            _optionButtons.Add(btn);
-            QuestionOptions.Children.Add(btn);
+            _customByQuestion[q.QuestionId] = input;
+            customRow.Children.Add(input);
+            panel.Children.Add(customRow);
+
+            QuestionList.Children.Add(panel);
         }
     }
 
@@ -528,45 +585,53 @@ public partial class ChatWindow : Window, IHarnessObserver
 
     private async void OnAnswerSend(object sender, RoutedEventArgs e)
     {
-        if (_pendingQuestion == null) return;
-        var question = _pendingQuestion;
-        var custom = AnswerInput.Text.Trim();
-        var selected = _selectedOptions.ToArray();
-        if (custom.Length == 0 && selected.Length == 0)
+        if (_pendingQuestions == null) return;
+        var questions = _pendingQuestions;
+
+        // 收集每个问题的答案；有未回答的则不提交
+        var answers = new List<Dictionary<string, object>>();
+        var summary = new List<string>();
+        foreach (var q in questions)
         {
-            ActionText.Text = "请选择一个选项，或在“其他/自定义”中输入内容";
-            AnswerInput.Focus();
-            return;
-        }
-        _pendingQuestion = null;
-        AnswerInput.Clear();
-        _selectedOptions.Clear();
-        ActionBar.Visibility = Visibility.Collapsed;
-        var cfg = ((App)Application.Current).CurrentConfig;
-        try
-        {
+            var selected = _selectedByQuestion.TryGetValue(q.QuestionId, out var s) ? s.ToArray() : Array.Empty<string>();
+            var custom = _customByQuestion.TryGetValue(q.QuestionId, out var box) ? box.Text.Trim() : "";
+            if (custom.Length == 0 && selected.Length == 0)
+            {
+                ActionText.Text = $"请回答「{q.Question}」：选择一个选项，或在“其他/自定义”中输入内容";
+                return; // 未答完不提交
+            }
             // 答案格式（与 Harness 客户端一致）：{ sessionId, answer: { answers: [ { id, selected, [custom] } ] } }
             // 有自定义文本 → selected=[] + custom；否则 → selected=[选项]，且【不包含】custom 字段
-            var item = new Dictionary<string, object> { ["id"] = question.QuestionId };
+            var item = new Dictionary<string, object> { ["id"] = q.QuestionId };
             if (custom.Length > 0)
             {
                 item["selected"] = Array.Empty<string>();
                 item["custom"] = custom;
+                summary.Add(custom);
             }
             else
             {
                 item["selected"] = selected;
+                summary.Add(string.Join("、", selected));
             }
+            answers.Add(item);
+        }
+
+        _pendingQuestions = null;
+        QuestionList.Children.Clear();
+        _selectedByQuestion.Clear();
+        _customByQuestion.Clear();
+        ActionBar.Visibility = Visibility.Collapsed;
+        var cfg = ((App)Application.Current).CurrentConfig;
+        try
+        {
             var payload = new Dictionary<string, object>
             {
-                ["sessionId"] = question.SessionId,
-                ["answer"] = new Dictionary<string, object>
-                {
-                    ["answers"] = new[] { item }
-                }
+                ["sessionId"] = questions[0].SessionId,
+                ["answer"] = new Dictionary<string, object> { ["answers"] = answers }
             };
-            await HarnessClient.RespondAsync(cfg.HarnessBaseUrl, question.RpcId, payload, CancellationToken.None);
-            AppendMessage("user", custom.Length > 0 ? custom : string.Join("、", selected));
+            await HarnessClient.RespondAsync(cfg.HarnessBaseUrl, questions[0].RpcId, payload, CancellationToken.None);
+            AppendMessage("user", string.Join("；", summary));
         }
         catch (Exception ex)
         {

@@ -185,14 +185,10 @@
                         <Button x:Name="RejectBtn" Style="{StaticResource MacButton}" Content="拒绝" Click="OnReject"/>
                     </StackPanel>
                     <StackPanel x:Name="QuestionBox" Margin="0,9,0,0" Visibility="Collapsed">
-                        <WrapPanel x:Name="QuestionOptions" Margin="0,0,0,4"/>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="其他/自定义：" FontSize="12" Foreground="{DynamicResource TextSecondary}"
-                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
-                            <TextBox x:Name="AnswerInput" MinWidth="180" Height="30" FontSize="12"
-                                     Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
-                                     Background="#33FFFFFF" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,4"/>
-                            <Button x:Name="AnswerSendBtn" Style="{StaticResource AccentButton}" Content="提交" Click="OnAnswerSend" Margin="8,0,0,0"/>
+                        <!-- 每个问题动态渲染：问题文本 + 选项 chips + 自定义输入框（支持一次多个问题） -->
+                        <StackPanel x:Name="QuestionList"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
+                            <Button x:Name="AnswerSendBtn" Style="{StaticResource AccentButton}" Content="提交" Click="OnAnswerSend"/>
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>

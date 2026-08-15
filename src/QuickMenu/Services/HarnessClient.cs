@@ -46,7 +46,8 @@ public interface IHarnessObserver
     void OnTextDelta(string text);
     void OnStatus(string status);
     void OnApproval(HarnessApproval approval);
-    void OnQuestion(HarnessQuestion question);
+    /// <summary>一次提问批次（agent 可一次问多个问题，必须全部回答）。</summary>
+    void OnQuestion(IReadOnlyList<HarnessQuestion> questions);
 }
 
 /// <summary>
@@ -439,22 +440,27 @@ public static class HarnessClient
 
     private static void HandleQuestion(JsonElement data, string rpcId, IHarnessObserver observer)
     {
+        // 注意：一次提问可能包含多个问题（answers 必须全部回答，服务端按数量严格校验）
         if (!data.TryGetProperty("questions", out var qs) || qs.GetArrayLength() == 0) return;
-        var q = qs[0];
-        var question = new HarnessQuestion
+        var sessionId = data.TryGetProperty("sessionId", out var sid) ? sid.GetString() ?? "" : "";
+        var list = new List<HarnessQuestion>();
+        foreach (var q in qs.EnumerateArray())
         {
-            RpcId = rpcId,
-            SessionId = data.TryGetProperty("sessionId", out var sid) ? sid.GetString() ?? "" : "",
-            QuestionId = q.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
-            Question = q.TryGetProperty("question", out var qq) ? qq.GetString() ?? "（问题）" : "（问题）",
-            Header = q.TryGetProperty("header", out var h) ? h.GetString() : null,
-            Options = q.TryGetProperty("options", out var opts)
-                ? opts.EnumerateArray().Select(o => o.TryGetProperty("label", out var l) ? l.GetString() ?? "" : "").ToList()
-                : null,
-            MultiSelect = q.TryGetProperty("multiSelect", out var ms) && ms.GetBoolean()
-        };
-        DebugLog.Write($"question/requested: session={question.SessionId} id={question.QuestionId} multi={question.MultiSelect} options={(question.Options is null ? "none" : string.Join(",", question.Options))} q={question.Question} rpc={rpcId}");
-        observer.OnQuestion(question);
+            list.Add(new HarnessQuestion
+            {
+                RpcId = rpcId,
+                SessionId = sessionId,
+                QuestionId = q.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
+                Question = q.TryGetProperty("question", out var qq) ? qq.GetString() ?? "（问题）" : "（问题）",
+                Header = q.TryGetProperty("header", out var h) ? h.GetString() : null,
+                Options = q.TryGetProperty("options", out var opts)
+                    ? opts.EnumerateArray().Select(o => o.TryGetProperty("label", out var l) ? l.GetString() ?? "" : "").ToList()
+                    : null,
+                MultiSelect = q.TryGetProperty("multiSelect", out var ms) && ms.GetBoolean()
+            });
+        }
+        DebugLog.Write($"question/requested: session={sessionId} count={list.Count} rpc={rpcId}");
+        observer.OnQuestion(list);
     }
 
     /// <summary>停止当前回合。</summary>
