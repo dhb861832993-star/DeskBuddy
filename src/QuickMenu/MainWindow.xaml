@@ -17,6 +17,13 @@
         <SolidColorBrush x:Key="CardBorder" Color="#2EFFFFFF"/>
         <SolidColorBrush x:Key="SeparatorBrush" Color="#33FFFFFF"/>
         <SolidColorBrush x:Key="SearchGlyphBrush" Color="#A8A8B0"/>
+
+        <!-- AI 标识渐变（紫→蓝→绿） -->
+        <LinearGradientBrush x:Key="AiGradient" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#7A5CFF" Offset="0"/>
+            <GradientStop Color="#2A6DF4" Offset="0.55"/>
+            <GradientStop Color="#32D583" Offset="1"/>
+        </LinearGradientBrush>
         <SolidColorBrush x:Key="FooterBrush" Color="#909098"/>
         <SolidColorBrush x:Key="CardBg" Color="#CC1E1E1E"/>
 
@@ -107,7 +114,7 @@
                         ToolTip="AI 助手" Click="OnAiClick">
                     <Button.Template>
                         <ControlTemplate TargetType="Button">
-                            <Border x:Name="bd" Background="Transparent" CornerRadius="9" Padding="8,4">
+                            <Border x:Name="bd" Background="Transparent" CornerRadius="11" Padding="2">
                                 <ContentPresenter/>
                             </Border>
                             <ControlTemplate.Triggers>
@@ -117,7 +124,10 @@
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
                     </Button.Template>
-                    <TextBlock Text="✨" FontSize="15"/>
+                    <!-- 彩色渐变徽章，一眼可见 -->
+                    <Border CornerRadius="9" Padding="9,4" Background="{StaticResource AiGradient}">
+                        <TextBlock Text="✨" FontSize="13" Foreground="White"/>
+                    </Border>
                 </Button>
             </Grid>
 
