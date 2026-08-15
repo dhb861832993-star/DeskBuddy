@@ -174,28 +174,61 @@
                                     </ControlTemplate>
                                 </Setter.Value>
                             </Setter>
+                            <Style.Triggers>
+                                <!-- 文件分区头：通栏分隔条，不可点击/不可选中 -->
+                                <DataTrigger Binding="{Binding Kind}" Value="file-section">
+                                    <Setter Property="Width" Value="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ItemsControl}}"/>
+                                    <Setter Property="Height" Value="30"/>
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <Setter Property="IsHitTestVisible" Value="False"/>
+                                    <Setter Property="IsEnabled" Value="False"/>
+                                </DataTrigger>
+                            </Style.Triggers>
                         </Style>
                     </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <StackPanel VerticalAlignment="Center" ToolTip="{Binding Subtitle}">
-                                <Border Width="52" Height="52" CornerRadius="13"
-                                        Background="{Binding IconBg}" HorizontalAlignment="Center">
-                                    <Grid>
-                                        <Image x:Name="IconImage" Source="{Binding Icon}" Stretch="Uniform" Margin="5"/>
-                                        <TextBlock x:Name="GlyphText" Text="{Binding Glyph}"
-                                                   Style="{StaticResource GlyphStyle}" FontSize="22" Visibility="Collapsed"/>
-                                    </Grid>
-                                </Border>
-                                <TextBlock Text="{Binding Name}" FontSize="11.5" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextPrimary}"
-                                           TextTrimming="CharacterEllipsis" MaxWidth="84"
-                                           HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                                <!-- 磁贴 -->
+                                <StackPanel x:Name="Tile">
+                                    <Border Width="52" Height="52" CornerRadius="13"
+                                            Background="{Binding IconBg}" HorizontalAlignment="Center">
+                                        <Grid>
+                                            <Image x:Name="IconImage" Source="{Binding Icon}" Stretch="Uniform" Margin="5"/>
+                                            <TextBlock x:Name="GlyphText" Text="{Binding Glyph}"
+                                                       Style="{StaticResource GlyphStyle}" FontSize="22" Visibility="Collapsed"/>
+                                        </Grid>
+                                    </Border>
+                                    <TextBlock Text="{Binding Name}" FontSize="11.5" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}"
+                                               TextTrimming="CharacterEllipsis" MaxWidth="84"
+                                               HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                                </StackPanel>
+                                <!-- 文件分区头（通栏分隔条） -->
+                                <Grid x:Name="FileDivider" Visibility="Collapsed" HorizontalAlignment="Stretch">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Rectangle Grid.Column="0" Height="1" Fill="{DynamicResource SeparatorBrush}" VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0">
+                                        <TextBlock Text="{Binding Name}" FontSize="10.5" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextSecondary}"/>
+                                        <TextBlock Text="{Binding Subtitle}" FontSize="10.5"
+                                                   Foreground="{DynamicResource TextSecondary}" Margin="6,0,0,0"/>
+                                    </StackPanel>
+                                    <Rectangle Grid.Column="2" Height="1" Fill="{DynamicResource SeparatorBrush}" VerticalAlignment="Center"/>
+                                </Grid>
                             </StackPanel>
                             <DataTemplate.Triggers>
                                 <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
                                     <Setter TargetName="GlyphText" Property="Visibility" Value="Visible"/>
                                     <Setter TargetName="IconImage" Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Kind}" Value="file-section">
+                                    <Setter TargetName="Tile" Property="Visibility" Value="Collapsed"/>
+                                    <Setter TargetName="FileDivider" Property="Visibility" Value="Visible"/>
                                 </DataTrigger>
                             </DataTemplate.Triggers>
                         </DataTemplate>

@@ -300,7 +300,13 @@ public partial class MainWindow : Window
             list.AddRange(_fileResults);
         }
         ItemList.ItemsSource = list;
-        if (list.Count > 0) ItemList.SelectedIndex = 0;
+        if (list.Count > 0)
+        {
+            // 分区头不可选中：默认选中第一个可用的结果（菜单条目优先，其次第一个文件）
+            var first = list.FindIndex(v => v.Kind != "file-section");
+            ItemList.SelectedIndex = first >= 0 ? first : 0;
+        }
+        DebugLog.Write($"RebuildDisplay: menu={_filtered.Count} files={_fileResults.Count} listFirst={(list.Count > 0 ? list[0].Kind + ":" + list[0].Name : "empty")}");
 
         if (searching)
             CountText.Text = _fileResults.Count > 0
