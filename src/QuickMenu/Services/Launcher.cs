@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.IO;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using QuickMenu.Models;
 
 namespace QuickMenu.Services;
@@ -68,6 +70,23 @@ public static class Launcher
             {
                 case "url":
                     if (!Uri.TryCreate(item.Path, UriKind.Absolute, out var uri)) return false;
+                    // 本机服务地址：先探测是否已在运行。
+                    // 已运行 → 直接打开页面（浏览器弹出/聚焦，不重复启动服务）；
+                    // 未运行 → 若配置了启动脚本（Args=脚本路径），先拉起服务（脚本就绪后自己会开浏览器）。
+                    if (IsLocalHost(uri))
+                    {
+                        if (IsReachable(uri))
+                        {
+                            psi.FileName = uri.ToString();
+                            break;
+                        }
+                        var fallback = Environment.ExpandEnvironmentVariables(item.Args ?? "");
+                        if (File.Exists(fallback))
+                        {
+                            Process.Start(new ProcessStartInfo { FileName = fallback, UseShellExecute = true });
+                            return true;
+                        }
+                    }
                     psi.FileName = uri.ToString();
                     break;
 
@@ -92,6 +111,8 @@ public static class Launcher
                         System.Windows.MessageBox.Show($"找不到程序：{item.Path}\n请在配置文件中填写完整路径。", "QuickMenu");
                         return false;
                     }
+                    // 程序已在运行 → 只把它弹出到前台，不重复启动
+                    if (BringExistingToFront(exe)) return true;
                     psi.FileName = exe;
                     if (!string.IsNullOrWhiteSpace(item.Args)) psi.Arguments = item.Args;
                     break;
@@ -105,4 +126,63 @@ public static class Launcher
             return false;
         }
     }
+
+    /// <summary>目标程序是否本机地址（127.0.0.1 / localhost / ::1）。</summary>
+    private static bool IsLocalHost(Uri uri) =>
+        uri.IsLoopback || string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>探测本机端口是否在监听（连接成功即视为服务已运行）。</summary>
+    private static bool IsReachable(Uri uri)
+    {
+        try
+        {
+            var port = uri.Port > 0 ? uri.Port : (uri.Scheme == Uri.UriSchemeHttps ? 443 : 80);
+            using var tcp = new TcpClient();
+            var ar = tcp.BeginConnect(uri.Host, port, null, null);
+            if (!ar.AsyncWaitHandle.WaitOne(1500)) return false;
+            tcp.EndConnect(ar);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 同名进程已在运行且有可见主窗口 → 恢复并置前，返回 true（不再启动新实例）。
+    /// 托盘类程序（无主窗口）返回 false，交给正常启动（多数会自行弹出窗口）。
+    /// </summary>
+    private static bool BringExistingToFront(string exePath)
+    {
+        var name = Path.GetFileNameWithoutExtension(exePath);
+        try
+        {
+            foreach (var p in Process.GetProcessesByName(name))
+            {
+                if (p.Id == Environment.ProcessId) continue;
+                var hwnd = p.MainWindowHandle;
+                if (hwnd == IntPtr.Zero) continue;
+                if (IsIconic(hwnd)) ShowWindow(hwnd, SW_RESTORE); // 最小化先还原
+                SetForegroundWindow(hwnd);
+                return true;
+            }
+        }
+        catch
+        {
+            // 进程消失 / 权限不足等：走正常启动
+        }
+        return false;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hWnd);
+
+    private const int SW_RESTORE = 9;
 }
