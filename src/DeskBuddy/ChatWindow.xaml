@@ -166,7 +166,8 @@
 
     <Border x:Name="RootCard" CornerRadius="24" BorderThickness="1"
             BorderBrush="{DynamicResource CardBorder}"
-            Background="{DynamicResource CardBg}">
+            Background="{DynamicResource CardBg}"
+            MouseLeftButtonDown="OnCardMouseDown">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="52"/>

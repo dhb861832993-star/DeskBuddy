@@ -90,6 +90,29 @@ public partial class ChatWindow : Window, IHarnessObserver
         Loaded += (_, _) => ApplyTheme();
     }
 
+    // ==================== 窗口拖动 ====================
+
+    /// <summary>按住窗口空白处（非控件区域）拖动窗口。</summary>
+    private void OnCardMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        // 只有点击不在任何控件内（标题文字、空白处）时才拖动窗口；
+        // 否则会把消息列表选中、按钮、下拉框等鼠标操作全部吞掉
+        if (e.LeftButton == MouseButtonState.Pressed && !IsInsideControl(e.OriginalSource as DependencyObject))
+        {
+            DragMove();
+        }
+    }
+
+    private static bool IsInsideControl(DependencyObject? d)
+    {
+        while (d != null)
+        {
+            if (d is Control) return true;
+            d = VisualTreeHelper.GetParent(d);
+        }
+        return false;
+    }
+
     // ==================== 主题 ====================
 
     private void ApplyTheme()
