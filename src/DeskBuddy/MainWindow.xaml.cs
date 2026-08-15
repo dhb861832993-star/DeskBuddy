@@ -68,6 +68,7 @@ public partial class MainWindow : Window
         ApplyTheme();
 
         RefreshItems();
+        ApplyLayoutMode();
         CancelFileSearch();
         _fileResults = new List<ItemVm>();
         // 提前预热文件索引（后台），让首次搜索就快
@@ -411,18 +412,56 @@ public partial class MainWindow : Window
     /// <summary>宫格瓷砖尺寸（需与 XAML 中 ListBoxItem 的 Width/Height 一致）。</summary>
     private const double TileWidth = 96;
     private const double TileHeight = 100;
+    private const double ListRowHeight = 50;
+
+    /// <summary>按配置切换条目排布：grid 宫格现状 / fill 宫格填充整行 / list 列表。</summary>
+    private void ApplyLayoutMode()
+    {
+        var mode = _config.LayoutMode;
+        ItemsPanelTemplate panel;
+        if (mode == "list")
+        {
+            var factory = new FrameworkElementFactory(typeof(StackPanel));
+            factory.SetValue(StackPanel.OrientationProperty, Orientation.Vertical);
+            panel = new ItemsPanelTemplate(factory);
+            ItemList.ItemContainerStyle = (Style)FindResource("ListContainerStyle");
+            ItemList.ItemTemplate = (DataTemplate)FindResource("ListRowTemplate");
+        }
+        else if (mode == "fill")
+        {
+            panel = new ItemsPanelTemplate(new FrameworkElementFactory(typeof(FillWrapPanel)));
+            ItemList.ItemContainerStyle = (Style)FindResource("TileContainerStyle");
+            ItemList.ItemTemplate = (DataTemplate)FindResource("TileTemplate");
+        }
+        else
+        {
+            var factory = new FrameworkElementFactory(typeof(WrapPanel));
+            factory.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+            panel = new ItemsPanelTemplate(factory);
+            ItemList.ItemContainerStyle = (Style)FindResource("TileContainerStyle");
+            ItemList.ItemTemplate = (DataTemplate)FindResource("TileTemplate");
+        }
+        ItemList.ItemsPanel = panel;
+    }
 
     private void PositionWindow()
     {
         var wa = SystemParameters.WorkArea;
-        var width = _config.WindowWidth > 400 ? _config.WindowWidth : 680;
+        var width = _config.WindowWidth > 400 ? _config.WindowWidth : 900;
         Width = Math.Clamp(width, 480, wa.Width - 40);
 
-        var cols = GridColumnCount();
-        var rows = Math.Max(1, (int)Math.Ceiling((double)_filtered.Count / cols));
-
         var header = 58 + 1 + 34 + 14 + 12; // 搜索栏 + 分隔线 + 底部 + 边距
-        var desired = header + rows * TileHeight + 8;
+        double desired;
+        if (_config.LayoutMode == "list")
+        {
+            desired = header + _filtered.Count * ListRowHeight + 8;
+        }
+        else
+        {
+            var cols = GridColumnCount();
+            var rows = Math.Max(1, (int)Math.Ceiling((double)_filtered.Count / cols));
+            desired = header + rows * TileHeight + 8;
+        }
         Height = Math.Clamp(desired, 240, Math.Min(_config.MaxWindowHeight, wa.Height - 60));
 
         Left = wa.Left + (wa.Width - Width) / 2;

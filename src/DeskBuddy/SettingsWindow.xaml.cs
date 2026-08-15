@@ -44,6 +44,13 @@ public partial class SettingsWindow : Window
             default: ThemeAuto.IsChecked = true; break;
         }
 
+        switch (config.LayoutMode)
+        {
+            case "fill": LayoutFill.IsChecked = true; break;
+            case "list": LayoutList.IsChecked = true; break;
+            default: LayoutGrid.IsChecked = true; break;
+        }
+
         foreach (var item in config.Items)
         {
             _draftRows.Add(MakeRow(item));
@@ -468,6 +475,7 @@ public partial class SettingsWindow : Window
             Hotkey = _selectedHotkey,
             DoubleTapIntervalMs = (int)IntervalSlider.Value,
             Theme = SelectedTheme,
+            LayoutMode = LayoutFill?.IsChecked == true ? "fill" : LayoutList?.IsChecked == true ? "list" : "grid",
             WindowWidth = _config.WindowWidth,
             MaxWindowHeight = _config.MaxWindowHeight,
             Items = _draftRows.Select(r => r.Source).ToList(),

@@ -281,6 +281,27 @@
                                         </UniformGrid>
                                     </Border>
                                 </Grid>
+
+                                <Grid Margin="0,14,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                        <TextBlock Text="条目排布" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
+                                        <TextBlock Text="宫格（现状）/ 宫格（填充整行）/ 列表" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                    <Border Grid.Column="1" CornerRadius="8" Background="{DynamicResource BtnBg}" Padding="2" VerticalAlignment="Center">
+                                        <UniformGrid Columns="3">
+                                            <RadioButton x:Name="LayoutGrid" Content="宫格" GroupName="LayoutGroup"
+                                                         Style="{StaticResource SegmentRadio}" IsChecked="True"/>
+                                            <RadioButton x:Name="LayoutFill" Content="填充" GroupName="LayoutGroup"
+                                                         Style="{StaticResource SegmentRadio}"/>
+                                            <RadioButton x:Name="LayoutList" Content="列表" GroupName="LayoutGroup"
+                                                         Style="{StaticResource SegmentRadio}"/>
+                                        </UniformGrid>
+                                    </Border>
+                                </Grid>
                             </StackPanel>
 
                             <!-- ========== 搜索 ========== -->

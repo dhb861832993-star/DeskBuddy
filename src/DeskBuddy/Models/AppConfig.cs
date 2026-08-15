@@ -13,10 +13,13 @@ public class AppConfig
     public string Theme { get; set; } = "auto";
 
     /// <summary>菜单宽度。</summary>
-    public double WindowWidth { get; set; } = 680;
+    public double WindowWidth { get; set; } = 900;
 
     /// <summary>菜单最大高度。</summary>
-    public double MaxWindowHeight { get; set; } = 560;
+    public double MaxWindowHeight { get; set; } = 740;
+
+    /// <summary>条目排布方式：grid（宫格现状）| fill（宫格填充整行）| list（列表）。</summary>
+    public string LayoutMode { get; set; } = "grid";
 
     /// <summary>菜单条目。</summary>
     public List<DeskBuddyItem> Items { get; set; } = new();

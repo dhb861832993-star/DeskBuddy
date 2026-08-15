@@ -58,6 +58,173 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- 宫格（现状）容器：固定磁贴尺寸 -->
+        <Style x:Key="TileContainerStyle" TargetType="ListBoxItem">
+            <Setter Property="Width" Value="96"/>
+            <Setter Property="Height" Value="100"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Bd" CornerRadius="12"
+                                Background="{TemplateBinding Background}"
+                                Padding="6,6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBg}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectedBg}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <!-- 文件分区头：通栏分隔条，不可点击/不可选中 -->
+                <DataTrigger Binding="{Binding Kind}" Value="file-section">
+                    <Setter Property="Width" Value="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ItemsControl}}"/>
+                    <Setter Property="Height" Value="30"/>
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="IsHitTestVisible" Value="False"/>
+                    <Setter Property="IsEnabled" Value="False"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- 列表容器：通栏行 -->
+        <Style x:Key="ListContainerStyle" TargetType="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Margin" Value="0,1"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Bd" CornerRadius="9"
+                                Background="{TemplateBinding Background}"
+                                Padding="10,6">
+                            <ContentPresenter HorizontalAlignment="Stretch"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBg}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectedBg}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Kind}" Value="file-section">
+                    <Setter Property="IsHitTestVisible" Value="False"/>
+                    <Setter Property="IsEnabled" Value="False"/>
+                    <Setter Property="Padding" Value="0"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- 磁贴模板（宫格） -->
+        <DataTemplate x:Key="TileTemplate">
+            <StackPanel VerticalAlignment="Center" ToolTip="{Binding Subtitle}">
+                <StackPanel x:Name="Tile">
+                    <Border Width="52" Height="52" CornerRadius="13"
+                            Background="{Binding IconBg}" HorizontalAlignment="Center">
+                        <Grid>
+                            <Image x:Name="IconImage" Source="{Binding Icon}" Stretch="Uniform" Margin="5"/>
+                            <TextBlock x:Name="GlyphText" Text="{Binding Glyph}"
+                                       Style="{StaticResource GlyphStyle}" FontSize="22" Visibility="Collapsed"/>
+                        </Grid>
+                    </Border>
+                    <TextBlock Text="{Binding Name}" FontSize="11.5" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimary}"
+                               TextTrimming="CharacterEllipsis" MaxWidth="84"
+                               HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                </StackPanel>
+                <Grid x:Name="FileDivider" Visibility="Collapsed" HorizontalAlignment="Stretch">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Rectangle Grid.Column="0" Height="1" Fill="{DynamicResource SeparatorBrush}" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0">
+                        <TextBlock Text="{Binding Name}" FontSize="10.5" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextSecondary}"/>
+                        <TextBlock Text="{Binding Subtitle}" FontSize="10.5"
+                                   Foreground="{DynamicResource TextSecondary}" Margin="6,0,0,0"/>
+                    </StackPanel>
+                    <Rectangle Grid.Column="2" Height="1" Fill="{DynamicResource SeparatorBrush}" VerticalAlignment="Center"/>
+                </Grid>
+            </StackPanel>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                    <Setter TargetName="GlyphText" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="IconImage" Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Kind}" Value="file-section">
+                    <Setter TargetName="Tile" Property="Visibility" Value="Collapsed"/>
+                    <Setter TargetName="FileDivider" Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- 列表行模板 -->
+        <DataTemplate x:Key="ListRowTemplate">
+            <Grid MinHeight="42" ToolTip="{Binding Subtitle}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel x:Name="TileRow" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Width="34" Height="34" CornerRadius="9" Background="{Binding IconBg}">
+                        <Grid>
+                            <Image x:Name="ListIcon" Source="{Binding Icon}" Stretch="Uniform" Margin="4"/>
+                            <TextBlock x:Name="ListGlyph" Text="{Binding Glyph}"
+                                       Style="{StaticResource GlyphStyle}" FontSize="16" Visibility="Collapsed"/>
+                        </Grid>
+                    </Border>
+                    <StackPanel VerticalAlignment="Center" Margin="10,0,0,0">
+                        <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimary}" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding Subtitle}" FontSize="10.5"
+                                   Foreground="{DynamicResource TextSecondary}"
+                                   TextTrimming="CharacterEllipsis" Margin="0,1,0,0"/>
+                    </StackPanel>
+                </StackPanel>
+                <Grid x:Name="ListDivider" Visibility="Collapsed" HorizontalAlignment="Stretch" VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Rectangle Grid.Column="0" Height="1" Fill="{DynamicResource SeparatorBrush}" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0">
+                        <TextBlock Text="{Binding Name}" FontSize="10.5" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextSecondary}"/>
+                        <TextBlock Text="{Binding Subtitle}" FontSize="10.5"
+                                   Foreground="{DynamicResource TextSecondary}" Margin="6,0,0,0"/>
+                    </StackPanel>
+                    <Rectangle Grid.Column="2" Height="1" Fill="{DynamicResource SeparatorBrush}" VerticalAlignment="Center"/>
+                </Grid>
+            </Grid>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                    <Setter TargetName="ListGlyph" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="ListIcon" Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Kind}" Value="file-section">
+                    <Setter TargetName="TileRow" Property="Visibility" Value="Collapsed"/>
+                    <Setter TargetName="ListDivider" Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
     </Window.Resources>
 
     <Grid>
@@ -149,89 +316,10 @@
                         </ItemsPanelTemplate>
                     </ListBox.ItemsPanel>
                     <ListBox.ItemContainerStyle>
-                        <Style TargetType="ListBoxItem">
-                            <Setter Property="Width" Value="96"/>
-                            <Setter Property="Height" Value="100"/>
-                            <Setter Property="HorizontalContentAlignment" Value="Center"/>
-                            <Setter Property="Background" Value="Transparent"/>
-                            <Setter Property="BorderThickness" Value="0"/>
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="ListBoxItem">
-                                        <Border x:Name="Bd" CornerRadius="12"
-                                                Background="{TemplateBinding Background}"
-                                                Padding="6,6">
-                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBg}"/>
-                                            </Trigger>
-                                            <Trigger Property="IsSelected" Value="True">
-                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectedBg}"/>
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                            <Style.Triggers>
-                                <!-- 文件分区头：通栏分隔条，不可点击/不可选中 -->
-                                <DataTrigger Binding="{Binding Kind}" Value="file-section">
-                                    <Setter Property="Width" Value="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ItemsControl}}"/>
-                                    <Setter Property="Height" Value="30"/>
-                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                                    <Setter Property="IsHitTestVisible" Value="False"/>
-                                    <Setter Property="IsEnabled" Value="False"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
+                        <StaticResource ResourceKey="TileContainerStyle"/>
                     </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel VerticalAlignment="Center" ToolTip="{Binding Subtitle}">
-                                <!-- 磁贴 -->
-                                <StackPanel x:Name="Tile">
-                                    <Border Width="52" Height="52" CornerRadius="13"
-                                            Background="{Binding IconBg}" HorizontalAlignment="Center">
-                                        <Grid>
-                                            <Image x:Name="IconImage" Source="{Binding Icon}" Stretch="Uniform" Margin="5"/>
-                                            <TextBlock x:Name="GlyphText" Text="{Binding Glyph}"
-                                                       Style="{StaticResource GlyphStyle}" FontSize="22" Visibility="Collapsed"/>
-                                        </Grid>
-                                    </Border>
-                                    <TextBlock Text="{Binding Name}" FontSize="11.5" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimary}"
-                                               TextTrimming="CharacterEllipsis" MaxWidth="84"
-                                               HorizontalAlignment="Center" Margin="0,6,0,0"/>
-                                </StackPanel>
-                                <!-- 文件分区头（通栏分隔条） -->
-                                <Grid x:Name="FileDivider" Visibility="Collapsed" HorizontalAlignment="Stretch">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Rectangle Grid.Column="0" Height="1" Fill="{DynamicResource SeparatorBrush}" VerticalAlignment="Center"/>
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0">
-                                        <TextBlock Text="{Binding Name}" FontSize="10.5" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextSecondary}"/>
-                                        <TextBlock Text="{Binding Subtitle}" FontSize="10.5"
-                                                   Foreground="{DynamicResource TextSecondary}" Margin="6,0,0,0"/>
-                                    </StackPanel>
-                                    <Rectangle Grid.Column="2" Height="1" Fill="{DynamicResource SeparatorBrush}" VerticalAlignment="Center"/>
-                                </Grid>
-                            </StackPanel>
-                            <DataTemplate.Triggers>
-                                <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
-                                    <Setter TargetName="GlyphText" Property="Visibility" Value="Visible"/>
-                                    <Setter TargetName="IconImage" Property="Visibility" Value="Collapsed"/>
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding Kind}" Value="file-section">
-                                    <Setter TargetName="Tile" Property="Visibility" Value="Collapsed"/>
-                                    <Setter TargetName="FileDivider" Property="Visibility" Value="Visible"/>
-                                </DataTrigger>
-                            </DataTemplate.Triggers>
-                        </DataTemplate>
+                        <StaticResource ResourceKey="TileTemplate"/>
                     </ListBox.ItemTemplate>
                 </ListBox>
                 <Button x:Name="EmptyHint" Click="OnAiClick" Visibility="Collapsed"
