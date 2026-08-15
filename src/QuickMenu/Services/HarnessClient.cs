@@ -129,14 +129,18 @@ public static class HarnessClient
     {
         var baseUrl = BaseUrl(cfg);
         var value = await RpcAsync(baseUrl, "session.list", new { }, ct);
+        // 与 web 页面保持一致：归档会话不在列表显示（归档是 workspace 层概念，session.list 不含该信息）
+        var archived = await GetArchivedSessionIdsAsync(cfg, ct);
         var result = new List<HarnessSession>();
         if (!value.TryGetProperty("items", out var items)) return result;
         foreach (var it in items.EnumerateArray())
         {
             if (!it.TryGetProperty("sessionId", out var sidEl)) continue;
+            var sid = sidEl.GetString() ?? "";
+            if (archived.Contains(sid)) continue;
             result.Add(new HarnessSession
             {
-                SessionId = sidEl.GetString() ?? "",
+                SessionId = sid,
                 Title = ReadTitle(it),
                 Cwd = it.TryGetProperty("cwd", out var c) ? c.GetString() ?? "" : "",
                 UpdatedAt = it.TryGetProperty("updatedAt", out var u) && u.ValueKind == JsonValueKind.Number ? u.GetInt64() : 0,
@@ -144,6 +148,26 @@ public static class HarnessClient
             });
         }
         return result.OrderByDescending(s => s.UpdatedAt).ToList();
+    }
+
+    /// <summary>读取已归档的会话 id 集合（workspace.list 的 archivedSessionIds）。失败时返回空集（不过滤）。</summary>
+    private static async Task<HashSet<string>> GetArchivedSessionIdsAsync(AppConfig cfg, CancellationToken ct)
+    {
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        try
+        {
+            var value = await RpcAsync(BaseUrl(cfg), "workspace.list", new { }, ct);
+            if (value.TryGetProperty("archivedSessionIds", out var arr))
+            {
+                foreach (var e in arr.EnumerateArray())
+                {
+                    var s = e.GetString();
+                    if (!string.IsNullOrEmpty(s)) set.Add(s);
+                }
+            }
+        }
+        catch { /* 归档信息不可用时不过滤 */ }
+        return set;
     }
 
     /// <summary>会话主题：优先 projections.values.title（Harness 自动总结），其次顶层 title。</summary>
