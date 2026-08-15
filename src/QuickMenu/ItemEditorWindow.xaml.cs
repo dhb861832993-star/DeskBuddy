@@ -39,6 +39,15 @@ public partial class ItemEditorWindow : Window
 
         TypeCombo.ItemsSource = TypeLabels;
 
+        // 已有文件夹列表（供下拉选择；编辑框可输入新文件夹名）
+        var existingFolders = ((App)Application.Current).CurrentConfig.Items
+            .Select(i => i.Folder)
+            .Where(f => !string.IsNullOrWhiteSpace(f))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(f => f, StringComparer.Ordinal)
+            .ToList();
+        FolderCombo.ItemsSource = existingFolders;
+
         if (existing != null)
         {
             Title = "编辑菜单项";
@@ -48,6 +57,7 @@ public partial class ItemEditorWindow : Window
             PathBox.Text = existing.Path;
             ArgsBox.Text = existing.Args;
             KeywordBox.Text = existing.Keywords;
+            FolderCombo.Text = existing.Folder;
         }
         else
         {
@@ -156,7 +166,8 @@ public partial class ItemEditorWindow : Window
             Type = SelectedType,
             Path = path,
             Args = ArgsBox.Text.Trim(),
-            Keywords = KeywordBox.Text.Trim()
+            Keywords = KeywordBox.Text.Trim(),
+            Folder = FolderCombo.Text.Trim()
         };
         DialogResult = true; // ShowDialog 返回 true 并自动关闭
     }

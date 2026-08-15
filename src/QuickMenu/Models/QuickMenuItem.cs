@@ -23,4 +23,7 @@ public class QuickMenuItem
 
     /// <summary>设为 true 时不显示在菜单中（配置保留）。</summary>
     public bool Hidden { get; set; }
+
+    /// <summary>所属文件夹（目录）名，留空表示不在文件夹里。菜单中显示为可点开的文件夹磁贴。</summary>
+    public string Folder { get; set; } = "";
 }

@@ -156,6 +156,7 @@ QuickMenu 内置 **MCP 服务**（默认开启），任何支持 MCP 的 AI 工�
 | `args` | 附加参数（app / command 使用） |
 | `keywords` | 额外搜索关键词，空格分隔 |
 | `icon` | 可选自定义图标路径（.ico / .png / .exe），留空自动提取 |
+| `folder` | 所属文件夹（目录）名，留空放在根目录；菜单中显示为可点开的文件夹磁贴 |
 | `hidden` | `true` 时隐藏该条目（配置保留） |
 
 > 程序名搜索顺序：直接路径 → PATH 环境变量 → Program Files / LocalAppData\Programs。

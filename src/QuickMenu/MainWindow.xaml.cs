@@ -15,13 +15,18 @@ namespace QuickMenu;
 /// <summary>菜单中一个条目的视图模型。</summary>
 public sealed class ItemVm
 {
-    public required QuickMenuItem Source { get; init; }
+    /// <summary>对应配置条目（文件夹磁贴为 null）。</summary>
+    public QuickMenuItem? Source { get; init; }
     public required string Name { get; init; }
     public required string Subtitle { get; init; }
     public ImageSource? Icon { get; init; }
     public string? Glyph { get; init; }
     public required Brush IconBg { get; init; }
     public required string SearchText { get; init; }
+    /// <summary>item=普通条目；folder=文件夹磁贴。</summary>
+    public string Kind { get; init; } = "item";
+    /// <summary>条目所属文件夹名。</summary>
+    public string FolderName { get; init; } = "";
 }
 
 public partial class MainWindow : Window
@@ -34,6 +39,8 @@ public partial class MainWindow : Window
     private bool _suppressHide;
     private DateTime _lastLaunchTime = DateTime.MinValue;
     private DispatcherTimer? _hideTimer;
+    /// <summary>当前所在文件夹名（空 = 根视图）。</summary>
+    private string _currentFolder = "";
 
     /// <summary>配置被重新加载（App 据此更新热键检测器）。</summary>
     public event Action<AppConfig>? ConfigChanged;
@@ -60,6 +67,8 @@ public partial class MainWindow : Window
         ApplyTheme();
 
         RefreshItems();
+        _currentFolder = ""; // 每次呼出都从根视图开始
+        BackBtn.Visibility = Visibility.Collapsed;
         SearchBox.Text = "";
         UpdateFilter();
         PositionWindow();
@@ -240,7 +249,27 @@ public partial class MainWindow : Window
             Icon = icon,
             Glyph = glyph,
             IconBg = bg,
-            SearchText = search
+            SearchText = search,
+            Kind = "item",
+            FolderName = item.Folder ?? ""
+        };
+    }
+
+    /// <summary>文件夹磁贴（根视图显示：文件夹图标 + 名称 + 条目数）。</summary>
+    private static ItemVm MakeFolderVm(string folderName, int count)
+    {
+        var bg = new SolidColorBrush(ItemVisuals.ColorFor("folder"));
+        bg.Freeze();
+        return new ItemVm
+        {
+            Source = null,
+            Name = folderName,
+            Subtitle = $"{count} 项",
+            Glyph = ItemVisuals.GlyphFor("folder"),
+            IconBg = bg,
+            SearchText = folderName.ToLowerInvariant(),
+            Kind = "folder",
+            FolderName = folderName
         };
     }
 
@@ -249,25 +278,63 @@ public partial class MainWindow : Window
         var query = SearchBox.Text?.Trim() ?? "";
         var tokens = query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        _filtered = tokens.Length == 0
-            ? _all
-            : _all.Where(v => tokens.All(t =>
+        if (tokens.Length > 0)
+        {
+            // 搜索：跨所有文件夹平铺匹配结果
+            _filtered = _all.Where(v => tokens.All(t =>
                   v.SearchText.Contains(t, StringComparison.CurrentCultureIgnoreCase))).ToList();
+        }
+        else if (_currentFolder.Length > 0)
+        {
+            // 文件夹内：只显示该文件夹的条目
+            _filtered = _all.Where(v =>
+                string.Equals(v.FolderName, _currentFolder, StringComparison.Ordinal)).ToList();
+        }
+        else
+        {
+            // 根视图：文件夹磁贴（按条目首次出现顺序）+ 未分组条目
+            var counts = _all.Where(v => v.FolderName.Length > 0)
+                             .GroupBy(v => v.FolderName, StringComparer.Ordinal)
+                             .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var list = new List<ItemVm>();
+            foreach (var vm in _all)
+            {
+                if (vm.FolderName.Length > 0)
+                {
+                    if (seen.Add(vm.FolderName))
+                    {
+                        list.Add(MakeFolderVm(vm.FolderName, counts[vm.FolderName]));
+                    }
+                }
+                else
+                {
+                    list.Add(vm);
+                }
+            }
+            _filtered = list;
+        }
 
         ItemList.ItemsSource = _filtered;
         if (_filtered.Count > 0) ItemList.SelectedIndex = 0;
 
-        CountText.Text = _filtered.Count == _all.Count
-            ? $"{_all.Count} 个项目"
-            : $"{_filtered.Count} / {_all.Count} 个项目";
+        if (tokens.Length > 0)
+            CountText.Text = $"{_filtered.Count} / {_all.Count} 个项目";
+        else if (_currentFolder.Length > 0)
+            CountText.Text = $"📁 {_currentFolder} · {_filtered.Count} 项";
+        else
+            CountText.Text = $"{_all.Count} 个项目";
+
         Placeholder.Visibility = string.IsNullOrEmpty(query) ? Visibility.Visible : Visibility.Collapsed;
         if (_filtered.Count == 0)
         {
             EmptyHint.Visibility = Visibility.Visible;
             var aiOk = ((App)Application.Current).CurrentConfig.AiEnabled;
-            EmptyHintText.Text = !string.IsNullOrEmpty(query) && aiOk
-                ? $"✨ 用 AI 回答：{query}"
-                : "没有匹配的条目";
+            EmptyHintText.Text = _currentFolder.Length > 0
+                ? "文件夹是空的，可在设置中把条目移进来"
+                : !string.IsNullOrEmpty(query) && aiOk
+                    ? $"✨ 用 AI 回答：{query}"
+                    : "没有匹配的条目";
         }
         else
         {
@@ -401,7 +468,8 @@ public partial class MainWindow : Window
             Path = path,
             Args = item.Args ?? "",
             Keywords = item.Keywords ?? "",
-            Icon = item.Icon ?? ""
+            Icon = item.Icon ?? "",
+            Folder = item.Folder ?? ""
         };
         cfg.Items.Add(newItem);
         ((App)Application.Current).ApplyConfig(cfg);
@@ -438,6 +506,7 @@ public partial class MainWindow : Window
             args = i.Args ?? "",
             keywords = i.Keywords ?? "",
             icon = i.Icon ?? "",
+            folder = i.Folder ?? "",
             hidden = i.Hidden
         }).ToList();
         return JsonSerializer.Serialize(new { ok = true, count = items.Count, items });
@@ -509,14 +578,47 @@ public partial class MainWindow : Window
         ItemList.ScrollIntoView(ItemList.SelectedItem);
     }
 
-    /// <summary>启动当前选中条目（调试触发器也会调用）。</summary>
+    /// <summary>启动当前选中条目（文件夹磁贴则进入文件夹；调试触发器也会调用）。</summary>
     public void LaunchSelected()
     {
         if (ItemList.SelectedItem is not ItemVm vm) return;
+        if (vm.Kind == "folder")
+        {
+            EnterFolder(vm.Name);
+            return;
+        }
         _lastLaunchTime = DateTime.UtcNow;
         Launcher.Launch(vm.Source);
         HideMenu();
     }
+
+    // ==================== 文件夹导航 ====================
+
+    private void EnterFolder(string name)
+    {
+        _currentFolder = name;
+        BackBtn.Visibility = Visibility.Visible;
+        SearchBox.Text = "";
+        UpdateFilter();
+        ItemList.Focus();
+    }
+
+    private void GoBack()
+    {
+        _currentFolder = "";
+        BackBtn.Visibility = Visibility.Collapsed;
+        UpdateFilter();
+    }
+
+    /// <summary>全局 Esc 处理：在文件夹内先返回上一级（返回 true 表示已处理）。</summary>
+    public bool NavigateBackIfInFolder()
+    {
+        if (_currentFolder.Length == 0) return false;
+        GoBack();
+        return true;
+    }
+
+    private void OnBackClick(object sender, RoutedEventArgs e) => GoBack();
 
     /// <summary>调试用：设置搜索框文字（QM_DEBUG=1 时由触发器调用）。</summary>
     public void SetSearchText(string text)
@@ -544,9 +646,11 @@ public partial class MainWindow : Window
         if (_isDragging)
         {
             var lbi = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
-            if (_dragItem != null && lbi?.DataContext is ItemVm target && !ReferenceEquals(target, _dragItem))
+            if (_dragItem?.Source is { } dragSrc &&
+                lbi?.DataContext is ItemVm target && target.Source is { } tgtSrc &&
+                !ReferenceEquals(tgtSrc, dragSrc))
             {
-                SwapItems(_dragItem.Source, target.Source);
+                SwapItems(dragSrc, tgtSrc);
                 SaveAndRefresh();
                 ItemList.SelectedItem = target;
             }
@@ -587,6 +691,8 @@ public partial class MainWindow : Window
         if (e.ChangedButton != MouseButton.Left) return;
         var lbi = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
         if (lbi == null) return;
+        // 文件夹磁贴不支持拖拽换位（避免 Source 为 null）
+        if (lbi.DataContext is ItemVm { Kind: "folder" }) return;
         _dragItem = lbi.DataContext as ItemVm;
         _dragStart = e.GetPosition(this);
         _isDragging = false;
@@ -608,6 +714,7 @@ public partial class MainWindow : Window
     {
         var lbi = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
         if (lbi == null) return;
+        if (lbi.DataContext is ItemVm { Kind: "folder" }) return; // 文件夹磁贴：右键不做条目操作菜单
         ItemList.SelectedItem = lbi.DataContext;
         _contextItem = lbi.DataContext as ItemVm;
         _pendingDelete = null;
@@ -694,16 +801,16 @@ public partial class MainWindow : Window
 
     private void OnCtxDelete(object sender, RoutedEventArgs e)
     {
-        if (_contextItem == null) return;
+        if (_contextItem?.Source is not { } source) return;
         // 两段式确认，防止误删
-        if (!ReferenceEquals(_pendingDelete, _contextItem.Source))
+        if (!ReferenceEquals(_pendingDelete, source))
         {
-            _pendingDelete = _contextItem.Source;
+            _pendingDelete = source;
             CtxDeleteText.Text = "确认删除？";
             return;
         }
         CloseItemMenu();
-        _config.Items.Remove(_contextItem.Source);
+        _config.Items.Remove(source);
         SaveAndRefresh();
         if (_filtered.Count > 0) ItemList.SelectedIndex = 0;
     }

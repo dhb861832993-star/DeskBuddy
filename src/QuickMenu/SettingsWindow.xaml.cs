@@ -50,6 +50,7 @@ public partial class SettingsWindow : Window
         }
         ItemList.ItemsSource = _draftRows;
         UpdateItemsHint();
+        RefreshFolderFilterItems();
 
         // AI 配置
         ModeHarness.IsChecked = config.AiMode != "openai";
@@ -140,13 +141,14 @@ public partial class SettingsWindow : Window
     {
         var bg = new SolidColorBrush(ItemVisuals.ColorFor(item.Type));
         bg.Freeze();
+        var folder = string.IsNullOrWhiteSpace(item.Folder) ? "" : $"📁 {item.Folder} · ";
         return new ItemRow
         {
             Source = item,
             Name = string.IsNullOrWhiteSpace(item.Name) ? item.Path : item.Name,
             Glyph = ItemVisuals.GlyphFor(item.Type),
             IconBg = bg,
-            Subtitle = $"{ItemVisuals.TypeLabel(item.Type)} · {item.Path}"
+            Subtitle = $"{folder}{ItemVisuals.TypeLabel(item.Type)} · {item.Path}"
         };
     }
 
@@ -324,11 +326,58 @@ public partial class SettingsWindow : Window
         foreach (var it in list) _draftRows.Add(MakeRow(it));
         if (_draftRows.Count > 0)
         {
-            ItemList.SelectedIndex = _draftRows.Count - 1;
-            ItemList.ScrollIntoView(ItemList.SelectedItem);
+            var last = _draftRows[^1];
+            ItemList.SelectedItem = last;
+            ItemList.ScrollIntoView(last);
         }
+        RefreshFolderFilterItems();
         UpdateItemsHint();
         SaveHint.Text = list.Count > 0 ? $"已从桌面拖入 {list.Count} 项，点「保存」生效" : SaveHint.Text;
+    }
+
+    // ==================== 文件夹筛选 ====================
+
+    private string _folderFilter = "全部";
+
+    private void OnFolderFilterChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (FolderFilterCombo?.SelectedItem is string s) _folderFilter = s;
+        ApplyFolderFilter();
+    }
+
+    private void ApplyFolderFilter()
+    {
+        if (ItemList == null) return;
+        var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_draftRows);
+        view.Filter = o => o is ItemRow r && FolderMatches(r.Source.Folder);
+    }
+
+    private bool FolderMatches(string folder)
+    {
+        return _folderFilter switch
+        {
+            "全部" => true,
+            "未分组" => string.IsNullOrWhiteSpace(folder),
+            _ => string.Equals(folder, _folderFilter, StringComparison.Ordinal)
+        };
+    }
+
+    /// <summary>重建文件夹筛选下拉的选项（在条目增删改后调用）。</summary>
+    private void RefreshFolderFilterItems()
+    {
+        if (FolderFilterCombo == null) return;
+        var current = FolderFilterCombo.SelectedItem as string ?? _folderFilter;
+        var folders = _draftRows.Select(r => r.Source.Folder)
+            .Where(f => !string.IsNullOrWhiteSpace(f))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(f => f, StringComparer.Ordinal)
+            .ToList();
+        var items = new List<string> { "全部", "未分组" };
+        items.AddRange(folders);
+        FolderFilterCombo.ItemsSource = items;
+        FolderFilterCombo.SelectedItem = items.Contains(current) ? current : "全部";
+        _folderFilter = FolderFilterCombo.SelectedItem as string ?? "全部";
+        ApplyFolderFilter();
     }
 
     // ==================== 菜单项管理 ====================
@@ -367,36 +416,38 @@ public partial class SettingsWindow : Window
         if (editor.ShowDialog() == true && editor.Item != null)
         {
             _draftRows.Add(MakeRow(editor.Item));
-            ItemList.SelectedIndex = _draftRows.Count - 1;
-            ItemList.ScrollIntoView(ItemList.SelectedItem);
+            var row = _draftRows[^1];
+            ItemList.SelectedItem = row;
+            ItemList.ScrollIntoView(row);
+            RefreshFolderFilterItems();
             UpdateItemsHint();
         }
     }
 
     private void OnEditItem(object sender, RoutedEventArgs e)
     {
-        var idx = ItemList.SelectedIndex;
-        if (idx < 0 || idx >= _draftRows.Count) return;
-        var row = _draftRows[idx];
+        if (ItemList.SelectedItem is not ItemRow row) return;
         var editor = new ItemEditorWindow(row.Source, SelectedTheme);
         if (editor.ShowDialog() == true && editor.Item != null)
         {
+            var idx = _draftRows.IndexOf(row);
+            if (idx < 0) return;
             _draftRows[idx] = MakeRow(editor.Item);
-            ItemList.SelectedIndex = idx;
+            ItemList.SelectedItem = _draftRows[idx];
+            RefreshFolderFilterItems();
             UpdateItemsHint();
         }
     }
 
     private void OnDeleteItem(object sender, RoutedEventArgs e)
     {
-        var idx = ItemList.SelectedIndex;
-        DebugLog.Write($"delete clicked: selectedIndex={idx} count={_draftRows.Count}");
-        if (idx < 0 || idx >= _draftRows.Count) return;
+        if (ItemList.SelectedItem is not ItemRow row) return;
+        var idx = _draftRows.IndexOf(row);
+        DebugLog.Write($"delete clicked: index={idx} count={_draftRows.Count}");
+        if (idx < 0) return;
         _draftRows.RemoveAt(idx);
-        if (_draftRows.Count > 0)
-        {
-            ItemList.SelectedIndex = Math.Min(idx, _draftRows.Count - 1);
-        }
+        if (_draftRows.Count > 0) ItemList.SelectedIndex = 0;
+        RefreshFolderFilterItems();
         UpdateItemsHint();
     }
 
@@ -407,20 +458,22 @@ public partial class SettingsWindow : Window
 
     private void OnMoveUp(object sender, RoutedEventArgs e)
     {
-        var idx = ItemList.SelectedIndex;
-        DebugLog.Write($"moveup clicked: selectedIndex={idx}");
+        if (ItemList.SelectedItem is not ItemRow row) return;
+        var idx = _draftRows.IndexOf(row);
+        DebugLog.Write($"moveup clicked: index={idx}");
         if (idx <= 0) return;
         _draftRows.Move(idx, idx - 1);
-        ItemList.SelectedIndex = idx - 1;
+        ItemList.SelectedItem = _draftRows[idx - 1];
     }
 
     private void OnMoveDown(object sender, RoutedEventArgs e)
     {
-        var idx = ItemList.SelectedIndex;
-        DebugLog.Write($"movedown clicked: selectedIndex={idx}");
+        if (ItemList.SelectedItem is not ItemRow row) return;
+        var idx = _draftRows.IndexOf(row);
+        DebugLog.Write($"movedown clicked: index={idx}");
         if (idx < 0 || idx >= _draftRows.Count - 1) return;
         _draftRows.Move(idx, idx + 1);
-        ItemList.SelectedIndex = idx + 1;
+        ItemList.SelectedItem = _draftRows[idx + 1];
     }
 
     // ==================== 保存 / 取消 ====================

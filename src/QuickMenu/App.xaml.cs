@@ -271,6 +271,10 @@ public partial class App : Application
         {
             return; // 先关右键菜单
         }
+        if (_mainWindow is { } mw2 && mw2.NavigateBackIfInFolder())
+        {
+            return; // 文件夹内先返回上一级，而不是直接关闭菜单
+        }
         if (_chatWindow is { IsVisible: true })
         {
             _chatWindow.Hide();

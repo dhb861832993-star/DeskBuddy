@@ -354,6 +354,7 @@
                   DragLeave="OnItemsDragLeave" Drop="OnItemsDrop">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
@@ -369,14 +370,22 @@
                     </StackPanel>
                 </Grid>
 
-                <Border x:Name="DropHighlight" Grid.Row="1" CornerRadius="9"
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0">
+                    <TextBlock Text="文件夹：" FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="FolderFilterCombo" Style="{StaticResource MacCombo}" Width="160" Height="26" FontSize="11.5"
+                              SelectionChanged="OnFolderFilterChanged"/>
+                    <TextBlock Text="（编辑条目时可设置所属文件夹）" FontSize="10.5" Foreground="{DynamicResource TextSecondary}"
+                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                </StackPanel>
+
+                <Border x:Name="DropHighlight" Grid.Row="2" CornerRadius="9"
                         BorderBrush="{DynamicResource AccentBg}" BorderThickness="2"
                         Margin="0,8,0,6" Visibility="Collapsed" IsHitTestVisible="False" Opacity="0.65">
                     <TextBlock Text="松开以添加" FontSize="12" FontWeight="SemiBold" Foreground="White"
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
 
-                <ListBox x:Name="ItemList" Grid.Row="1" Margin="0,8,0,6" BorderThickness="0" Background="Transparent"
+                <ListBox x:Name="ItemList" Grid.Row="2" Margin="0,8,0,6" BorderThickness="0" Background="Transparent"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          SelectionChanged="OnItemsSelectionChanged" MouseDoubleClick="OnItemDoubleClick"
                          PreviewMouseLeftButtonDown="OnListPreviewMouseDown" PreviewMouseLeftButtonUp="OnListPreviewMouseUp">
@@ -431,7 +440,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button x:Name="UpBtn" Style="{StaticResource MacButton}" Content="上移" Click="OnMoveUp" Margin="0,0,6,0"/>
                     <Button x:Name="DownBtn" Style="{StaticResource MacButton}" Content="下移" Click="OnMoveDown"/>
                 </StackPanel>
