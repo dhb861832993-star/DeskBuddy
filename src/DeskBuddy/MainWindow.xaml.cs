@@ -379,27 +379,31 @@ public partial class MainWindow : Window
             {
                 if (token.IsCancellationRequested) return;
                 if (SearchBox.Text?.Trim() != query) return; // 用户已改词，丢弃旧结果
-                _fileResults = found.Select(f =>
-                {
-                    var icon = IconProvider.GetFileIcon(f.Path);
-                    var bg = new SolidColorBrush(ItemVisuals.ColorFor("file"));
-                    bg.Freeze();
-                    return new ItemVm
-                    {
-                        Source = null,
-                        Name = f.Name,
-                        Subtitle = f.Path,
-                        Icon = icon,
-                        Glyph = ItemVisuals.GlyphFor("file"),
-                        IconBg = bg,
-                        SearchText = (f.Name + " " + f.Path).ToLowerInvariant(),
-                        Kind = "file",
-                        LaunchPath = f.Path
-                    };
-                }).ToList();
+                _fileResults = found.Select(f => MakeFileVm(f.Path)).ToList();
                 RebuildDisplay(SearchBox.Text?.Trim() ?? "", true);
             }));
         }, CancellationToken.None);
+    }
+
+    /// <summary>构建一个文件搜索结果的视图模型（文件图标 + 名称 + 完整路径）。</summary>
+    private static ItemVm MakeFileVm(string path)
+    {
+        var name = System.IO.Path.GetFileName(path);
+        var icon = IconProvider.GetFileIcon(path);
+        var bg = new SolidColorBrush(ItemVisuals.ColorFor("file"));
+        bg.Freeze();
+        return new ItemVm
+        {
+            Source = null,
+            Name = name,
+            Subtitle = path,
+            Icon = icon,
+            Glyph = ItemVisuals.GlyphFor("file"),
+            IconBg = bg,
+            SearchText = (name + " " + path).ToLowerInvariant(),
+            Kind = "file",
+            LaunchPath = path
+        };
     }
 
     // ==================== 布局 ====================
@@ -799,6 +803,7 @@ public partial class MainWindow : Window
     // ==================== 文件搜索结果右键操作 ====================
 
     private string? _contextFilePath;
+    private bool _fileDeleteConfirmed;
 
     /// <summary>在资源管理器中打开文件所在目录并选中该文件。</summary>
     private void OnOpenFileFolder(object sender, RoutedEventArgs e)
@@ -825,12 +830,89 @@ public partial class MainWindow : Window
         try
         {
             System.Windows.Clipboard.SetText(_contextFilePath);
-            FooterHint.Text = "已复制文件路径";
-            var t = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
-            t.Tick += (_, _) => { t.Stop(); FooterHint.Text = ""; };
-            t.Start();
+            ShowTransientHint("已复制文件路径");
         }
         catch { }
+    }
+
+    /// <summary>用默认程序打开该文件。</summary>
+    private void OnOpenFile(object sender, RoutedEventArgs e)
+    {
+        FileMenuPopup.IsOpen = false;
+        if (string.IsNullOrEmpty(_contextFilePath)) return;
+        _lastLaunchTime = DateTime.UtcNow;
+        Launcher.OpenPath(_contextFilePath);
+        HideMenu();
+    }
+
+    /// <summary>重命名文件（弹窗输入新名称）。</summary>
+    private void OnRenameFile(object sender, RoutedEventArgs e)
+    {
+        FileMenuPopup.IsOpen = false;
+        _fileDeleteConfirmed = false;
+        DeleteFileBtnText.Text = "删除";
+        if (string.IsNullOrEmpty(_contextFilePath) || !System.IO.File.Exists(_contextFilePath)) return;
+        var dir = System.IO.Path.GetDirectoryName(_contextFilePath) ?? "";
+        var dlg = new RenameDialogWindow(System.IO.Path.GetFileName(_contextFilePath));
+        if (dlg.ShowDialog() != true || string.IsNullOrEmpty(dlg.NewName)) return;
+        var newName = dlg.NewName.Trim();
+        if (newName.IndexOfAny(System.IO.Path.GetInvalidFileNameChars()) >= 0)
+        {
+            ShowTransientHint("文件名包含非法字符");
+            return;
+        }
+        var newPath = System.IO.Path.Combine(dir, newName);
+        if (string.Equals(newPath, _contextFilePath, StringComparison.OrdinalIgnoreCase)) return;
+        try
+        {
+            System.IO.File.Move(_contextFilePath, newPath);
+            // 更新当前显示的文件结果（索引由监听自动同步）
+            for (var i = 0; i < _fileResults.Count; i++)
+            {
+                if (string.Equals(_fileResults[i].LaunchPath, _contextFilePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    _fileResults[i] = MakeFileVm(newPath);
+                    break;
+                }
+            }
+            RebuildDisplay(SearchBox.Text?.Trim() ?? "", true);
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show($"重命名失败：{ex.Message}", "DeskBuddy");
+        }
+    }
+
+    /// <summary>删除文件（两段式确认）。</summary>
+    private void OnDeleteFile(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_contextFilePath)) return;
+        if (!_fileDeleteConfirmed)
+        {
+            _fileDeleteConfirmed = true;
+            DeleteFileBtnText.Text = "确认删除？";
+            return;
+        }
+        _fileDeleteConfirmed = false;
+        FileMenuPopup.IsOpen = false;
+        try
+        {
+            System.IO.File.Delete(_contextFilePath);
+            _fileResults.RemoveAll(v => string.Equals(v.LaunchPath, _contextFilePath, StringComparison.OrdinalIgnoreCase));
+            RebuildDisplay(SearchBox.Text?.Trim() ?? "", true);
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show($"删除失败：{ex.Message}", "DeskBuddy");
+        }
+    }
+
+    private void ShowTransientHint(string text)
+    {
+        FooterHint.Text = text;
+        var t = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        t.Tick += (_, _) => { t.Stop(); FooterHint.Text = ""; };
+        t.Start();
     }
 
     private void OnCtxTop(object sender, RoutedEventArgs e) => MoveContextItemTo(0);

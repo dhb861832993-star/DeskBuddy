@@ -321,13 +321,26 @@
                StaysOpen="True" PopupAnimation="Fade">
             <Border CornerRadius="10" BorderThickness="1"
                     BorderBrush="{DynamicResource CardBorder}"
-                    Background="{DynamicResource CardBg}" MinWidth="168" Padding="5">
+                    Background="{DynamicResource CardBg}" MinWidth="172" Padding="5">
                 <StackPanel>
+                    <Button x:Name="OpenFileBtn" Style="{StaticResource MenuItemButton}" Click="OnOpenFile">
+                        <TextBlock Text="打开" FontSize="13"/>
+                    </Button>
                     <Button x:Name="OpenFolderBtn" Style="{StaticResource MenuItemButton}" Click="OnOpenFileFolder">
                         <TextBlock Text="打开文件所在目录" FontSize="13"/>
                     </Button>
                     <Button x:Name="CopyPathBtn" Style="{StaticResource MenuItemButton}" Click="OnCopyFilePath">
                         <TextBlock Text="复制文件路径" FontSize="13"/>
+                    </Button>
+                    <Rectangle Height="1" Fill="{DynamicResource SeparatorBrush}" Margin="8,4"/>
+                    <Button x:Name="RenameFileBtn" Style="{StaticResource MenuItemButton}" Click="OnRenameFile">
+                        <TextBlock Text="重命名…" FontSize="13"/>
+                    </Button>
+                    <Button x:Name="DeleteFileBtn" Style="{StaticResource MenuItemButton}" Click="OnDeleteFile">
+                        <Button.Foreground>
+                            <SolidColorBrush Color="#FF453A"/>
+                        </Button.Foreground>
+                        <TextBlock x:Name="DeleteFileBtnText" Text="删除" FontSize="13" Foreground="#FF453A"/>
                     </Button>
                 </StackPanel>
             </Border>

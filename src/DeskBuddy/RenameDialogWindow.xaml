@@ -1,0 +1,82 @@
+<Window x:Class="DeskBuddy.RenameDialogWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="重命名"
+        Width="360" Height="178"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True"
+        WindowStartupLocation="CenterScreen"
+        PreviewKeyDown="OnPreviewKeyDown">
+
+    <Window.Resources>
+        <SolidColorBrush x:Key="TextPrimary" Color="#F2F2F7"/>
+        <SolidColorBrush x:Key="TextSecondary" Color="#A8A8B0"/>
+        <SolidColorBrush x:Key="HoverBg" Color="#1FFFFFFF"/>
+        <SolidColorBrush x:Key="SelectedBg" Color="#3D5EB2FF"/>
+        <SolidColorBrush x:Key="CardBorder" Color="#2EFFFFFF"/>
+        <SolidColorBrush x:Key="CardBg" Color="#CC1E1E1E"/>
+        <SolidColorBrush x:Key="BtnBg" Color="#26FFFFFF"/>
+        <SolidColorBrush x:Key="BtnBgHover" Color="#3DFFFFFF"/>
+        <SolidColorBrush x:Key="AccentBg" Color="#2A6DF4"/>
+
+        <Style x:Key="MacButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="Background" Value="{DynamicResource BtnBg}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="14,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="7"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource BtnBgHover}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource MacButton}">
+            <Setter Property="Background" Value="{DynamicResource AccentBg}"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <Style x:Key="MacTextBox" TargetType="TextBox">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="Background" Value="{DynamicResource BtnBg}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="FontSize" Value="12.5"/>
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="RootCard" CornerRadius="16" BorderThickness="1"
+            BorderBrush="{DynamicResource CardBorder}"
+            Background="{DynamicResource CardBg}">
+        <Grid Margin="20,16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <TextBlock Text="重命名文件" FontSize="14" FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextPrimary}" HorizontalAlignment="Center"/>
+            <TextBox x:Name="NameBox" Grid.Row="1" Margin="0,14,0,0" Height="32"
+                     Style="{StaticResource MacTextBox}" KeyDown="OnNameKeyDown"/>
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                <Button Style="{StaticResource MacButton}" Content="取消" Click="OnCancel" Margin="0,0,8,0"/>
+                <Button Style="{StaticResource AccentButton}" Content="确定" Click="OnOk" MinWidth="64"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>
