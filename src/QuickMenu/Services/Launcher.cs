@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Text;
 using QuickMenu.Models;
 
 namespace QuickMenu.Services;
@@ -150,8 +151,8 @@ public static class Launcher
     }
 
     /// <summary>
-    /// 同名进程已在运行且有可见主窗口 → 恢复并置前，返回 true（不再启动新实例）。
-    /// 托盘类程序（无主窗口）返回 false，交给正常启动（多数会自行弹出窗口）。
+    /// 同名进程已在运行 → 找到它的窗口并弹出到前台（最小化先还原、隐藏先显示），
+    /// 返回 true（不再启动新实例）。找不到任何窗口的进程（纯后台进程）返回 false 交给正常启动。
     /// </summary>
     private static bool BringExistingToFront(string exePath)
     {
@@ -161,10 +162,11 @@ public static class Launcher
             foreach (var p in Process.GetProcessesByName(name))
             {
                 if (p.Id == Environment.ProcessId) continue;
-                var hwnd = p.MainWindowHandle;
+                var hwnd = FindMainWindow(p.Id);
                 if (hwnd == IntPtr.Zero) continue;
-                if (IsIconic(hwnd)) ShowWindow(hwnd, SW_RESTORE); // 最小化先还原
-                SetForegroundWindow(hwnd);
+                if (IsIconic(hwnd)) ShowWindow(hwnd, SW_RESTORE);          // 最小化 → 还原
+                else if (!IsWindowVisible(hwnd)) ShowWindow(hwnd, SW_SHOW); // 关到托盘等隐藏态 → 显示
+                ForceForeground(hwnd);
                 return true;
             }
         }
@@ -173,6 +175,55 @@ public static class Launcher
             // 进程消失 / 权限不足等：走正常启动
         }
         return false;
+    }
+
+    /// <summary>找到进程的“主”顶层窗口：优先可见且非 IME 辅助窗；没有可见的则取第一个带标题的窗口。</summary>
+    private static IntPtr FindMainWindow(int pid)
+    {
+        IntPtr best = IntPtr.Zero;
+        EnumWindows((hwnd, _) =>
+        {
+            GetWindowThreadProcessId(hwnd, out var wpid);
+            if (wpid != pid) return true;
+            var title = GetWindowText(hwnd);
+            if (title == "Default IME" || title == "MSCTFIME UI" || title.Length == 0) return true;
+            if (best == IntPtr.Zero) best = hwnd;
+            if (IsWindowVisible(hwnd))
+            {
+                best = hwnd;
+                return false; // 优先可见窗口
+            }
+            return true;
+        }, IntPtr.Zero);
+        return best;
+    }
+
+    /// <summary>更可靠地把窗口置前（解除 Windows 的前台锁定限制）。</summary>
+    private static void ForceForeground(IntPtr hwnd)
+    {
+        try
+        {
+            var fg = GetForegroundWindow();
+            var fgThread = GetWindowThreadProcessId(fg, out _);
+            var curThread = GetCurrentThreadId();
+            var attached = false;
+            if (fgThread != curThread && fgThread != 0)
+            {
+                AttachThreadInput(curThread, fgThread, true);
+                attached = true;
+            }
+            BringWindowToTop(hwnd);
+            SetForegroundWindow(hwnd);
+            if (attached) AttachThreadInput(curThread, fgThread, false);
+        }
+        catch { }
+    }
+
+    private static string GetWindowText(IntPtr hwnd)
+    {
+        var sb = new StringBuilder(256);
+        GetWindowText(hwnd, sb, sb.Capacity);
+        return sb.ToString();
     }
 
     [DllImport("user32.dll")]
@@ -184,5 +235,32 @@ public static class Launcher
     [DllImport("user32.dll")]
     private static extern bool IsIconic(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
+    private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+
+    [DllImport("user32.dll")]
+    private static extern bool BringWindowToTop(IntPtr hWnd);
+
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
     private const int SW_RESTORE = 9;
+    private const int SW_SHOW = 5;
 }
