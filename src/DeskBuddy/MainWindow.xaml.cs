@@ -15,13 +15,18 @@ namespace DeskBuddy;
 /// <summary>菜单中一个条目的视图模型。</summary>
 public sealed class ItemVm
 {
-    public required DeskBuddyItem Source { get; init; }
+    /// <summary>对应配置条目（文件搜索结果为 null）。</summary>
+    public DeskBuddyItem? Source { get; init; }
     public required string Name { get; init; }
     public required string Subtitle { get; init; }
     public ImageSource? Icon { get; init; }
     public string? Glyph { get; init; }
     public required Brush IconBg { get; init; }
     public required string SearchText { get; init; }
+    /// <summary>item=菜单条目；file=文件搜索结果。</summary>
+    public string Kind { get; init; } = "item";
+    /// <summary>文件搜索结果的完整路径。</summary>
+    public string LaunchPath { get; init; } = "";
 }
 
 public partial class MainWindow : Window
@@ -30,6 +35,8 @@ public partial class MainWindow : Window
     private Theme _theme = Theme.Dark;
     private List<ItemVm> _all = new();
     private List<ItemVm> _filtered = new();
+    private List<ItemVm> _fileResults = new();
+    private CancellationTokenSource? _fileSearchCts;
     private bool _justOpened;
     private bool _suppressHide;
     private DateTime _lastLaunchTime = DateTime.MinValue;
@@ -60,6 +67,8 @@ public partial class MainWindow : Window
         ApplyTheme();
 
         RefreshItems();
+        CancelFileSearch();
+        _fileResults = new List<ItemVm>();
         SearchBox.Text = "";
         UpdateFilter();
         PositionWindow();
@@ -249,19 +258,61 @@ public partial class MainWindow : Window
         var query = SearchBox.Text?.Trim() ?? "";
         var tokens = query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
+        // 菜单条目匹配（永远排在前面，不与文件结果混在一起）
         _filtered = tokens.Length == 0
             ? _all
             : _all.Where(v => tokens.All(t =>
                   v.SearchText.Contains(t, StringComparison.CurrentCultureIgnoreCase))).ToList();
 
-        ItemList.ItemsSource = _filtered;
-        if (_filtered.Count > 0) ItemList.SelectedIndex = 0;
+        // 文件搜索：启用且有关键字时异步扫描指定范围，结果追加在下方
+        CancelFileSearch();
+        if (tokens.Length > 0 && _config.EnableFileSearch && _config.SearchRoots.Count > 0)
+        {
+            _fileResults = new List<ItemVm>();
+            StartFileSearch(query);
+        }
+        else
+        {
+            _fileResults = new List<ItemVm>();
+        }
 
-        CountText.Text = _filtered.Count == _all.Count
-            ? $"{_all.Count} 个项目"
-            : $"{_filtered.Count} / {_all.Count} 个项目";
+        RebuildDisplay(query, tokens.Length > 0);
+    }
+
+    /// <summary>组合「菜单条目 + 文件结果」并刷新列表。</summary>
+    private void RebuildDisplay(string query, bool searching)
+    {
+        var list = new List<ItemVm>(_filtered);
+        if (_fileResults.Count > 0)
+        {
+            var headerBg = new SolidColorBrush(ItemVisuals.ColorFor("file"));
+            headerBg.Freeze();
+            list.Add(new ItemVm
+            {
+                Source = null,
+                Name = "文件",
+                Subtitle = $"{_fileResults.Count} 个匹配",
+                Glyph = "\uE8A5", // Page
+                IconBg = headerBg,
+                SearchText = "",
+                Kind = "file-section"
+            });
+            list.AddRange(_fileResults);
+        }
+        ItemList.ItemsSource = list;
+        if (list.Count > 0) ItemList.SelectedIndex = 0;
+
+        if (searching)
+            CountText.Text = _fileResults.Count > 0
+                ? $"{_filtered.Count} 个菜单项 · 文件 {_fileResults.Count}"
+                : $"{_filtered.Count} 个菜单项";
+        else
+            CountText.Text = _filtered.Count == _all.Count
+                ? $"{_all.Count} 个项目"
+                : $"{_filtered.Count} / {_all.Count} 个项目";
+
         Placeholder.Visibility = string.IsNullOrEmpty(query) ? Visibility.Visible : Visibility.Collapsed;
-        if (_filtered.Count == 0)
+        if (list.Count == 0)
         {
             EmptyHint.Visibility = Visibility.Visible;
             var aiOk = ((App)Application.Current).CurrentConfig.AiEnabled;
@@ -275,6 +326,57 @@ public partial class MainWindow : Window
         }
         // 底部右侧不再显示常驻操作说明，仅保留瞬时的操作反馈（如拖拽添加成功）
         FooterHint.Text = "";
+    }
+
+    // ==================== 文件搜索 ====================
+
+    private void CancelFileSearch()
+    {
+        _fileSearchCts?.Cancel();
+        _fileSearchCts?.Dispose();
+        _fileSearchCts = null;
+    }
+
+    /// <summary>延迟 200ms 后异步扫描文件，结果回填到「文件」区。</summary>
+    private void StartFileSearch(string query)
+    {
+        var roots = _config.SearchRoots.Where(r => !string.IsNullOrWhiteSpace(r)).ToList();
+        if (roots.Count == 0) return;
+        var cts = new CancellationTokenSource();
+        _fileSearchCts = cts;
+        var token = cts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try { await Task.Delay(200, token); } catch { return; }
+            if (token.IsCancellationRequested) return;
+            var found = FileSearcher.Search(roots, query, token);
+
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (token.IsCancellationRequested) return;
+                if (SearchBox.Text?.Trim() != query) return; // 用户已改词，丢弃旧结果
+                _fileResults = found.Select(f =>
+                {
+                    var icon = IconProvider.GetFileIcon(f.Path);
+                    var bg = new SolidColorBrush(ItemVisuals.ColorFor("file"));
+                    bg.Freeze();
+                    return new ItemVm
+                    {
+                        Source = null,
+                        Name = f.Name,
+                        Subtitle = f.Path,
+                        Icon = icon,
+                        Glyph = ItemVisuals.GlyphFor("file"),
+                        IconBg = bg,
+                        SearchText = (f.Name + " " + f.Path).ToLowerInvariant(),
+                        Kind = "file",
+                        LaunchPath = f.Path
+                    };
+                }).ToList();
+                RebuildDisplay(SearchBox.Text?.Trim() ?? "", true);
+            }));
+        }, CancellationToken.None);
     }
 
     // ==================== 布局 ====================
@@ -509,10 +611,18 @@ public partial class MainWindow : Window
         ItemList.ScrollIntoView(ItemList.SelectedItem);
     }
 
-    /// <summary>启动当前选中条目（调试触发器也会调用）。</summary>
+    /// <summary>启动当前选中条目（文件结果则用默认程序打开；调试触发器也会调用）。</summary>
     public void LaunchSelected()
     {
         if (ItemList.SelectedItem is not ItemVm vm) return;
+        if (vm.Kind == "file-section") return; // 分区标题不可启动
+        if (vm.Kind == "file")
+        {
+            _lastLaunchTime = DateTime.UtcNow;
+            Launcher.OpenPath(vm.LaunchPath);
+            HideMenu();
+            return;
+        }
         _lastLaunchTime = DateTime.UtcNow;
         Launcher.Launch(vm.Source);
         HideMenu();
@@ -587,6 +697,8 @@ public partial class MainWindow : Window
         if (e.ChangedButton != MouseButton.Left) return;
         var lbi = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
         if (lbi == null) return;
+        // 文件搜索结果（无 Source）不支持拖拽换位
+        if (lbi.DataContext is ItemVm { Kind: not "item" }) return;
         _dragItem = lbi.DataContext as ItemVm;
         _dragStart = e.GetPosition(this);
         _isDragging = false;
@@ -608,6 +720,7 @@ public partial class MainWindow : Window
     {
         var lbi = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
         if (lbi == null) return;
+        if (lbi.DataContext is ItemVm { Kind: not "item" }) return; // 文件结果不做条目操作菜单
         ItemList.SelectedItem = lbi.DataContext;
         _contextItem = lbi.DataContext as ItemVm;
         _pendingDelete = null;
@@ -694,16 +807,16 @@ public partial class MainWindow : Window
 
     private void OnCtxDelete(object sender, RoutedEventArgs e)
     {
-        if (_contextItem == null) return;
+        if (_contextItem?.Source is not { } source) return;
         // 两段式确认，防止误删
-        if (!ReferenceEquals(_pendingDelete, _contextItem.Source))
+        if (!ReferenceEquals(_pendingDelete, source))
         {
-            _pendingDelete = _contextItem.Source;
+            _pendingDelete = source;
             CtxDeleteText.Text = "确认删除？";
             return;
         }
         CloseItemMenu();
-        _config.Items.Remove(_contextItem.Source);
+        _config.Items.Remove(source);
         SaveAndRefresh();
         if (_filtered.Count > 0) ItemList.SelectedIndex = 0;
     }

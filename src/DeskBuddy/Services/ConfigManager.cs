@@ -64,6 +64,7 @@ public static class ConfigManager
         if (c.MaxWindowHeight < 300) c.MaxWindowHeight = 560;
         if (string.IsNullOrWhiteSpace(c.Theme)) c.Theme = "auto";
         c.Items ??= new List<DeskBuddyItem>();
+        c.SearchRoots ??= new List<string>();
         return c;
     }
 

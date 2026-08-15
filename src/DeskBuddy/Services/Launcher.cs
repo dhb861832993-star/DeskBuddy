@@ -128,6 +128,23 @@ public static class Launcher
         }
     }
 
+    /// <summary>用系统默认程序打开一个文件/文件夹路径（文件搜索结果的启动方式）。</summary>
+    public static void OpenPath(string path)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = Environment.ExpandEnvironmentVariables(path),
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show($"打开失败：{path}\n{ex.Message}", "DeskBuddy");
+        }
+    }
+
     /// <summary>目标程序是否本机地址（127.0.0.1 / localhost / ::1）。</summary>
     private static bool IsLocalHost(Uri uri) =>
         uri.IsLoopback || string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase);

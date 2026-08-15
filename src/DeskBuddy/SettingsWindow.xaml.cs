@@ -69,6 +69,10 @@ public partial class SettingsWindow : Window
         McpHint.Text = "供 Claude Desktop / Cursor / Cherry Studio 等 AI 工具连接，仅本机可访问。";
         CopyMcpBtn.IsEnabled = config.McpEnabled;
 
+        // 文件搜索
+        EnableFileSearchBox.IsChecked = config.EnableFileSearch;
+        SearchRootsBox.Text = string.Join("\n", config.SearchRoots);
+
         SelectCategory("general"); // 默认显示「通用」
 
         Loaded += (_, _) => ApplyTheme();
@@ -140,10 +144,12 @@ public partial class SettingsWindow : Window
     private void SelectCategory(string tag)
     {
         PanelGeneral.Visibility = tag == "general" ? Visibility.Visible : Visibility.Collapsed;
+        PanelSearch.Visibility = tag == "search" ? Visibility.Visible : Visibility.Collapsed;
         PanelAi.Visibility = tag == "ai" ? Visibility.Visible : Visibility.Collapsed;
         PanelMcp.Visibility = tag == "mcp" ? Visibility.Visible : Visibility.Collapsed;
         PanelItems.Visibility = tag == "items" ? Visibility.Visible : Visibility.Collapsed;
         SetCategoryState(CatGeneral, tag == "general");
+        SetCategoryState(CatSearch, tag == "search");
         SetCategoryState(CatAi, tag == "ai");
         SetCategoryState(CatMcp, tag == "mcp");
         SetCategoryState(CatItems, tag == "items");
@@ -473,7 +479,11 @@ public partial class SettingsWindow : Window
             AiModel = AiModelBox.Text.Trim(),
             AiApiKey = AiKeyBox.Text.Trim(),
             AiSystemPrompt = AiPromptBox.Text.Trim(),
-            McpEnabled = McpEnabledBox.IsChecked == true
+            McpEnabled = McpEnabledBox.IsChecked == true,
+            EnableFileSearch = EnableFileSearchBox.IsChecked == true,
+            SearchRoots = SearchRootsBox.Text
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList()
         };
         ((App)Application.Current).ApplyConfig(cfg);
         Close();

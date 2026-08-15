@@ -50,6 +50,14 @@ public class AppConfig
     /// <summary>AI 是否已可用（harness 模式始终可用；openai 模式需密钥）。</summary>
     public bool AiEnabled => AiMode == "harness" || !string.IsNullOrWhiteSpace(AiApiKey);
 
+    // ===== 文件搜索 =====
+
+    /// <summary>是否在菜单搜索时同时搜索电脑文件（默认关闭；需配合 SearchRoots 指定范围）。</summary>
+    public bool EnableFileSearch { get; set; }
+
+    /// <summary>文件搜索范围：目录路径列表（可含环境变量，如 %USERPROFILE%\Desktop）。空则不搜索。</summary>
+    public List<string> SearchRoots { get; set; } = new();
+
     // ===== MCP（AI 快捷添加菜单） =====
 
     /// <summary>是否允许 AI 工具通过 MCP 添加/删除/查看快捷菜单（默认开启，仅本机可连）。</summary>
