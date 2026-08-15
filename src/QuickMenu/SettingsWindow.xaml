@@ -98,6 +98,23 @@
             <Setter Property="HorizontalAlignment" Value="Center"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
+        <Style x:Key="SectionHeader" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+        </Style>
+
+        <Style x:Key="SectionHint" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
+            <Setter Property="Margin" Value="0,3,0,0"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+
+        <!-- 板块内设置行：左标签 + 右侧控件 -->
+        <Style x:Key="SettingRow" TargetType="Grid">
+            <Setter Property="Margin" Value="0,8,0,0"/>
+        </Style>
     </Window.Resources>
 
     <Border x:Name="RootCard" CornerRadius="24" BorderThickness="1"
@@ -105,6 +122,11 @@
             Background="{DynamicResource CardBg}">
         <Grid Margin="20,16,20,18" MouseLeftButtonDown="OnCardMouseDown">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
@@ -137,8 +159,14 @@
 
             <Rectangle Grid.Row="1" Height="1" Fill="{DynamicResource SeparatorBrush}" Margin="0,0,0,12"/>
 
+            <!-- ========== 通用 ========== -->
+            <StackPanel Grid.Row="2" Margin="0,4,0,0">
+                <TextBlock Style="{StaticResource SectionHeader}" Text="通用"/>
+                <TextBlock Style="{StaticResource SectionHint}" Text="呼出方式、双击灵敏度和外观主题"/>
+            </StackPanel>
+
             <!-- 呼出快捷键 -->
-            <Grid Grid.Row="2">
+            <Grid Grid.Row="3" Margin="0,10,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
@@ -156,7 +184,7 @@
             </Grid>
 
             <!-- 双击间隔 -->
-            <Grid Grid.Row="3" Margin="0,12,0,0">
+            <Grid Grid.Row="4" Margin="0,12,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
@@ -171,7 +199,7 @@
             </Grid>
 
             <!-- 主题 -->
-            <Grid Grid.Row="4" Margin="0,12,0,0">
+            <Grid Grid.Row="5" Margin="0,12,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
@@ -192,10 +220,15 @@
                 </Border>
             </Grid>
 
-            <Rectangle Grid.Row="5" Height="1" Fill="{DynamicResource SeparatorBrush}" Margin="0,14,0,0"/>
+            <Rectangle Grid.Row="6" Height="1" Fill="{DynamicResource SeparatorBrush}" Margin="0,14,0,0"/>
 
-            <!-- AI 对话 -->
-            <Grid Grid.Row="6" Margin="0,12,0,0">
+            <!-- ========== AI 对话 ========== -->
+            <StackPanel Grid.Row="7" Margin="0,4,0,0">
+                <TextBlock Style="{StaticResource SectionHeader}" Text="AI 对话"/>
+                <TextBlock x:Name="AiHint" Style="{StaticResource SectionHint}"/>
+            </StackPanel>
+
+            <Grid Grid.Row="8" Margin="0,8,0,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
@@ -205,15 +238,8 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <Grid Grid.Row="0">
-                    <StackPanel>
-                        <TextBlock Text="AI 对话（✨）" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
-                        <TextBlock x:Name="AiHint" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,3,0,0" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </Grid>
-                <Grid Grid.Row="1" Margin="0,8,0,0">
+                <Grid Grid.Row="0" Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="76"/>
                         <ColumnDefinition Width="*"/>
@@ -228,7 +254,7 @@
                         </UniformGrid>
                     </Border>
                 </Grid>
-                <Grid Grid.Row="2" Margin="0,8,0,0">
+                <Grid Grid.Row="1" Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="76"/>
                         <ColumnDefinition Width="*"/>
@@ -238,7 +264,7 @@
                              Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
                              Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,3"/>
                 </Grid>
-                <Grid Grid.Row="3" Margin="0,8,0,0">
+                <Grid Grid.Row="2" Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="76"/>
                         <ColumnDefinition Width="*"/>
@@ -248,7 +274,7 @@
                              Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
                              Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,3"/>
                 </Grid>
-                <Grid Grid.Row="4" Margin="0,8,0,0">
+                <Grid Grid.Row="3" Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="76"/>
                         <ColumnDefinition Width="*"/>
@@ -258,7 +284,7 @@
                              Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
                              Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,3"/>
                 </Grid>
-                <Grid Grid.Row="5" Margin="0,8,0,0">
+                <Grid Grid.Row="4" Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="76"/>
                         <ColumnDefinition Width="*"/>
@@ -268,7 +294,7 @@
                              Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
                              Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,3"/>
                 </Grid>
-                <Grid Grid.Row="6" Margin="0,8,0,0">
+                <Grid Grid.Row="5" Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="76"/>
                         <ColumnDefinition Width="*"/>
@@ -278,7 +304,7 @@
                              Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
                              Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,3"/>
                 </Grid>
-                <Grid Grid.Row="7" Margin="0,8,0,0">
+                <Grid Grid.Row="6" Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="76"/>
                         <ColumnDefinition Width="*"/>
@@ -288,32 +314,41 @@
                              Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
                              Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,3"/>
                 </Grid>
-                <CheckBox x:Name="ShowAllSessionsBox" Grid.Row="8" Margin="76,8,0,0"
+                <CheckBox x:Name="ShowAllSessionsBox" Grid.Row="7" Margin="76,8,0,0"
                           Content="会话列表显示全部会话（默认只显示「桌面助手」分组）"
                           FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
-                <Grid Grid.Row="9" Margin="0,10,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="76"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="AI 快捷添加" FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="1">
-                        <CheckBox x:Name="McpEnabledBox" Content="允许 AI 工具通过 MCP 添加/删除快捷菜单（默认开启）"
-                                  FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                            <Button x:Name="CopyMcpBtn" Style="{StaticResource MacButton}" Content="复制接入配置"
-                                    Click="OnCopyMcpConfig" Margin="0,0,8,0"/>
-                            <TextBlock x:Name="McpHint" FontSize="10.5" Foreground="{DynamicResource TextSecondary}"
-                                       TextWrapping="Wrap" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </StackPanel>
-                </Grid>
             </Grid>
 
-            <Rectangle Grid.Row="7" Height="1" Fill="{DynamicResource SeparatorBrush}" Margin="0,14,0,0"/>
+            <Rectangle Grid.Row="9" Height="1" Fill="{DynamicResource SeparatorBrush}" Margin="0,14,0,0"/>
 
-            <!-- 菜单项 -->
-            <Grid Grid.Row="8" Margin="0,12,0,0"
+            <!-- ========== AI 快捷添加（MCP） ========== -->
+            <StackPanel Grid.Row="10" Margin="0,4,0,0">
+                <TextBlock Style="{StaticResource SectionHeader}" Text="AI 快捷添加（MCP）"/>
+                <TextBlock Style="{StaticResource SectionHint}" Text="允许 Claude Desktop / Cursor / Cherry Studio 等 AI 工具查看、添加、删除快捷菜单，仅本机可访问"/>
+            </StackPanel>
+
+            <Grid Grid.Row="11" Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="76"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="启用" FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1">
+                    <CheckBox x:Name="McpEnabledBox" Content="允许 AI 工具通过 MCP 添加/删除快捷菜单（默认开启）"
+                              FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <Button x:Name="CopyMcpBtn" Style="{StaticResource MacButton}" Content="复制接入配置"
+                                Click="OnCopyMcpConfig" Margin="0,0,8,0"/>
+                        <TextBlock x:Name="McpHint" FontSize="10.5" Foreground="{DynamicResource TextSecondary}"
+                                   TextWrapping="Wrap" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+
+            <Rectangle Grid.Row="12" Height="1" Fill="{DynamicResource SeparatorBrush}" Margin="0,14,0,0"/>
+
+            <!-- ========== 菜单项 ========== -->
+            <Grid Grid.Row="13" Margin="0,12,0,0"
                   AllowDrop="True"
                   DragEnter="OnItemsDragEnter" DragOver="OnItemsDragOver"
                   DragLeave="OnItemsDragLeave" Drop="OnItemsDrop">
@@ -324,8 +359,8 @@
                 </Grid.RowDefinitions>
                 <Grid Grid.Row="0">
                     <StackPanel>
-                        <TextBlock Text="菜单项" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
-                        <TextBlock x:Name="ItemsHint" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,3,0,0"/>
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="菜单项"/>
+                        <TextBlock x:Name="ItemsHint" Style="{StaticResource SectionHint}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <Button x:Name="AddItemBtn" Style="{StaticResource MacButton}" Content="添加" Click="OnAddItem" Margin="0,0,6,0"/>
@@ -403,7 +438,7 @@
             </Grid>
 
             <!-- 底部按钮 -->
-            <Grid Grid.Row="9" Margin="0,10,0,0">
+            <Grid Grid.Row="14" Margin="0,10,0,0">
                 <TextBlock x:Name="SaveHint" Text="保存后立即生效"
                            FontSize="11" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
