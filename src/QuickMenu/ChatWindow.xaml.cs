@@ -25,16 +25,30 @@ public sealed class ChatItem : INotifyPropertyChanged
 
     public HorizontalAlignment Align => Kind == "user" ? HorizontalAlignment.Right : HorizontalAlignment.Left;
 
+    /// <summary>当前主题（跟随配置：auto 按系统深浅色）。</summary>
+    private static Theme ChatTheme =>
+        Theme.From(((App)Application.Current).CurrentConfig.Theme);
+
     public Brush BubbleBg => Kind switch
     {
         "user" => new SolidColorBrush(Color.FromRgb(0x2A, 0x6D, 0xF4)),
-        "assistant" => new SolidColorBrush(Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF)),
+        // 浅色主题下不能再叠加半透明白（会与卡片同色），改用半透明黑
+        "assistant" => ChatTheme.IsDark
+            ? new SolidColorBrush(Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF))
+            : new SolidColorBrush(Color.FromArgb(0x12, 0x00, 0x00, 0x00)),
         _ => Brushes.Transparent
     };
 
     public Brush TextColor => Kind == "user"
         ? Brushes.White
-        : new SolidColorBrush(Color.FromRgb(0xF2, 0xF2, 0xF7));
+        : new SolidColorBrush(ChatTheme.TextPrimary); // 必须跟随主题，否则浅色模式下近白文字不可见
+
+    /// <summary>主题切换后刷新气泡背景与文字颜色（绑定会因 PropertyChanged 重新取值）。</summary>
+    public void RefreshTheme()
+    {
+        OnPropertyChanged(nameof(TextColor));
+        OnPropertyChanged(nameof(BubbleBg));
+    }
 
     public void Append(string s)
     {
@@ -88,6 +102,9 @@ public partial class ChatWindow : Window, IHarnessObserver
         Resources["BtnBg"] = Frozen(theme.HoverBg);
         Resources["BtnBgHover"] = Frozen(Color.FromArgb(0x3D, theme.HoverBg.R, theme.HoverBg.G, theme.HoverBg.B));
         RootCard.Background = new SolidColorBrush(theme.CardTint) { Opacity = theme.CardAlpha };
+
+        // 刷新已有消息气泡/文字颜色（它们直接绑定 ChatItem 属性，不走资源）
+        foreach (var m in _messages) m.RefreshTheme();
     }
 
     private static Brush Frozen(Color c)
@@ -108,6 +125,7 @@ public partial class ChatWindow : Window, IHarnessObserver
         RefreshSessionsBtn.Visibility = SessionCombo.Visibility;
         NewSessionBtn.Content = IsHarness ? "新建会话" : "清空";
 
+        ApplyTheme(); // 重新应用主题（窗口可能已缓存，主题可能在设置里改过）
         Show();
         Activate();
 

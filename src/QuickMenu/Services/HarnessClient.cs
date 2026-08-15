@@ -166,8 +166,19 @@ public static class HarnessClient
     public static async Task<string> CreateSessionAsync(AppConfig cfg, CancellationToken ct)
     {
         var baseUrl = BaseUrl(cfg);
-        var created = await RpcAsync(baseUrl, "session.create", new { cwd = GroupCwd }, ct);
-        return created.GetProperty("sessionId").GetString() ?? throw new InvalidOperationException("创建会话失败");
+        try
+        {
+            // 优先挂到「桌面助手」工作区：传 workspaceId 时服务端自动把 cwd 设为工作区路径并 attach 会话
+            var wsId = await EnsureWorkspaceAsync(cfg, ct);
+            if (wsId.Length > 0)
+            {
+                var created = await RpcAsync(baseUrl, "session.create", new { workspaceId = wsId }, ct);
+                return created.GetProperty("sessionId").GetString() ?? throw new InvalidOperationException("创建会话失败");
+            }
+        }
+        catch { /* 工作区不可用时退回旧逻辑（不影响聊天） */ }
+        var created2 = await RpcAsync(baseUrl, "session.create", new { cwd = GroupCwd }, ct);
+        return created2.GetProperty("sessionId").GetString() ?? throw new InvalidOperationException("创建会话失败");
     }
 
     /// <summary>按配置解析会话：指定 ID / "new" 新建 / 留空用最近的「桌面助手」会话。</summary>
@@ -176,14 +187,62 @@ public static class HarnessClient
         var id = cfg.HarnessSessionId?.Trim() ?? "";
         if (id == "new")
         {
-            return await CreateSessionAsync(cfg, ct);
+            return await CreateSessionAsync(cfg, ct); // 新建：CreateSessionAsync 已挂工作区
         }
-        if (id.Length > 0) return id;
+        if (id.Length > 0) return id; // 指定会话：不自动改动其所属工作区
 
         var sessions = await ListSessionsAsync(cfg, ct);
         var inGroup = sessions.Where(InGroup).ToList();
-        if (inGroup.Count > 0) return inGroup[0].SessionId;
+        if (inGroup.Count > 0)
+        {
+            var sid = inGroup[0].SessionId;
+            await EnsureDesktopWorkspaceAsync(cfg, sid, ct); // 已有会话补注册，避免 web 页面显示「未分组」
+            return sid;
+        }
         return await CreateSessionAsync(cfg, ct);
+    }
+
+    /// <summary>确保「桌面助手」工作区存在（路径=桌面目录，名称=桌面助手），返回 workspaceId。</summary>
+    private static async Task<string> EnsureWorkspaceAsync(AppConfig cfg, CancellationToken ct)
+    {
+        var baseUrl = BaseUrl(cfg);
+        var desktop = GroupCwd.TrimEnd('\\');
+        var list = await RpcAsync(baseUrl, "workspace.list", new { }, ct);
+        if (list.TryGetProperty("items", out var items))
+        {
+            foreach (var w in items.EnumerateArray())
+            {
+                var path = w.TryGetProperty("path", out var p) ? p.GetString() ?? "" : "";
+                var title = w.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+                if (!string.Equals(path.TrimEnd('\\'), desktop, StringComparison.OrdinalIgnoreCase) &&
+                    title != "桌面助手") continue;
+                return w.TryGetProperty("workspaceId", out var id) ? id.GetString() ?? "" : "";
+            }
+        }
+        var created = await RpcAsync(baseUrl, "workspace.create", new { path = GroupCwd }, ct);
+        var wsId = created.GetProperty("workspace").GetProperty("workspaceId").GetString() ?? "";
+        // 与 QuickMenu 的「桌面助手」分组命名保持一致
+        await RpcAsync(baseUrl, "workspace.rename", new { workspaceId = wsId, title = "桌面助手" }, ct);
+        return wsId;
+    }
+
+    /// <summary>
+    /// 把已有会话注册进「桌面助手」工作区（幂等）。
+    /// web 页面按工作区(workspace)分组会话，不在任何工作区的会话会显示在「未分组」下；
+    /// 因此 QuickMenu 的桌面会话要注册进「桌面助手」工作区。
+    /// 失败静默（属于非关键路径，不影响聊天本身）。
+    /// </summary>
+    public static async Task EnsureDesktopWorkspaceAsync(AppConfig cfg, string sessionId, CancellationToken ct)
+    {
+        try
+        {
+            var baseUrl = BaseUrl(cfg);
+            var wsId = await EnsureWorkspaceAsync(cfg, ct);
+            if (wsId.Length == 0) return;
+            // 传 workspaceId + 已存在 sessionId：服务端校验 cwd 匹配后自动 attach，重复调用幂等
+            await RpcAsync(baseUrl, "session.create", new { workspaceId = wsId, sessionId }, ct);
+        }
+        catch { /* 非关键路径：注册失败不影响聊天 */ }
     }
 
     // ==================== 历史 ====================
