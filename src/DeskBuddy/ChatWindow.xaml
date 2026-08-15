@@ -261,7 +261,7 @@
                 </Grid.ColumnDefinitions>
                 <TextBox x:Name="InputBox" MinHeight="38" MaxHeight="96" AcceptsReturn="True"
                          TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-                         KeyDown="OnInputKeyDown" Padding="10,7" FontSize="13"
+                         PreviewKeyDown="OnInputPreviewKeyDown" Padding="10,7" FontSize="13"
                          Foreground="{DynamicResource TextPrimary}" CaretBrush="{DynamicResource TextPrimary}"
                          Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1">
                     <TextBox.Template>
@@ -276,7 +276,8 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Bottom">
                     <Button x:Name="StopBtn" Style="{StaticResource MacButton}" Content="停止" Click="OnStop"
                             Visibility="Collapsed" Margin="0,0,8,0"/>
-                    <Button x:Name="SendBtn" Style="{StaticResource AccentButton}" Content="发送" Click="OnSend" MinWidth="64"/>
+                    <Button x:Name="SendBtn" Style="{StaticResource AccentButton}" Content="发送" Click="OnSend"
+                            ToolTip="Enter 发送 · Shift+Enter 换行" MinWidth="64"/>
                 </StackPanel>
             </Grid>
         </Grid>

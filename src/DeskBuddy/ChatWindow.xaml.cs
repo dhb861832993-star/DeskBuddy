@@ -273,11 +273,16 @@ public partial class ChatWindow : Window, IHarnessObserver
 
     private void OnSend(object sender, RoutedEventArgs e) => Send();
 
-    private void OnInputKeyDown(object sender, KeyEventArgs e)
+    /// <summary>
+    /// Enter 发送、Shift+Enter 换行。
+    /// 用 PreviewKeyDown（隧道阶段）而非 KeyDown：TextBox 的类处理器会在
+    /// KeyDown 阶段拦截 Enter 插入换行并标记 Handled，导致普通 KeyDown 处理器不会触发。
+    /// </summary>
+    private void OnInputPreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter && Keyboard.Modifiers != ModifierKeys.Shift)
         {
-            e.Handled = true;
+            e.Handled = true; // 阻止 TextBox 插入换行
             Send();
         }
     }
