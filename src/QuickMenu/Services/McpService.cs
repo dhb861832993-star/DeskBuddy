@@ -38,7 +38,7 @@ public static class McpService
             McpServerTool.Create(AddMenuItem, new McpServerToolCreateOptions
             {
                 Name = "add_menu_item",
-                Description = "向 QuickMenu 快捷菜单添加一个条目并立即生效。type 取值：app(程序)/url(网页)/folder(文件夹)/file(文件)/command(命令)。path 为程序路径/网址/文件夹/文件/命令；args/keywords 可选；icon 可选自定义图标文件路径(.ico/.png/.exe)；folder 可选，指定条目所属文件夹（目录），留空则放在根目录。同名条目会失败，可先 list_menu_items 查重。",
+                Description = "向 QuickMenu 快捷菜单添加一个条目并立即生效。type 取值：app(程序)/url(网页)/folder(文件夹)/file(文件)/command(命令)。path 为程序路径/网址/文件夹/文件/命令；args/keywords 可选；icon 可选自定义图标文件路径(.ico/.png/.exe)。同名条目会失败，可先 list_menu_items 查重。",
             }),
             McpServerTool.Create(RemoveMenuItem, new McpServerToolCreateOptions
             {
@@ -68,12 +68,12 @@ public static class McpService
 
     // ==================== 工具（转发给主进程） ====================
 
-    private static string AddMenuItem(string name, string type, string path, string? args = null, string? keywords = null, string? icon = null, string? folder = null)
+    private static string AddMenuItem(string name, string type, string path, string? args = null, string? keywords = null, string? icon = null)
     {
         var req = JsonSerializer.Serialize(new
         {
             op = "add",
-            item = new { name, type, path, args, keywords, icon, folder }
+            item = new { name, type, path, args, keywords, icon }
         });
         return McpPipe.Request(req) ?? McpPipeDown();
     }

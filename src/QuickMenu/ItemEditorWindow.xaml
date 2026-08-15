@@ -197,12 +197,6 @@
                 <TextBox x:Name="KeywordBox" Style="{StaticResource MacTextBox}" Height="30"/>
             </StackPanel>
 
-            <StackPanel Grid.Row="6" Margin="0,10,0,0">
-                <TextBlock Text="文件夹（可选）" Style="{StaticResource FieldLabel}"/>
-                <ComboBox x:Name="FolderCombo" Style="{StaticResource MacCombo}" Height="30"
-                          IsEditable="True" ToolTip="留空表示不在文件夹里；可输入新名称创建文件夹"/>
-            </StackPanel>
-
             <TextBlock x:Name="Hint" Grid.Row="7" FontSize="11" Foreground="{DynamicResource TextSecondary}"
                        VerticalAlignment="Bottom" TextWrapping="Wrap"/>
 
