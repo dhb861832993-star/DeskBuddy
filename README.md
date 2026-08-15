@@ -1,11 +1,11 @@
-# QuickMenu 快启
+# DeskBuddy 快启
 
 > 双击一下，一键呼出。像手机桌面一样管理，像 Spotlight 一样搜索。
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Version](https://img.shields.io/badge/version-1.5.0-brightgreen.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-blue.svg)
-[![Release](https://img.shields.io/badge/download-Releases-orange)](https://github.com/dhb861832993-star/QuickMenu/releases)
+[![Release](https://img.shields.io/badge/download-Releases-orange)](https://github.com/dhb861832993-star/DeskBuddy/releases)
 
 一个 **macOS 风格**的 Windows 快速启动器：**连续快速双击热键**（默认 Ctrl，可配置），立即呼出**手机桌面式的图标宫格菜单**，搜索并启动常用软件、网页、文件夹——比翻桌面、找开始菜单快得多。内置 **AI 对话**，搜不到的直接问 AI。
 
@@ -33,16 +33,16 @@
 
 ## 📥 安装
 
-> ⬇️ **直接下载**：[Releases 页面](https://github.com/dhb861832993-star/QuickMenu/releases) 提供 `QuickMenu-Setup.exe`（安装包）和 `QuickMenu.exe`（绿色版）。
+> ⬇️ **直接下载**：[Releases 页面](https://github.com/dhb861832993-star/DeskBuddy/releases) 提供 `DeskBuddy-Setup.exe`（安装包）和 `DeskBuddy.exe`（绿色版）。
 
 ### 方式一：安装包（推荐）
-运行 `QuickMenu-Setup.exe`，一路下一步即可。可选“开机自动启动”和“桌面快捷方式”。
+运行 `DeskBuddy-Setup.exe`，一路下一步即可。可选“开机自动启动”和“桌面快捷方式”。
 
 ### 方式二：便携版
-双击 `installer/安装QuickMenu.bat`：自动复制到 `%LOCALAPPDATA%\QuickMenu`，创建快捷方式并注册开机自启。卸载运行 `installer/卸载QuickMenu.bat`。
+双击 `installer/安装DeskBuddy.bat`：自动复制到 `%LOCALAPPDATA%\DeskBuddy`，创建快捷方式并注册开机自启。卸载运行 `installer/卸载DeskBuddy.bat`。
 
 ### 方式三：绿色直用
-直接把 `QuickMenu.exe` 复制到任意位置双击运行（首次运行自动生成配置）。
+直接把 `DeskBuddy.exe` 复制到任意位置双击运行（首次运行自动生成配置）。
 
 ---
 
@@ -76,10 +76,10 @@
 
 ## 🤖 MCP（AI 快捷添加菜单）
 
-QuickMenu 内置 **MCP 服务**（默认开启），任何支持 MCP 的 AI 工具（Claude Desktop、Cursor、Cherry Studio 等）都可以直接查看 / 添加 / 删除你的快捷菜单——让 AI 帮你把常用工具收进菜单，静默生效，无需重启。
+DeskBuddy 内置 **MCP 服务**（默认开启），任何支持 MCP 的 AI 工具（Claude Desktop、Cursor、Cherry Studio 等）都可以直接查看 / 添加 / 删除你的快捷菜单——让 AI 帮你把常用工具收进菜单，静默生效，无需重启。
 
 - **开关**：设置 → AI 对话 → 「AI 快捷添加（MCP）」；默认开启，仅本机可访问
-- **接入方式**：`QuickMenu.exe --mcp`（stdio 传输）。设置里有「复制接入配置」按钮，一键复制客户端配置
+- **接入方式**：`DeskBuddy.exe --mcp`（stdio 传输）。设置里有「复制接入配置」按钮，一键复制客户端配置
 - **工具**：
   - `list_menu_items` — 列出所有条目（只读）
   - `add_menu_item` — 添加条目：`name` / `type`(app/url/folder/file/command) / `path` / `args?` / `keywords?` / `icon?`（自定义图标路径 .ico/.png/.exe）
@@ -91,8 +91,8 @@ QuickMenu 内置 **MCP 服务**（默认开启），任何支持 MCP 的 AI 工�
 ```json
 {
   "mcpServers": {
-    "quickmenu": {
-      "command": "C:\\Users\\<你的用户名>\\AppData\\Local\\QuickMenu\\QuickMenu.exe",
+    "deskbuddy": {
+      "command": "C:\\Users\\<你的用户名>\\AppData\\Local\\DeskBuddy\\DeskBuddy.exe",
       "args": ["--mcp"]
     }
   }
@@ -125,7 +125,7 @@ QuickMenu 内置 **MCP 服务**（默认开启），任何支持 MCP 的 AI 工�
 
 ---
 
-## ⚙️ 配置文件 `QuickMenu.config.json`
+## ⚙️ 配置文件 `DeskBuddy.config.json`
 
 位于**程序同目录**（首次运行自动生成）。编辑保存后，下次呼出菜单即生效。
 
@@ -171,7 +171,7 @@ QuickMenu 内置 **MCP 服务**（默认开启），任何支持 MCP 的 AI 工�
 .\build.ps1
 
 # 制作安装包（需 Inno Setup 6）
-"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" .\installer\QuickMenu.iss
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" .\installer\DeskBuddy.iss
 ```
 
 ---
@@ -188,7 +188,7 @@ QuickMenu 内置 **MCP 服务**（默认开启），任何支持 MCP 的 AI 工�
 自启写入当前用户注册表（`HKCU\...\Run`），无需管理员。若被杀软拦截请允许。
 
 **换电脑 / 绿色分发？**
-自包含 exe 无任何运行时依赖，复制 `QuickMenu.exe` + `QuickMenu.config.json` 即可。
+自包含 exe 无任何运行时依赖，复制 `DeskBuddy.exe` + `DeskBuddy.config.json` 即可。
 
 ---
 
