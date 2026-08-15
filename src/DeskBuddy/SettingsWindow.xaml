@@ -301,7 +301,7 @@
                                          ToolTip="每行一个路径，例如：D:\ 或 E:\work 或 %USERPROFILE%\Desktop。留空 = 不搜索文件。"/>
 
                                 <TextBlock Style="{StaticResource FieldLabel}" Margin="0,8,0,0"
-                                           Text="提示：范围越小搜索越快；会自动跳过隐藏/系统/构建产物目录。"/>
+                                           Text="提示：索引会自动实时更新——范围内文件新建/删除/改名后几秒内自动重建索引，新文件立即可搜到。自动跳过隐藏/系统/构建产物目录。"/>
                             </StackPanel>
 
                             <!-- ========== AI 对话 ========== -->

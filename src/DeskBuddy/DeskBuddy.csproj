@@ -11,8 +11,8 @@
     <AssemblyName>DeskBuddy</AssemblyName>
     <RootNamespace>DeskBuddy</RootNamespace>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>2.1.1</Version>
-    <FileVersion>2.1.1.0</FileVersion>
+    <Version>2.1.4</Version>
+    <FileVersion>2.1.4.0</FileVersion>
     <Product>DeskBuddy</Product>
     <Description>双击热键快速呼出启动菜单（苹果风格桌面助手）</Description>
     <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>

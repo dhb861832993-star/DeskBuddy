@@ -13,6 +13,10 @@ Write-Host "==> dotnet publish ..." -ForegroundColor Cyan
     -p:IncludeNativeLibrariesForSelfExtract=true `
     -p:EnableCompressionInSingleFile=true `
     -o (Join-Path $root "dist\app")
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "==> 构建失败（dotnet publish 退出码 $LASTEXITCODE）" -ForegroundColor Red
+    exit 1
+}
 
 # 复制使用说明
 Copy-Item (Join-Path $root "installer\使用说明.txt") (Join-Path $root "dist\app\使用说明.txt") -Force -ErrorAction SilentlyContinue

@@ -69,6 +69,11 @@ public partial class MainWindow : Window
         RefreshItems();
         CancelFileSearch();
         _fileResults = new List<ItemVm>();
+        // 提前预热文件索引（后台），让首次搜索就快
+        if (_config.EnableFileSearch && _config.SearchRoots.Count > 0)
+        {
+            FileIndex.EnsureBuilding(_config.SearchRoots.Where(r => !string.IsNullOrWhiteSpace(r)).ToArray());
+        }
         SearchBox.Text = "";
         UpdateFilter();
         PositionWindow();
@@ -343,20 +348,31 @@ public partial class MainWindow : Window
         _fileSearchCts = null;
     }
 
-    /// <summary>延迟 200ms 后异步扫描文件，结果回填到「文件」区。</summary>
+    /// <summary>启动文件搜索：索引就绪则毫秒级内存匹配；否则实时扫描兜底（200ms 防抖）。</summary>
     private void StartFileSearch(string query)
     {
-        var roots = _config.SearchRoots.Where(r => !string.IsNullOrWhiteSpace(r)).ToList();
-        if (roots.Count == 0) return;
+        var roots = _config.SearchRoots.Where(r => !string.IsNullOrWhiteSpace(r)).ToArray();
+        if (roots.Length == 0) return;
+        FileIndex.EnsureBuilding(roots); // 后台构建/刷新索引，不阻塞
+
         var cts = new CancellationTokenSource();
         _fileSearchCts = cts;
         var token = cts.Token;
 
         _ = Task.Run(async () =>
         {
-            try { await Task.Delay(200, token); } catch { return; }
+            List<(string Name, string Path)> found;
+            if (FileIndex.IsReady)
+            {
+                found = FileIndex.Search(query);
+            }
+            else
+            {
+                try { await Task.Delay(200, token); } catch { return; }
+                if (token.IsCancellationRequested) return;
+                found = FileSearcher.Search(roots, query, token);
+            }
             if (token.IsCancellationRequested) return;
-            var found = FileSearcher.Search(roots, query, token);
 
             Dispatcher.BeginInvoke(new Action(() =>
             {
@@ -629,8 +645,9 @@ public partial class MainWindow : Window
             HideMenu();
             return;
         }
+        if (vm.Source is not { } src) return;
         _lastLaunchTime = DateTime.UtcNow;
-        Launcher.Launch(vm.Source);
+        Launcher.Launch(src);
         HideMenu();
     }
 
@@ -660,9 +677,11 @@ public partial class MainWindow : Window
         if (_isDragging)
         {
             var lbi = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
-            if (_dragItem != null && lbi?.DataContext is ItemVm target && !ReferenceEquals(target, _dragItem))
+            if (_dragItem?.Source is { } dragSrc &&
+                lbi?.DataContext is ItemVm target && target.Source is { } tgtSrc &&
+                !ReferenceEquals(tgtSrc, dragSrc))
             {
-                SwapItems(_dragItem.Source, target.Source);
+                SwapItems(dragSrc, tgtSrc);
                 SaveAndRefresh();
                 ItemList.SelectedItem = target;
             }
@@ -768,40 +787,40 @@ public partial class MainWindow : Window
 
     private void MoveContextItemTo(int targetIndex)
     {
-        if (_contextItem == null) return;
+        if (_contextItem?.Source is not { } source) return;
         CloseItemMenu();
         var list = _config.Items;
-        int idx = list.IndexOf(_contextItem.Source);
+        int idx = list.IndexOf(source);
         if (idx < 0 || idx == targetIndex) return;
         list.RemoveAt(idx);
-        list.Insert(targetIndex, _contextItem.Source);
+        list.Insert(targetIndex, source);
         SaveAndRefresh();
         ItemList.SelectedIndex = Math.Min(targetIndex, _filtered.Count - 1);
     }
 
     private void MoveContextItemBy(int delta)
     {
-        if (_contextItem == null) return;
+        if (_contextItem?.Source is not { } source) return;
         CloseItemMenu();
         var list = _config.Items;
-        int idx = list.IndexOf(_contextItem.Source);
+        int idx = list.IndexOf(source);
         if (idx < 0) return;
         int target = Math.Clamp(idx + delta, 0, list.Count - 1);
         if (target == idx) return;
         list.RemoveAt(idx);
-        list.Insert(target, _contextItem.Source);
+        list.Insert(target, source);
         SaveAndRefresh();
         ItemList.SelectedIndex = Math.Min(target, _filtered.Count - 1);
     }
 
     private void OnCtxEdit(object sender, RoutedEventArgs e)
     {
-        if (_contextItem == null) return;
+        if (_contextItem?.Source is not { } source) return;
         CloseItemMenu();
-        var editor = new ItemEditorWindow(_contextItem.Source, _config.Theme);
+        var editor = new ItemEditorWindow(source, _config.Theme);
         if (editor.ShowDialog() == true && editor.Item != null)
         {
-            int idx = _config.Items.IndexOf(_contextItem.Source);
+            int idx = _config.Items.IndexOf(source);
             if (idx >= 0)
             {
                 _config.Items[idx] = editor.Item;
