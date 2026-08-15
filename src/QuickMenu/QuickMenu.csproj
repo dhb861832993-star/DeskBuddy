@@ -11,8 +11,8 @@
     <AssemblyName>QuickMenu</AssemblyName>
     <RootNamespace>QuickMenu</RootNamespace>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>1.9.3</Version>
-    <FileVersion>1.9.3.0</FileVersion>
+    <Version>1.9.4</Version>
+    <FileVersion>1.9.4.0</FileVersion>
     <Product>QuickMenu 快启</Product>
     <Description>双击热键快速呼出启动菜单（苹果风格快速启动器）</Description>
     <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>

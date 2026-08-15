@@ -273,17 +273,9 @@ public partial class MainWindow : Window
         {
             EmptyHint.Visibility = Visibility.Collapsed;
         }
-        FooterHint.Text = $"↑↓←→ 选择   Enter 打开   右键/拖动管理   Esc 关闭   双击 {HotkeyDisplay()} 呼出";
+        // 底部右侧不再显示常驻操作说明，仅保留瞬时的操作反馈（如拖拽添加成功）
+        FooterHint.Text = "";
     }
-
-    private string HotkeyDisplay() => _config.Hotkey switch
-    {
-        "alt" => "Alt",
-        "shift" => "Shift",
-        "capslock" => "CapsLock",
-        "win" => "Win",
-        _ => "Ctrl"
-    };
 
     // ==================== 布局 ====================
 
@@ -378,7 +370,11 @@ public partial class MainWindow : Window
         ((App)Application.Current).ApplyConfig(_config);
         RefreshItems();
         UpdateFilter();
+        // 短暂提示后自动清除
         FooterHint.Text = $"已添加 {added.Count} 项";
+        var clearTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        clearTimer.Tick += (_, _) => { clearTimer.Stop(); FooterHint.Text = ""; };
+        clearTimer.Start();
     }
 
     // ==================== MCP（AI 快捷添加菜单） ====================
