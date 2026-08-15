@@ -69,6 +69,8 @@ public partial class SettingsWindow : Window
         McpHint.Text = "供 Claude Desktop / Cursor / Cherry Studio 等 AI 工具连接，仅本机可访问。";
         CopyMcpBtn.IsEnabled = config.McpEnabled;
 
+        SelectCategory("general"); // 默认显示「通用」
+
         Loaded += (_, _) => ApplyTheme();
     }
 
@@ -125,6 +127,32 @@ public partial class SettingsWindow : Window
         OpenAiModelRow.Visibility = harness ? Visibility.Collapsed : Visibility.Visible;
         OpenAiKeyRow.Visibility = harness ? Visibility.Collapsed : Visibility.Visible;
         OpenAiPromptRow.Visibility = harness ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    // ==================== 左侧目录切换 ====================
+
+    private void OnCategoryClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string tag }) SelectCategory(tag);
+    }
+
+    /// <summary>切换到指定目录（general / ai / mcp / items），并更新左侧选中态。</summary>
+    private void SelectCategory(string tag)
+    {
+        PanelGeneral.Visibility = tag == "general" ? Visibility.Visible : Visibility.Collapsed;
+        PanelAi.Visibility = tag == "ai" ? Visibility.Visible : Visibility.Collapsed;
+        PanelMcp.Visibility = tag == "mcp" ? Visibility.Visible : Visibility.Collapsed;
+        PanelItems.Visibility = tag == "items" ? Visibility.Visible : Visibility.Collapsed;
+        SetCategoryState(CatGeneral, tag == "general");
+        SetCategoryState(CatAi, tag == "ai");
+        SetCategoryState(CatMcp, tag == "mcp");
+        SetCategoryState(CatItems, tag == "items");
+    }
+
+    private void SetCategoryState(Button? btn, bool active)
+    {
+        if (btn == null) return;
+        btn.Background = active ? (Brush)FindResource("SelectedBg") : Brushes.Transparent;
     }
 
     private static string NormalizeHotkey(string h) => h?.ToUpperInvariant() switch
