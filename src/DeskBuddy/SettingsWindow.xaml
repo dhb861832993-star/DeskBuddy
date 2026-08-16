@@ -18,6 +18,13 @@
         <SolidColorBrush x:Key="FooterBrush" Color="#909098"/>
         <SolidColorBrush x:Key="CardBg" Color="#CC1E1E1E"/>
         <SolidColorBrush x:Key="BtnBg" Color="#26FFFFFF"/>
+
+        <!-- AI 标识渐变（与主菜单一致） -->
+        <LinearGradientBrush x:Key="AiGradient" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#7A5CFF" Offset="0"/>
+            <GradientStop Color="#2A6DF4" Offset="0.55"/>
+            <GradientStop Color="#32D583" Offset="1"/>
+        </LinearGradientBrush>
         <SolidColorBrush x:Key="BtnBgHover" Color="#3DFFFFFF"/>
         <SolidColorBrush x:Key="AccentBg" Color="#2A6DF4"/>
 
@@ -150,8 +157,11 @@
 
     <Border x:Name="RootCard" CornerRadius="24" BorderThickness="1"
             BorderBrush="{DynamicResource CardBorder}"
-            Background="{DynamicResource CardBg}">
-        <Grid Margin="16,14,16,14" MouseLeftButtonDown="OnCardMouseDown">
+            Background="{DynamicResource CardBg}"
+            MouseLeftButtonDown="OnCardMouseDown"
+            MouseMove="OnCardMouseMove"
+            MouseLeftButtonUp="OnCardMouseUp">
+        <Grid Margin="16,14,16,14">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
@@ -328,23 +338,21 @@
                             <!-- ========== AI 对话 ========== -->
                             <StackPanel x:Name="PanelAi" Visibility="Collapsed">
                                 <TextBlock Text="AI 对话" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
-                                <TextBlock x:Name="AiHint" Style="{StaticResource FieldLabel}" Margin="0,3,0,0"/>
 
-                                <Grid Margin="0,12,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="84"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="接入方式" FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
-                                    <Border Grid.Column="1" CornerRadius="8" Background="{DynamicResource BtnBg}" Padding="2" HorizontalAlignment="Left" VerticalAlignment="Center">
-                                        <UniformGrid Columns="2">
-                                            <RadioButton x:Name="ModeHarness" Content="本机 Harness" GroupName="AiModeGroup"
-                                                         Style="{StaticResource SegmentRadio}" IsChecked="True" Checked="OnAiModeChanged"/>
-                                            <RadioButton x:Name="ModeOpenAi" Content="OpenAI API" GroupName="AiModeGroup"
-                                                         Style="{StaticResource SegmentRadio}" Checked="OnAiModeChanged"/>
-                                        </UniformGrid>
-                                    </Border>
-                                </Grid>
+                                <!-- DeepSeek Harness 强调徽章条 -->
+                                <Border Margin="0,10,0,0" CornerRadius="10" Padding="12,9"
+                                        Background="#12FFFFFF" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Border CornerRadius="9" Padding="8,4" Background="{StaticResource AiGradient}" VerticalAlignment="Center">
+                                            <TextBlock Text="DeepSeek Harness" FontSize="11" FontWeight="Bold" Foreground="White"/>
+                                        </Border>
+                                        <TextBlock Margin="10,0,0,0" FontSize="11.5" Foreground="{DynamicResource TextSecondary}"
+                                                   VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="380"
+                                                   Text="AI 对话由 DeepSeek Harness 驱动 · 本机运行，数据不出电脑"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <TextBlock x:Name="AiHint" Style="{StaticResource FieldLabel}" Margin="0,8,0,0"/>
 
                                 <Grid x:Name="HarnessAddrRow" Margin="0,10,0,0">
                                     <Grid.ColumnDefinitions>
@@ -361,38 +369,6 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="会话策略" FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
                                     <TextBox x:Name="HarnessSessionBox" Grid.Column="1" Style="{StaticResource MacTextBox}" Height="28"/>
-                                </Grid>
-                                <Grid x:Name="OpenAiBaseUrlRow" Margin="0,10,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="84"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="接口地址" FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
-                                    <TextBox x:Name="AiBaseUrlBox" Grid.Column="1" Style="{StaticResource MacTextBox}" Height="28"/>
-                                </Grid>
-                                <Grid x:Name="OpenAiModelRow" Margin="0,10,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="84"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="模型" FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
-                                    <TextBox x:Name="AiModelBox" Grid.Column="1" Style="{StaticResource MacTextBox}" Height="28"/>
-                                </Grid>
-                                <Grid x:Name="OpenAiKeyRow" Margin="0,10,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="84"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="API 密钥" FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
-                                    <TextBox x:Name="AiKeyBox" Grid.Column="1" Style="{StaticResource MacTextBox}" Height="28"/>
-                                </Grid>
-                                <Grid x:Name="OpenAiPromptRow" Margin="0,10,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="84"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="系统提示" FontSize="11.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
-                                    <TextBox x:Name="AiPromptBox" Grid.Column="1" Style="{StaticResource MacTextBox}" Height="28"/>
                                 </Grid>
                                 <CheckBox x:Name="ShowAllSessionsRow" Margin="84,10,0,0"
                                           Content="会话列表显示全部会话（默认只显示「桌面助手」分组）"

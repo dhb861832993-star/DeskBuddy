@@ -58,18 +58,11 @@ public partial class SettingsWindow : Window
         ItemList.ItemsSource = _draftRows;
         UpdateItemsHint();
 
-        // AI 配置
-        ModeHarness.IsChecked = config.AiMode != "openai";
-        ModeOpenAi.IsChecked = config.AiMode == "openai";
+        // AI 配置（全面基于本机 DeepSeek Harness）
         HarnessBaseUrlBox.Text = config.HarnessBaseUrl;
         HarnessSessionBox.Text = config.HarnessSessionId;
         ShowAllSessionsRow.IsChecked = config.HarnessShowAllSessions;
-        AiBaseUrlBox.Text = config.AiBaseUrl;
-        AiModelBox.Text = config.AiModel;
-        AiKeyBox.Text = config.AiApiKey;
-        AiPromptBox.Text = config.AiSystemPrompt;
         UpdateAiHint();
-        UpdateAiFields();
 
         // MCP
         McpEnabledBox.IsChecked = config.McpEnabled;
@@ -108,36 +101,9 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void OnAiModeChanged(object sender, RoutedEventArgs e)
-    {
-        UpdateAiHint();
-        UpdateAiFields();
-    }
-
     private void UpdateAiHint()
     {
-        if (ModeHarness?.IsChecked == true)
-        {
-            AiHint.Text = "本机 Harness 模式：直接和本机运行的 DeepSeek Harness 对话（零配置）。会话策略留空=最近会话，new=每次新建，或填 sessionId。";
-        }
-        else
-        {
-            AiHint.Text = "OpenAI 兼容模式：直连任意 OpenAI 兼容接口（如 DeepSeek 官方 API），需在下方填写接口地址、模型与 API 密钥。";
-        }
-    }
-
-    /// <summary>按接入模式显示对应字段：Harness 模式只显示 Harness 相关项，OpenAI 模式只显示 API 相关项。</summary>
-    private void UpdateAiFields()
-    {
-        if (ModeHarness == null || HarnessAddrRow == null) return;
-        var harness = ModeHarness.IsChecked == true;
-        HarnessAddrRow.Visibility = harness ? Visibility.Visible : Visibility.Collapsed;
-        HarnessSessionRow.Visibility = harness ? Visibility.Visible : Visibility.Collapsed;
-        ShowAllSessionsRow.Visibility = harness ? Visibility.Visible : Visibility.Collapsed;
-        OpenAiBaseUrlRow.Visibility = harness ? Visibility.Collapsed : Visibility.Visible;
-        OpenAiModelRow.Visibility = harness ? Visibility.Collapsed : Visibility.Visible;
-        OpenAiKeyRow.Visibility = harness ? Visibility.Collapsed : Visibility.Visible;
-        OpenAiPromptRow.Visibility = harness ? Visibility.Collapsed : Visibility.Visible;
+        AiHint.Text = "AI 对话基于本机 DeepSeek Harness（零配置，数据不出电脑）。会话策略留空=最近会话，new=每次新建，或填 sessionId。";
     }
 
     // ==================== 左侧目录切换 ====================
@@ -227,20 +193,45 @@ public partial class SettingsWindow : Window
 
     // ==================== 通用交互 ====================
 
+    private bool _dragging;
+    private Point _dragStart;
+    private Point _winStart;
+    private double _dpi = 1;
+
+    /// <summary>按住窗口空白处（非控件区域）开始拖动（手动实现，兼容 AllowsTransparency 无边框窗口）。</summary>
     private void OnCardMouseDown(object sender, MouseButtonEventArgs e)
     {
         // 只有点击不在任何控件内（标题栏、空白处）时才拖动窗口；
         // 否则会把列表选中、按钮、滑块、主题切换等鼠标操作全部吞掉
-        if (e.LeftButton == MouseButtonState.Pressed && !IsInsideControl(e.OriginalSource as DependencyObject))
-        {
-            DebugLog.Write($"DragMove from {e.OriginalSource?.GetType().Name}");
-            DragMove();
-        }
+        if (e.LeftButton != MouseButtonState.Pressed || IsInsideControl(e.OriginalSource as DependencyObject)) return;
+        _dragging = true;
+        _dragStart = NativeMouse.GetScreenPosition(); // 物理屏幕坐标：唯一参考系，避免拖拽回跳/抖动
+        _dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        _winStart = new Point(Left, Top);
+        ((UIElement)sender).CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void OnCardMouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_dragging) return;
+        var pos = NativeMouse.GetScreenPosition(); // 物理屏幕坐标
+        // 位移阈值：小于 4px 视为点击抖动，不移动窗口（防止纯点击误触发拖拽）
+        if (Math.Abs(pos.X - _dragStart.X) < 4 && Math.Abs(pos.Y - _dragStart.Y) < 4) return;
+        Left = _winStart.X + (pos.X - _dragStart.X) / _dpi;
+        Top = _winStart.Y + (pos.Y - _dragStart.Y) / _dpi;
+    }
+
+    private void OnCardMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_dragging) return;
+        _dragging = false;
+        ((UIElement)sender).ReleaseMouseCapture();
     }
 
     private static bool IsInsideControl(DependencyObject? d)
     {
-        while (d != null)
+        while (d != null && d is not Window)
         {
             if (d is Control) return true;
             d = VisualTreeHelper.GetParent(d);
@@ -479,14 +470,14 @@ public partial class SettingsWindow : Window
             WindowWidth = _config.WindowWidth,
             MaxWindowHeight = _config.MaxWindowHeight,
             Items = _draftRows.Select(r => r.Source).ToList(),
-            AiMode = ModeOpenAi?.IsChecked == true ? "openai" : "harness",
+            AiMode = "harness", // 全面基于本机 DeepSeek Harness
             HarnessBaseUrl = HarnessBaseUrlBox.Text.Trim(),
             HarnessSessionId = HarnessSessionBox.Text.Trim(),
             HarnessShowAllSessions = ShowAllSessionsRow.IsChecked == true,
-            AiBaseUrl = AiBaseUrlBox.Text.Trim(),
-            AiModel = AiModelBox.Text.Trim(),
-            AiApiKey = AiKeyBox.Text.Trim(),
-            AiSystemPrompt = AiPromptBox.Text.Trim(),
+            AiBaseUrl = _config.AiBaseUrl,
+            AiModel = _config.AiModel,
+            AiApiKey = _config.AiApiKey,
+            AiSystemPrompt = _config.AiSystemPrompt,
             McpEnabled = McpEnabledBox.IsChecked == true,
             EnableFileSearch = EnableFileSearchBox.IsChecked == true,
             SearchRoots = SearchRootsBox.Text

@@ -85,18 +85,44 @@ public partial class ItemEditorWindow : Window
 
     // ==================== 交互 ====================
 
+    private bool _dragging;
+    private Point _dragStart;
+    private Point _winStart;
+    private double _dpi = 1;
+
+    /// <summary>按住窗口空白处（非控件区域）开始拖动（手动实现，兼容 AllowsTransparency 无边框窗口）。</summary>
     private void OnCardMouseDown(object sender, MouseButtonEventArgs e)
     {
         // 只有点击不在任何控件内时才拖动窗口，避免吞掉输入框/下拉框/按钮的鼠标操作
-        if (e.LeftButton == MouseButtonState.Pressed && !IsInsideControl(e.OriginalSource as DependencyObject))
-        {
-            DragMove();
-        }
+        if (e.LeftButton != MouseButtonState.Pressed || IsInsideControl(e.OriginalSource as DependencyObject)) return;
+        _dragging = true;
+        _dragStart = NativeMouse.GetScreenPosition(); // 物理屏幕坐标：唯一参考系，避免拖拽回跳/抖动
+        _dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        _winStart = new Point(Left, Top);
+        ((UIElement)sender).CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void OnCardMouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_dragging) return;
+        var pos = NativeMouse.GetScreenPosition(); // 物理屏幕坐标
+        // 位移阈值：小于 4px 视为点击抖动，不移动窗口（防止纯点击误触发拖拽）
+        if (Math.Abs(pos.X - _dragStart.X) < 4 && Math.Abs(pos.Y - _dragStart.Y) < 4) return;
+        Left = _winStart.X + (pos.X - _dragStart.X) / _dpi;
+        Top = _winStart.Y + (pos.Y - _dragStart.Y) / _dpi;
+    }
+
+    private void OnCardMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_dragging) return;
+        _dragging = false;
+        ((UIElement)sender).ReleaseMouseCapture();
     }
 
     private static bool IsInsideControl(DependencyObject? d)
     {
-        while (d != null)
+        while (d != null && d is not Window)
         {
             if (d is Control) return true;
             d = VisualTreeHelper.GetParent(d);
