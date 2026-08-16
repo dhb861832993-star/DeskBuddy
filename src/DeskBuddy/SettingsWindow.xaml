@@ -135,11 +135,12 @@
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 
-        <!-- 设置项左标签 -->
+        <!-- 设置项左标签 / 面板介绍小字（自动换行，防止长介绍横向溢出面板） -->
         <Style x:Key="FieldLabel" TargetType="TextBlock">
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
             <Setter Property="Margin" Value="0,0,0,5"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
 
         <!-- 输入框 -->
