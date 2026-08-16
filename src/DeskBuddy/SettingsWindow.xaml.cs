@@ -66,7 +66,6 @@ public partial class SettingsWindow : Window
 
         // MCP
         McpEnabledBox.IsChecked = config.McpEnabled;
-        McpHint.Text = "供 Claude Desktop / Cursor / Cherry Studio 等 AI 工具连接，仅本机可访问。";
         CopyMcpBtn.IsEnabled = config.McpEnabled;
 
         // 文件搜索
@@ -93,7 +92,7 @@ public partial class SettingsWindow : Window
         try
         {
             Clipboard.SetText(json);
-            McpHint.Text = "已复制。把它填进 AI 工具的 MCP 服务器配置即可（如 Claude Desktop 的 claude_desktop_config.json、Cursor 的 mcp.json）。";
+            McpHint.Text = "已复制接入配置 ✓";
         }
         catch
         {
