@@ -332,15 +332,18 @@ public partial class MainWindow : Window
     /// <summary>刷新菜单条目列表与文件结果列表。</summary>
     private void RebuildDisplay(string query, bool searching)
     {
-        // 菜单条目（文件结果单独在 FileList 显示，不混入宫格）
-        ItemList.ItemsSource = _filtered;
-        ItemList.SelectedIndex = _filtered.Count > 0 ? 0 : -1;
+        // 菜单条目（文件结果单独在 FileList 显示，不混入宫格）；内容未变时跳过重建
+        if (!ReferenceEquals(ItemList.ItemsSource, _filtered))
+        {
+            ItemList.ItemsSource = _filtered;
+            ItemList.SelectedIndex = _filtered.Count > 0 ? 0 : -1;
+        }
 
         // 文件结果：独立列表（名称+路径+修改时间，最新在前）
         if (_fileResults.Count > 0)
         {
             FileSectionTitle.Text = $"文件（{_fileResults.Count} 个匹配）";
-            FileList.ItemsSource = _fileResults;
+            if (!ReferenceEquals(FileList.ItemsSource, _fileResults)) FileList.ItemsSource = _fileResults;
             FileSection.Visibility = Visibility.Visible;
             // 菜单无匹配时自动选中第一个文件，Enter 可直接打开
             if (_filtered.Count == 0) FileList.SelectedIndex = 0;
@@ -348,7 +351,7 @@ public partial class MainWindow : Window
         else
         {
             FileSection.Visibility = Visibility.Collapsed;
-            FileList.ItemsSource = null;
+            if (FileList.ItemsSource != null) FileList.ItemsSource = null;
         }
 
         DebugLog.Write($"RebuildDisplay: menu={_filtered.Count} files={_fileResults.Count}");
@@ -393,13 +396,48 @@ public partial class MainWindow : Window
     /// <summary>文件搜索结果上限（窗口会自动扩展高度，放宽到 100 条）。</summary>
     private const int MaxFileResults = 100;
 
-    /// <summary>启动文件搜索：索引就绪则毫秒级内存匹配；否则实时扫描兜底（200ms 防抖）。</summary>
+    /// <summary>启动文件搜索：USN 引擎就绪时同步毫秒级匹配、当帧显示（像 Listary）；其余走异步兜底。</summary>
     private void StartFileSearch(string query)
     {
         var roots = _config.SearchRoots.Where(r => !string.IsNullOrWhiteSpace(r)).ToArray();
         if (roots.Length == 0) return;
         FileIndex.EnsureBuilding(roots); // 后台构建/刷新索引，不阻塞
 
+        var backend = _config.FileSearchBackend;
+
+        // USN 引擎就绪 → 同步搜索（前缀桶毫秒级），结果与击键同一帧显示
+        if (backend == "usn" || (backend == "auto" && UsnIndex.IsReady))
+        {
+            List<(string Name, string Path)> found;
+            try
+            {
+                found = UsnIndex.Search(query, roots, MaxFileResults)
+                    .Select(p => (System.IO.Path.GetFileName(p), p))
+                    .ToList();
+            }
+            catch { found = new List<(string, string)>(); }
+
+            if (found.Count == 0 && backend == "auto")
+            {
+                // auto：USN 无结果 → 异步回退 Windows Search / 内置索引
+                var q = query; var rts = roots;
+                _ = Task.Run(async () =>
+                {
+                    List<(string Name, string Path)> fb = new();
+                    if (WindowsSearch.IsAvailable())
+                        fb = await Task.Run(() => WindowsSearch.Search(q, rts, MaxFileResults));
+                    if (fb.Count == 0 && FileIndex.IsReady) fb = FileIndex.Search(q, MaxFileResults);
+                    if (SearchBox.Text?.Trim() != q) return;
+                    Dispatcher.BeginInvoke(() => ApplyFileResults(fb, q));
+                });
+                ApplyFileResults(found, query);
+                return;
+            }
+            ApplyFileResults(found, query);
+            return;
+        }
+
+        // 异步路径（Windows Search / 内置索引 / 实时扫描兜底）
         var cts = new CancellationTokenSource();
         _fileSearchCts = cts;
         var token = cts.Token;
@@ -407,22 +445,7 @@ public partial class MainWindow : Window
         _ = Task.Run(async () =>
         {
             List<(string Name, string Path)> found;
-            var backend = _config.FileSearchBackend;
-            if (backend == "usn" || (backend == "auto" && UsnIndex.IsReady))
-            {
-                // 自有 USN 引擎（Listary 同技术）：不依赖 Windows Search，毫秒级
-                found = (await Task.Run(() => UsnIndex.Search(query, roots, MaxFileResults), token))
-                    .Select(p => (System.IO.Path.GetFileName(p), p))
-                    .ToList();
-                if (found.Count == 0 && backend == "auto")
-                {
-                    // auto 模式：USN 无结果 → 回退 Windows Search → 内置索引
-                    if (WindowsSearch.IsAvailable())
-                        found = await Task.Run(() => WindowsSearch.Search(query, roots, MaxFileResults), token);
-                    if (found.Count == 0 && FileIndex.IsReady) found = FileIndex.Search(query, MaxFileResults);
-                }
-            }
-            else if (backend == "wsearch" || (backend == "auto" && WindowsSearch.IsAvailable()))
+            if (backend == "wsearch" || (backend == "auto" && WindowsSearch.IsAvailable()))
             {
                 // Windows Search 系统索引
                 found = await Task.Run(() => WindowsSearch.Search(query, roots, MaxFileResults), token);
@@ -461,22 +484,40 @@ public partial class MainWindow : Window
                 if (SearchBox.Text?.Trim() != query) return; // 用户已改词，丢弃旧结果
                 _fileResults = vms;
                 RebuildDisplay(SearchBox.Text?.Trim() ?? "", true);
-                // 图标后台异步补充（提取完自动更新，不阻塞结果展示）
-                _ = Task.Run(() =>
-                {
-                    foreach (var vm in vms)
-                    {
-                        if (token.IsCancellationRequested) return;
-                        try
-                        {
-                            var icon = IconProvider.GetFileIcon(vm.LaunchPath);
-                            if (icon != null) vm.Icon = icon; // INPC → 行内图标即时更新
-                        }
-                        catch { }
-                    }
-                }, CancellationToken.None);
+                FillIconsAsync(vms, token);
             }));
         }, CancellationToken.None);
+    }
+
+    /// <summary>把文件搜索结果应用到列表（UI 线程调用；图标异步补充）。</summary>
+    private void ApplyFileResults(List<(string Name, string Path)> found, string query)
+    {
+        if (SearchBox.Text?.Trim() != query) return; // 用户已改词，丢弃旧结果
+        List<ItemVm> vms;
+        try
+        {
+            vms = found.Select(f => MakeFileVm(f.Path)).ToList();
+        }
+        catch { return; }
+        vms.Sort((a, b) => string.CompareOrdinal(b.TimeText, a.TimeText));
+        _fileResults = vms;
+        RebuildDisplay(SearchBox.Text?.Trim() ?? "", true);
+        _ = Task.Run(() => FillIconsAsync(vms, CancellationToken.None));
+    }
+
+    /// <summary>后台逐个补充真实图标（提取完自动更新对应行）。</summary>
+    private static void FillIconsAsync(List<ItemVm> vms, CancellationToken token)
+    {
+        foreach (var vm in vms)
+        {
+            if (token.IsCancellationRequested) return;
+            try
+            {
+                var icon = IconProvider.GetFileIcon(vm.LaunchPath);
+                if (icon != null) vm.Icon = icon; // INPC → 行内图标即时更新
+            }
+            catch { }
+        }
     }
 
     /// <summary>构建一个文件搜索结果的视图模型（先不取图标——用通用字形秒出，图标由后台异步补充）。</summary>
