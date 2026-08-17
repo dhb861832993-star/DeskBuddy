@@ -1,4 +1,4 @@
-# 一键构建 DeskBuddy（发布为自包含单文件 exe）
+﻿# 一键构建 DeskBuddy（发布为自包含单文件 exe）
 # 需要 .NET 8 SDK（https://dotnet.microsoft.com/download/dotnet/8.0）
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
