@@ -75,7 +75,6 @@ public partial class SettingsWindow : Window
         {
             "usn" => 1,
             "wsearch" => 2,
-            "builtin" => 3,
             _ => 0
         };
 

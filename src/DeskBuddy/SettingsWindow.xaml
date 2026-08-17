@@ -341,7 +341,6 @@
                                     <ComboBoxItem Tag="auto" Content="自动（优先自有 USN 引擎，其次 Windows Search，最后内置索引）"/>
                                     <ComboBoxItem Tag="usn" Content="自有索引引擎（USN，不依赖 Windows Search，秒级全盘）"/>
                                     <ComboBoxItem Tag="wsearch" Content="Windows Search 系统索引"/>
-                                    <ComboBoxItem Tag="builtin" Content="内置索引（内存，上限 30 万条）"/>
                                 </ComboBox>
 
                                 <TextBlock Style="{StaticResource FieldLabel}" Margin="0,8,0,0"
