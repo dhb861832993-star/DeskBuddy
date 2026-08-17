@@ -25,6 +25,7 @@ public static class UsnIndex
     private static volatile bool _ready;
     private static string _lastQuery = "";
     private static List<string> _lastResults = new();
+    private static string[] _lastRoots = Array.Empty<string>();
 
     public static bool IsReady { get { lock (Sync) return _ready; } }
 
@@ -196,16 +197,26 @@ public static class UsnIndex
             if (!_ready || string.IsNullOrWhiteSpace(query)) return new List<string>();
             var results = new List<string>();
 
-            // 增量过滤：新查询以旧查询开头时，直接过滤上次结果
             var q = query.Trim();
             var triedIncremental = false;
+
+            // 搜索范围变了 → 上次的增量结果作废（防止旧范围文件泄漏到新范围结果）
+            if (!SameRoots(_lastRoots, rootFilters))
+            {
+                _lastQuery = "";
+                _lastResults = new List<string>();
+                _lastRoots = rootFilters;
+            }
+
+            // 增量过滤：新查询以旧查询开头时，直接过滤上次结果（仍按当前范围过滤）
             if (_lastResults.Count > 0 && _lastQuery.Length > 0 && q.StartsWith(_lastQuery, StringComparison.OrdinalIgnoreCase) && q.Length > _lastQuery.Length)
             {
                 triedIncremental = true;
                 foreach (var path in _lastResults)
                 {
                     if (results.Count >= limit) break;
-                    if (Path.GetFileName(path).Contains(q, StringComparison.OrdinalIgnoreCase)) results.Add(path);
+                    if (MatchesRoot(path, rootFilters) && Path.GetFileName(path).Contains(q, StringComparison.OrdinalIgnoreCase))
+                        results.Add(path);
                 }
             }
             if (!triedIncremental || results.Count == 0)
@@ -268,6 +279,18 @@ public static class UsnIndex
             if (path.StartsWith(root, StringComparison.OrdinalIgnoreCase)) return true;
         }
         return false;
+    }
+
+    private static bool SameRoots(string[] a, string[] b)
+    {
+        if (a.Length != b.Length) return false;
+        for (var i = 0; i < a.Length; i++)
+        {
+            if (!string.Equals(Environment.ExpandEnvironmentVariables(a[i]).Trim().TrimEnd('\\'),
+                               Environment.ExpandEnvironmentVariables(b[i]).Trim().TrimEnd('\\'),
+                               StringComparison.OrdinalIgnoreCase)) return false;
+        }
+        return true;
     }
 
     /// <summary>通过父引用链还原完整路径（目录路径有缓存；卷根补盘符）。</summary>
