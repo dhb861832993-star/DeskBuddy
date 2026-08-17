@@ -380,6 +380,9 @@ public partial class MainWindow : Window
         _fileSearchCts = null;
     }
 
+    /// <summary>文件搜索结果上限（窗口会自动扩展高度，放宽到 100 条）。</summary>
+    private const int MaxFileResults = 100;
+
     /// <summary>启动文件搜索：索引就绪则毫秒级内存匹配；否则实时扫描兜底（200ms 防抖）。</summary>
     private void StartFileSearch(string query)
     {
@@ -398,36 +401,36 @@ public partial class MainWindow : Window
             if (backend == "usn" || (backend == "auto" && UsnIndex.IsReady))
             {
                 // 自有 USN 引擎（Listary 同技术）：不依赖 Windows Search，毫秒级
-                found = (await Task.Run(() => UsnIndex.Search(query, roots), token))
+                found = (await Task.Run(() => UsnIndex.Search(query, roots, MaxFileResults), token))
                     .Select(p => (System.IO.Path.GetFileName(p), p))
                     .ToList();
                 if (found.Count == 0 && backend == "auto")
                 {
                     // auto 模式：USN 无结果 → 回退 Windows Search → 内置索引
                     if (WindowsSearch.IsAvailable())
-                        found = await Task.Run(() => WindowsSearch.Search(query, roots), token);
-                    if (found.Count == 0 && FileIndex.IsReady) found = FileIndex.Search(query);
+                        found = await Task.Run(() => WindowsSearch.Search(query, roots, MaxFileResults), token);
+                    if (found.Count == 0 && FileIndex.IsReady) found = FileIndex.Search(query, MaxFileResults);
                 }
             }
             else if (backend == "wsearch" || (backend == "auto" && WindowsSearch.IsAvailable()))
             {
                 // Windows Search 系统索引
-                found = await Task.Run(() => WindowsSearch.Search(query, roots), token);
+                found = await Task.Run(() => WindowsSearch.Search(query, roots, MaxFileResults), token);
                 if (found.Count == 0 && backend == "auto" && FileIndex.IsReady)
                 {
                     // auto 模式：Windows Search 无结果 → 回退内置索引
-                    found = FileIndex.Search(query);
+                    found = FileIndex.Search(query, MaxFileResults);
                 }
             }
             else if (FileIndex.IsReady)
             {
-                found = FileIndex.Search(query);
+                found = FileIndex.Search(query, MaxFileResults);
             }
             else
             {
                 try { await Task.Delay(200, token); } catch { return; }
                 if (token.IsCancellationRequested) return;
-                found = FileSearcher.Search(roots, query, token);
+                found = FileSearcher.Search(roots, query, token, maxResults: MaxFileResults);
             }
             if (token.IsCancellationRequested) return;
 
