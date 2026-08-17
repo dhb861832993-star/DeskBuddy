@@ -365,6 +365,8 @@ public partial class MainWindow : Window
         {
             EmptyHint.Visibility = Visibility.Collapsed;
         }
+        // 结果数量变化时自动调整窗口高度（文件结果多时向下扩展，减少滚动）
+        PositionWindow();
         // 底部右侧不再显示常驻操作说明，仅保留瞬时的操作反馈（如拖拽添加成功）
         FooterHint.Text = "";
     }
@@ -504,18 +506,24 @@ public partial class MainWindow : Window
         Width = Math.Clamp(width, 480, wa.Width - 40);
 
         var header = 58 + 1 + 34 + 14 + 12; // 搜索栏 + 分隔线 + 底部 + 边距
+        // 显示条目 = 菜单条目 + 文件分区（分区头 1 行 + 文件结果）
+        var totalItems = _filtered.Count + (_fileResults.Count > 0 ? 1 + _fileResults.Count : 0);
         double desired;
         if (_config.LayoutMode == "list")
         {
-            desired = header + _filtered.Count * ListRowHeight + 8;
+            desired = header + totalItems * ListRowHeight + 8;
         }
         else
         {
             var cols = GridColumnCount();
-            var rows = Math.Max(1, (int)Math.Ceiling((double)_filtered.Count / cols));
+            var rows = Math.Max(1, (int)Math.Ceiling((double)Math.Max(1, totalItems) / cols));
             desired = header + rows * TileHeight + 8;
         }
-        Height = Math.Clamp(desired, 240, Math.Min(_config.MaxWindowHeight, wa.Height - 60));
+        // 有文件结果时允许扩展到整个工作区高度（否则受 MaxWindowHeight 限制）
+        var maxH = _fileResults.Count > 0
+            ? Math.Max(wa.Height - 60, _config.MaxWindowHeight)
+            : Math.Min(_config.MaxWindowHeight, wa.Height - 60);
+        Height = Math.Clamp(desired, 240, maxH);
 
         Left = wa.Left + (wa.Width - Width) / 2;
         Top = wa.Top + wa.Height * 0.18;
