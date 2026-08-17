@@ -332,8 +332,20 @@
                                          Style="{StaticResource MacTextBox}"
                                          ToolTip="每行一个路径，例如：D:\ 或 E:\work 或 %USERPROFILE%\Desktop。留空 = 不搜索文件。"/>
 
+                                <TextBlock Text="搜索后端" Style="{StaticResource FieldLabel}" Margin="0,12,0,4"/>
+                                <ComboBox x:Name="SearchBackendBox" Height="30" FontSize="12"
+                                          Foreground="{DynamicResource TextPrimary}"
+                                          Background="{DynamicResource BtnBg}"
+                                          BorderBrush="{DynamicResource CardBorder}"
+                                          VerticalContentAlignment="Center">
+                                    <ComboBoxItem Tag="auto" Content="自动（优先自有 USN 引擎，其次 Windows Search，最后内置索引）"/>
+                                    <ComboBoxItem Tag="usn" Content="自有索引引擎（USN，不依赖 Windows Search，秒级全盘）"/>
+                                    <ComboBoxItem Tag="wsearch" Content="Windows Search 系统索引"/>
+                                    <ComboBoxItem Tag="builtin" Content="内置索引（内存，上限 30 万条）"/>
+                                </ComboBox>
+
                                 <TextBlock Style="{StaticResource FieldLabel}" Margin="0,8,0,0"
-                                           Text="提示：索引会自动实时更新——范围内文件新建/删除/改名后几秒内自动重建索引，新文件立即可搜到。自动跳过隐藏/系统/构建产物目录。"/>
+                                           Text="提示：自有引擎通过 NTFS USN 日志枚举文件名（Listary 同技术），首次构建约数十秒，之后毫秒级搜索、完全独立于 Windows Search；Windows Search 后端需先把目录加入系统「索引选项」。" />
                             </StackPanel>
 
                             <!-- ========== AI 对话 ========== -->

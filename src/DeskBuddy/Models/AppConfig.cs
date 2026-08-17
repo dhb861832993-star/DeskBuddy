@@ -61,6 +61,9 @@ public class AppConfig
     /// <summary>文件搜索范围：目录路径列表（可含环境变量，如 %USERPROFILE%\Desktop）。空则不搜索。</summary>
     public List<string> SearchRoots { get; set; } = new();
 
+    /// <summary>文件搜索后端：auto（优先 Windows Search 系统索引，回退内置索引）| wsearch | builtin。</summary>
+    public string FileSearchBackend { get; set; } = "auto";
+
     // ===== MCP（AI 快捷添加菜单） =====
 
     /// <summary>是否允许 AI 工具通过 MCP 添加/删除/查看快捷菜单（默认开启，仅本机可连）。</summary>

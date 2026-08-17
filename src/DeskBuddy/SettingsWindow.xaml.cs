@@ -71,6 +71,13 @@ public partial class SettingsWindow : Window
         // 文件搜索
         EnableFileSearchBox.IsChecked = config.EnableFileSearch;
         SearchRootsBox.Text = string.Join("\n", config.SearchRoots);
+        SearchBackendBox.SelectedIndex = config.FileSearchBackend switch
+        {
+            "usn" => 1,
+            "wsearch" => 2,
+            "builtin" => 3,
+            _ => 0
+        };
 
         SelectCategory("general"); // 默认显示「通用」
 
@@ -481,7 +488,8 @@ public partial class SettingsWindow : Window
             EnableFileSearch = EnableFileSearchBox.IsChecked == true,
             SearchRoots = SearchRootsBox.Text
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .ToList()
+                .ToList(),
+            FileSearchBackend = (SearchBackendBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString() ?? "auto"
         };
         ((App)Application.Current).ApplyConfig(cfg);
         Close();

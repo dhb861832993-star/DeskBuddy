@@ -74,7 +74,35 @@ public partial class MainWindow : Window
         // 提前预热文件索引（后台），让首次搜索就快
         if (_config.EnableFileSearch && _config.SearchRoots.Count > 0)
         {
-            FileIndex.EnsureBuilding(_config.SearchRoots.Where(r => !string.IsNullOrWhiteSpace(r)).ToArray());
+            var roots = _config.SearchRoots.Where(r => !string.IsNullOrWhiteSpace(r)).ToArray();
+            FileIndex.EnsureBuilding(roots);
+            // 自有 USN 引擎（Listary 同技术路线，不依赖 Windows Search）
+            if (_config.FileSearchBackend != "builtin")
+            {
+                UsnIndex.EnsureBuilding(roots);
+            }
+            // 自动把搜索根目录加入 Windows Search 索引范围；仅「Windows Search 后端」才显示爬取进度条
+            // （USN 引擎/auto 下搜索走自有索引，系统爬取进度不再打扰用户）
+            if (_config.FileSearchBackend == "wsearch" && WindowsSearch.IsAvailable())
+            {
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        var added = IndexScope.EnsureScopes(roots);
+                        if (added.Count > 0)
+                        {
+                            Dispatcher.BeginInvoke(() => IndexProgressWindow.ShowIfLarge(added.ToArray()));
+                        }
+                        else
+                        {
+                            // 范围已配置但仍在爬取的大目录 → 显示进度条
+                            Dispatcher.BeginInvoke(() => IndexProgressWindow.ShowIfCrawling(roots));
+                        }
+                    }
+                    catch { }
+                });
+            }
         }
         SearchBox.Text = "";
         UpdateFilter();
@@ -364,7 +392,32 @@ public partial class MainWindow : Window
         _ = Task.Run(async () =>
         {
             List<(string Name, string Path)> found;
-            if (FileIndex.IsReady)
+            var backend = _config.FileSearchBackend;
+            if (backend == "usn" || (backend == "auto" && UsnIndex.IsReady))
+            {
+                // 自有 USN 引擎（Listary 同技术）：不依赖 Windows Search，毫秒级
+                found = (await Task.Run(() => UsnIndex.Search(query, roots), token))
+                    .Select(p => (System.IO.Path.GetFileName(p), p))
+                    .ToList();
+                if (found.Count == 0 && backend == "auto")
+                {
+                    // auto 模式：USN 无结果 → 回退 Windows Search → 内置索引
+                    if (WindowsSearch.IsAvailable())
+                        found = await Task.Run(() => WindowsSearch.Search(query, roots), token);
+                    if (found.Count == 0 && FileIndex.IsReady) found = FileIndex.Search(query);
+                }
+            }
+            else if (backend == "wsearch" || (backend == "auto" && WindowsSearch.IsAvailable()))
+            {
+                // Windows Search 系统索引
+                found = await Task.Run(() => WindowsSearch.Search(query, roots), token);
+                if (found.Count == 0 && backend == "auto" && FileIndex.IsReady)
+                {
+                    // auto 模式：Windows Search 无结果 → 回退内置索引
+                    found = FileIndex.Search(query);
+                }
+            }
+            else if (FileIndex.IsReady)
             {
                 found = FileIndex.Search(query);
             }
@@ -659,6 +712,7 @@ public partial class MainWindow : Window
                 break;
             case Key.Escape:
                 HideMenu();
+                IndexProgressWindow.CloseIfActive(); // ESC 同时关闭右下角索引进度条
                 e.Handled = true;
                 break;
         }
