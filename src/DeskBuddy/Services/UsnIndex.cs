@@ -16,7 +16,8 @@ public static class UsnIndex
     private static readonly object Sync = new();
     private static Dictionary<long, long> _parent = new();       // fileRef -> parentRef（用于还原路径）
     private static Dictionary<long, string> _names = new();      // fileRef -> 文件名
-    private static Dictionary<char, List<long>> _buckets = new(); // 首字符 -> 文件引用（搜索入口）
+    private static Dictionary<char, List<long>> _buckets = new(); // 首字符 -> 文件引用（子串匹配兜底）
+    private static Dictionary<string, List<long>> _prefixBuckets = new(); // 前2字符 -> 文件引用（前缀快速路径）
     private static Dictionary<long, string> _dirPathCache = new(); // 目录 ref -> 完整路径（加速还原）
     private static Dictionary<long, string> _rootDrives = new();  // 卷根 ref -> 盘符（如 "E:"），还原路径补盘符用
     private static string[] _volumes = Array.Empty<string>();
@@ -93,6 +94,7 @@ public static class UsnIndex
         var parent = new Dictionary<long, long>();
         var names = new Dictionary<long, string>();
         var buckets = new Dictionary<char, List<long>>();
+        var prefixBuckets = new Dictionary<string, List<long>>();
         var rootDrives = new Dictionary<long, string>();
         long sw = Environment.TickCount64;
 
@@ -144,6 +146,16 @@ public static class UsnIndex
                                     buckets[c] = list;
                                 }
                                 list.Add(fileRef);
+                                // 前 2 字符前缀桶（小桶，前缀匹配快上千倍）
+                                var pkey = name.Length >= 2
+                                    ? char.ToLowerInvariant(name[0]).ToString() + char.ToLowerInvariant(name[1])
+                                    : c.ToString();
+                                if (!prefixBuckets.TryGetValue(pkey, out var plist))
+                                {
+                                    plist = new List<long>(128);
+                                    prefixBuckets[pkey] = plist;
+                                }
+                                plist.Add(fileRef);
                             }
                             startRef = (ulong)fileRef;
                         }
@@ -165,6 +177,7 @@ public static class UsnIndex
             _parent = parent;
             _names = names;
             _buckets = buckets;
+            _prefixBuckets = prefixBuckets;
             _rootDrives = rootDrives;
             _dirPathCache = new Dictionary<long, string>();
             _lastQuery = "";
@@ -199,11 +212,38 @@ public static class UsnIndex
             {
                 results = new List<string>();
                 var c = char.ToLowerInvariant(q[0]);
-                if (_buckets.TryGetValue(c, out var list))
+                var seen = new HashSet<long>();
+
+                // 快速路径：前 2 字符小桶（绝大多数查询毫秒内命中）
+                if (q.Length >= 2)
+                {
+                    var pkey = q.Substring(0, 2).ToLowerInvariant();
+                    if (_prefixBuckets.TryGetValue(pkey, out var plist))
+                    {
+                        foreach (var ref_ in plist)
+                        {
+                            if (results.Count >= limit) break;
+                            var name = _names[ref_];
+                            if (name.Contains(q, StringComparison.OrdinalIgnoreCase))
+                            {
+                                var path = ResolvePath(ref_);
+                                if (path != null && MatchesRoot(path, rootFilters))
+                                {
+                                    seen.Add(ref_);
+                                    results.Add(path);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 兜底：前缀桶不够时扫首字符桶（子串匹配，如查询不在开头出现）
+                if (results.Count < limit && _buckets.TryGetValue(c, out var list))
                 {
                     foreach (var ref_ in list)
                     {
                         if (results.Count >= limit) break;
+                        if (seen.Contains(ref_)) continue;
                         var name = _names[ref_];
                         if (name.Contains(q, StringComparison.OrdinalIgnoreCase))
                         {
