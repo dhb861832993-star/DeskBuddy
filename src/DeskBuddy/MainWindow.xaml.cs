@@ -308,17 +308,20 @@ public partial class MainWindow : Window
         var query = SearchBox.Text?.Trim() ?? "";
         var tokens = query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        // 菜单条目匹配（永远排在前面，不与文件结果混在一起）
-        _filtered = tokens.Length == 0
+        // 菜单条目匹配：内容相同则保留原列表实例（避免每击键全部重刷）
+        var newFiltered = tokens.Length == 0
             ? _all
             : _all.Where(v => tokens.All(t =>
                   v.SearchText.Contains(t, StringComparison.CurrentCultureIgnoreCase))).ToList();
+        if (newFiltered.Count != _filtered.Count || !newFiltered.SequenceEqual(_filtered))
+        {
+            _filtered = newFiltered;
+        }
 
-        // 文件搜索：启用且有关键字时异步扫描指定范围，结果追加在下方
+        // 文件搜索：同步路径（USN）立即填充 _fileResults，不提前清空旧结果，避免分区闪烁
         CancelFileSearch();
         if (tokens.Length > 0 && _config.EnableFileSearch && _config.SearchRoots.Count > 0)
         {
-            _fileResults = new List<ItemVm>();
             StartFileSearch(query);
         }
         else
@@ -345,8 +348,8 @@ public partial class MainWindow : Window
             FileSectionTitle.Text = $"文件（{_fileResults.Count} 个匹配）";
             if (!ReferenceEquals(FileList.ItemsSource, _fileResults)) FileList.ItemsSource = _fileResults;
             FileSection.Visibility = Visibility.Visible;
-            // 菜单无匹配时自动选中第一个文件，Enter 可直接打开
-            if (_filtered.Count == 0) FileList.SelectedIndex = 0;
+            // 菜单无匹配时自动选中第一个文件，Enter 可直接打开（已选中则不动，避免闪烁）
+            if (_filtered.Count == 0 && FileList.SelectedIndex != 0) FileList.SelectedIndex = 0;
         }
         else
         {
@@ -428,7 +431,11 @@ public partial class MainWindow : Window
                         fb = await Task.Run(() => WindowsSearch.Search(q, rts, MaxFileResults));
                     if (fb.Count == 0 && FileIndex.IsReady) fb = FileIndex.Search(q, MaxFileResults);
                     if (SearchBox.Text?.Trim() != q) return;
-                    Dispatcher.BeginInvoke(() => ApplyFileResults(fb, q));
+                    Dispatcher.BeginInvoke(() =>
+                    {
+                        ApplyFileResults(fb, q);
+                        RebuildDisplay(SearchBox.Text?.Trim() ?? "", true);
+                    });
                 });
                 ApplyFileResults(found, query);
                 return;
@@ -489,7 +496,7 @@ public partial class MainWindow : Window
         }, CancellationToken.None);
     }
 
-    /// <summary>把文件搜索结果应用到列表（UI 线程调用；图标异步补充）。</summary>
+    /// <summary>把文件搜索结果写入 _fileResults 并异步补图标（不主动刷界面，由调用方/UpdateFilter 统一刷）。</summary>
     private void ApplyFileResults(List<(string Name, string Path)> found, string query)
     {
         if (SearchBox.Text?.Trim() != query) return; // 用户已改词，丢弃旧结果
@@ -501,7 +508,6 @@ public partial class MainWindow : Window
         catch { return; }
         vms.Sort((a, b) => string.CompareOrdinal(b.TimeText, a.TimeText));
         _fileResults = vms;
-        RebuildDisplay(SearchBox.Text?.Trim() ?? "", true);
         _ = Task.Run(() => FillIconsAsync(vms, CancellationToken.None));
     }
 
