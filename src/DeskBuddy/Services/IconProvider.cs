@@ -7,9 +7,10 @@ using System.Windows.Media.Imaging;
 
 namespace DeskBuddy.Services;
 
-/// <summary>从 exe / ico / png 提取图标（带缓存）。</summary>
+/// <summary>从 exe / ico / png 提取图标（带缓存，线程安全）。</summary>
 public static class IconProvider
 {
+    private static readonly object CacheLock = new();
     private static readonly Dictionary<string, ImageSource?> Cache = new(StringComparer.OrdinalIgnoreCase);
 
     public static ImageSource? GetFileIcon(string path, string? customIcon = null)
@@ -18,7 +19,10 @@ public static class IconProvider
         if (string.IsNullOrWhiteSpace(src)) return null;
 
         var key = src;
-        if (Cache.TryGetValue(key, out var cached)) return cached;
+        lock (CacheLock)
+        {
+            if (Cache.TryGetValue(key, out var cached)) return cached;
+        }
 
         ImageSource? icon = null;
         if (File.Exists(src))
@@ -48,7 +52,10 @@ public static class IconProvider
         }
 
         if (icon != null) icon.Freeze();
-        Cache[key] = icon;
+        lock (CacheLock)
+        {
+            if (!Cache.ContainsKey(key)) Cache[key] = icon;
+        }
         return icon;
     }
 

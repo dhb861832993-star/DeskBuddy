@@ -431,13 +431,21 @@ public partial class MainWindow : Window
             }
             if (token.IsCancellationRequested) return;
 
+            // 在后台线程完成图标提取与修改时间读取（图标已 Freeze，可跨线程使用；避免 UI 卡顿）
+            List<ItemVm> vms;
+            try
+            {
+                vms = found.Select(f => MakeFileVm(f.Path)).ToList();
+            }
+            catch { return; }
+            if (token.IsCancellationRequested) return;
+            // 按修改时间倒序（最新在前；时间字符串为 yyyy-MM-dd HH:mm，字典序即时间序）
+            vms.Sort((a, b) => string.CompareOrdinal(b.TimeText, a.TimeText));
+
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 if (token.IsCancellationRequested) return;
                 if (SearchBox.Text?.Trim() != query) return; // 用户已改词，丢弃旧结果
-                // 按修改时间倒序（最新在前）
-                var vms = found.Select(f => MakeFileVm(f.Path)).ToList();
-                vms.Sort((a, b) => string.CompareOrdinal(b.TimeText, a.TimeText));
                 _fileResults = vms;
                 RebuildDisplay(SearchBox.Text?.Trim() ?? "", true);
             }));
