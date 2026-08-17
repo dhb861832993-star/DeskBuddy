@@ -14,13 +14,24 @@ using DeskBuddy.Services;
 namespace DeskBuddy;
 
 /// <summary>菜单中一个条目的视图模型。</summary>
-public sealed class ItemVm
+public sealed class ItemVm : System.ComponentModel.INotifyPropertyChanged
 {
     /// <summary>对应配置条目（文件搜索结果为 null）。</summary>
     public DeskBuddyItem? Source { get; init; }
     public required string Name { get; init; }
     public required string Subtitle { get; init; }
-    public ImageSource? Icon { get; init; }
+    private ImageSource? _icon;
+    /// <summary>图标（文件结果先为 null 秒出，后台异步补充真实图标）。</summary>
+    public ImageSource? Icon
+    {
+        get => _icon;
+        set
+        {
+            if (ReferenceEquals(_icon, value)) return;
+            _icon = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Icon)));
+        }
+    }
     public string? Glyph { get; init; }
     public required Brush IconBg { get; init; }
     public required string SearchText { get; init; }
@@ -30,6 +41,8 @@ public sealed class ItemVm
     public string LaunchPath { get; init; } = "";
     /// <summary>文件搜索结果的修改时间（格式化显示，如 2026-08-17 18:30）。</summary>
     public string TimeText { get; init; } = "";
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 }
 
 public partial class MainWindow : Window
@@ -431,7 +444,7 @@ public partial class MainWindow : Window
             }
             if (token.IsCancellationRequested) return;
 
-            // 在后台线程完成图标提取与修改时间读取（图标已 Freeze，可跨线程使用；避免 UI 卡顿）
+            // 在后台线程完成修改时间读取与排序（图标不阻塞——先用通用字形秒出）
             List<ItemVm> vms;
             try
             {
@@ -448,15 +461,28 @@ public partial class MainWindow : Window
                 if (SearchBox.Text?.Trim() != query) return; // 用户已改词，丢弃旧结果
                 _fileResults = vms;
                 RebuildDisplay(SearchBox.Text?.Trim() ?? "", true);
+                // 图标后台异步补充（提取完自动更新，不阻塞结果展示）
+                _ = Task.Run(() =>
+                {
+                    foreach (var vm in vms)
+                    {
+                        if (token.IsCancellationRequested) return;
+                        try
+                        {
+                            var icon = IconProvider.GetFileIcon(vm.LaunchPath);
+                            if (icon != null) vm.Icon = icon; // INPC → 行内图标即时更新
+                        }
+                        catch { }
+                    }
+                }, CancellationToken.None);
             }));
         }, CancellationToken.None);
     }
 
-    /// <summary>构建一个文件搜索结果的视图模型（文件图标 + 名称 + 完整路径）。</summary>
+    /// <summary>构建一个文件搜索结果的视图模型（先不取图标——用通用字形秒出，图标由后台异步补充）。</summary>
     private static ItemVm MakeFileVm(string path)
     {
         var name = System.IO.Path.GetFileName(path);
-        var icon = IconProvider.GetFileIcon(path);
         var bg = new SolidColorBrush(ItemVisuals.ColorFor("file"));
         bg.Freeze();
         string timeText = "";
@@ -471,7 +497,7 @@ public partial class MainWindow : Window
             Source = null,
             Name = name,
             Subtitle = path,
-            Icon = icon,
+            Icon = null, // 通用字形先显示，真实图标异步补
             Glyph = ItemVisuals.GlyphFor("file"),
             IconBg = bg,
             SearchText = (name + " " + path).ToLowerInvariant(),
@@ -546,7 +572,9 @@ public partial class MainWindow : Window
         var maxH = _fileResults.Count > 0
             ? Math.Max(wa.Height - 60, _config.MaxWindowHeight)
             : Math.Min(_config.MaxWindowHeight, wa.Height - 60);
-        Height = Math.Clamp(desired, 240, maxH);
+        var newH = Math.Clamp(desired, 240, maxH);
+        // 高度没变化就跳过设置，避免无谓的重排抖动
+        if (Math.Abs(Height - newH) > 2) Height = newH;
 
         Left = wa.Left + (wa.Width - Width) / 2;
         Top = wa.Top + wa.Height * 0.18;
