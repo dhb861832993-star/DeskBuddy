@@ -28,6 +28,8 @@ public sealed class ItemVm
     public string Kind { get; init; } = "item";
     /// <summary>文件搜索结果的完整路径。</summary>
     public string LaunchPath { get; init; } = "";
+    /// <summary>文件搜索结果的修改时间（格式化显示，如 2026-08-17 18:30）。</summary>
+    public string TimeText { get; init; } = "";
 }
 
 public partial class MainWindow : Window
@@ -314,34 +316,29 @@ public partial class MainWindow : Window
         RebuildDisplay(query, tokens.Length > 0);
     }
 
-    /// <summary>组合「菜单条目 + 文件结果」并刷新列表。</summary>
+    /// <summary>刷新菜单条目列表与文件结果列表。</summary>
     private void RebuildDisplay(string query, bool searching)
     {
-        var list = new List<ItemVm>(_filtered);
+        // 菜单条目（文件结果单独在 FileList 显示，不混入宫格）
+        ItemList.ItemsSource = _filtered;
+        ItemList.SelectedIndex = _filtered.Count > 0 ? 0 : -1;
+
+        // 文件结果：独立列表（名称+路径+修改时间，最新在前）
         if (_fileResults.Count > 0)
         {
-            var headerBg = new SolidColorBrush(ItemVisuals.ColorFor("file"));
-            headerBg.Freeze();
-            list.Add(new ItemVm
-            {
-                Source = null,
-                Name = "文件",
-                Subtitle = $"{_fileResults.Count} 个匹配",
-                Glyph = "\uE8A5", // Page
-                IconBg = headerBg,
-                SearchText = "",
-                Kind = "file-section"
-            });
-            list.AddRange(_fileResults);
+            FileSectionTitle.Text = $"文件（{_fileResults.Count} 个匹配）";
+            FileList.ItemsSource = _fileResults;
+            FileSection.Visibility = Visibility.Visible;
+            // 菜单无匹配时自动选中第一个文件，Enter 可直接打开
+            if (_filtered.Count == 0) FileList.SelectedIndex = 0;
         }
-        ItemList.ItemsSource = list;
-        if (list.Count > 0)
+        else
         {
-            // 分区头不可选中：默认选中第一个可用的结果（菜单条目优先，其次第一个文件）
-            var first = list.FindIndex(v => v.Kind != "file-section");
-            ItemList.SelectedIndex = first >= 0 ? first : 0;
+            FileSection.Visibility = Visibility.Collapsed;
+            FileList.ItemsSource = null;
         }
-        DebugLog.Write($"RebuildDisplay: menu={_filtered.Count} files={_fileResults.Count} listFirst={(list.Count > 0 ? list[0].Kind + ":" + list[0].Name : "empty")}");
+
+        DebugLog.Write($"RebuildDisplay: menu={_filtered.Count} files={_fileResults.Count}");
 
         if (searching)
             CountText.Text = _fileResults.Count > 0
@@ -353,7 +350,7 @@ public partial class MainWindow : Window
                 : $"{_filtered.Count} / {_all.Count} 个项目";
 
         Placeholder.Visibility = string.IsNullOrEmpty(query) ? Visibility.Visible : Visibility.Collapsed;
-        if (list.Count == 0)
+        if (_filtered.Count == 0 && _fileResults.Count == 0)
         {
             EmptyHint.Visibility = Visibility.Visible;
             var aiOk = ((App)Application.Current).CurrentConfig.AiEnabled;
@@ -438,7 +435,10 @@ public partial class MainWindow : Window
             {
                 if (token.IsCancellationRequested) return;
                 if (SearchBox.Text?.Trim() != query) return; // 用户已改词，丢弃旧结果
-                _fileResults = found.Select(f => MakeFileVm(f.Path)).ToList();
+                // 按修改时间倒序（最新在前）
+                var vms = found.Select(f => MakeFileVm(f.Path)).ToList();
+                vms.Sort((a, b) => string.CompareOrdinal(b.TimeText, a.TimeText));
+                _fileResults = vms;
                 RebuildDisplay(SearchBox.Text?.Trim() ?? "", true);
             }));
         }, CancellationToken.None);
@@ -451,6 +451,13 @@ public partial class MainWindow : Window
         var icon = IconProvider.GetFileIcon(path);
         var bg = new SolidColorBrush(ItemVisuals.ColorFor("file"));
         bg.Freeze();
+        string timeText = "";
+        try
+        {
+            var t = System.IO.File.GetLastWriteTime(path);
+            if (t.Year > 1601) timeText = t.ToString("yyyy-MM-dd HH:mm");
+        }
+        catch { }
         return new ItemVm
         {
             Source = null,
@@ -461,7 +468,8 @@ public partial class MainWindow : Window
             IconBg = bg,
             SearchText = (name + " " + path).ToLowerInvariant(),
             Kind = "file",
-            LaunchPath = path
+            LaunchPath = path,
+            TimeText = timeText
         };
     }
 
@@ -509,18 +517,22 @@ public partial class MainWindow : Window
         Width = Math.Clamp(width, 480, wa.Width - 40);
 
         var header = 58 + 1 + 34 + 14 + 12; // 搜索栏 + 分隔线 + 底部 + 边距
-        // 显示条目 = 菜单条目 + 文件分区（分区头 1 行 + 文件结果）
-        var totalItems = _filtered.Count + (_fileResults.Count > 0 ? 1 + _fileResults.Count : 0);
         double desired;
         if (_config.LayoutMode == "list")
         {
-            desired = header + totalItems * ListRowHeight + 8;
+            desired = header + _filtered.Count * ListRowHeight + 8;
         }
         else
         {
             var cols = GridColumnCount();
-            var rows = Math.Max(1, (int)Math.Ceiling((double)Math.Max(1, totalItems) / cols));
+            var rows = _filtered.Count == 0 ? 0 : Math.Max(1, (int)Math.Ceiling((double)_filtered.Count / cols));
             desired = header + rows * TileHeight + 8;
+        }
+        // 文件结果区：标题 + 行（每行 42px，最多展示 14 行，超出部分 FileList 内部滚动）
+        if (_fileResults.Count > 0)
+        {
+            var fileRows = Math.Min(_fileResults.Count, 14);
+            desired += 24 + fileRows * 42;
         }
         // 有文件结果时允许扩展到整个工作区高度（否则受 MaxWindowHeight 限制）
         var maxH = _fileResults.Count > 0
@@ -745,6 +757,14 @@ public partial class MainWindow : Window
     /// <summary>启动当前选中条目（文件结果则用默认程序打开；调试触发器也会调用）。</summary>
     public void LaunchSelected()
     {
+        // 文件结果列表有选中项时优先启动文件
+        if (FileList.SelectedItem is ItemVm fvm && fvm.Kind == "file")
+        {
+            _lastLaunchTime = DateTime.UtcNow;
+            Launcher.OpenPath(fvm.LaunchPath);
+            HideMenu();
+            return;
+        }
         if (ItemList.SelectedItem is not ItemVm vm) return;
         if (vm.Kind == "file-section") return; // 分区标题不可启动
         if (vm.Kind == "file")
@@ -757,6 +777,20 @@ public partial class MainWindow : Window
         if (vm.Source is not { } src) return;
         _lastLaunchTime = DateTime.UtcNow;
         Launcher.Launch(src);
+        HideMenu();
+    }
+
+    /// <summary>文件结果列表：单击直接启动（与菜单一致，单击即开）。</summary>
+    private void OnFileListMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+        var lbi = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
+        if (lbi?.DataContext is not ItemVm vm) return;
+        if ((DateTime.UtcNow - _lastLaunchTime).TotalMilliseconds < 600) return; // 防双击重复
+        FileList.SelectedItem = vm;
+        ItemList.SelectedItem = null;
+        _lastLaunchTime = DateTime.UtcNow;
+        Launcher.OpenPath(vm.LaunchPath);
         HideMenu();
     }
 

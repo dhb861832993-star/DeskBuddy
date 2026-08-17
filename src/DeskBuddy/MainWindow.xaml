@@ -225,6 +225,40 @@
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
+
+        <!-- 文件搜索结果行：图标 + 名称 + 路径 + 修改时间 -->
+        <DataTemplate x:Key="FileRowTemplate">
+            <Grid MinHeight="42" ToolTip="{Binding Subtitle}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Border Width="32" Height="32" CornerRadius="8" Background="{Binding IconBg}">
+                    <Grid>
+                        <Image x:Name="FileRowIcon" Source="{Binding Icon}" Stretch="Uniform" Margin="3"/>
+                        <TextBlock x:Name="FileRowGlyph" Text="{Binding Glyph}"
+                                   Style="{StaticResource GlyphStyle}" FontSize="15" Visibility="Collapsed"/>
+                    </Grid>
+                </Border>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,10,0">
+                    <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimary}" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{Binding Subtitle}" FontSize="10.5"
+                               Foreground="{DynamicResource TextSecondary}"
+                               TextTrimming="CharacterEllipsis" Margin="0,1,0,0"/>
+                </StackPanel>
+                <TextBlock Grid.Column="2" Text="{Binding TimeText}" FontSize="10"
+                           Foreground="{DynamicResource TextSecondary}"
+                           VerticalAlignment="Center" Margin="0,0,8,0"/>
+            </Grid>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                    <Setter TargetName="FileRowGlyph" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="FileRowIcon" Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
     </Window.Resources>
 
     <Grid>
@@ -302,26 +336,51 @@
 
             <!-- ===== 条目列表 ===== -->
             <Grid Grid.Row="2">
-                <ListBox x:Name="ItemList" Margin="10,8,10,4"
-                         BorderThickness="0" Background="Transparent"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         PreviewMouseLeftButtonDown="OnListPreviewLeftDown"
-                         PreviewMouseMove="OnListPreviewMouseMove"
-                         PreviewMouseLeftButtonUp="OnListMouseUp"
-                         PreviewMouseRightButtonUp="OnListPreviewRightUp"
-                         MouseDoubleClick="OnListDoubleClick">
-                    <ListBox.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel Orientation="Horizontal"/>
-                        </ItemsPanelTemplate>
-                    </ListBox.ItemsPanel>
-                    <ListBox.ItemContainerStyle>
-                        <StaticResource ResourceKey="TileContainerStyle"/>
-                    </ListBox.ItemContainerStyle>
-                    <ListBox.ItemTemplate>
-                        <StaticResource ResourceKey="TileTemplate"/>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                <StackPanel>
+                    <ListBox x:Name="ItemList" Margin="10,8,10,4"
+                             BorderThickness="0" Background="Transparent"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             PreviewMouseLeftButtonDown="OnListPreviewLeftDown"
+                             PreviewMouseMove="OnListPreviewMouseMove"
+                             PreviewMouseLeftButtonUp="OnListMouseUp"
+                             PreviewMouseRightButtonUp="OnListPreviewRightUp"
+                             MouseDoubleClick="OnListDoubleClick">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemContainerStyle>
+                            <StaticResource ResourceKey="TileContainerStyle"/>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <StaticResource ResourceKey="TileTemplate"/>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <!-- ===== 文件搜索结果（独立列表：名称 + 路径 + 修改时间，最新在前） ===== -->
+                    <StackPanel x:Name="FileSection" Visibility="Collapsed">
+                        <TextBlock x:Name="FileSectionTitle" Margin="16,6,16,4" FontSize="11"
+                                   Foreground="{DynamicResource TextSecondary}"/>
+                        <ListBox x:Name="FileList" Margin="10,0,10,6" MaxHeight="620"
+                                 BorderThickness="0" Background="Transparent"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 PreviewMouseLeftButtonUp="OnFileListMouseUp"
+                                 PreviewMouseRightButtonUp="OnListPreviewRightUp">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Vertical"/>
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemContainerStyle>
+                                <StaticResource ResourceKey="ListContainerStyle"/>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <StaticResource ResourceKey="FileRowTemplate"/>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                </StackPanel>
                 <Button x:Name="EmptyHint" Click="OnAiClick" Visibility="Collapsed"
                         Background="Transparent" BorderThickness="0" Cursor="Hand"
                         HorizontalAlignment="Center" VerticalAlignment="Center">
