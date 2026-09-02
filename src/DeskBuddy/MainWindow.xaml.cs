@@ -1435,11 +1435,23 @@ public partial class MainWindow : Window
 
     private void RefreshMemoList()
     {
-        MemoList.ItemsSource = _memoItems;
+        // 统计
+        MemoStats.Text = $"待办 {_memoItems.Count} · 已完成 {_memoArchive.Count}";
+        MemoArchiveToggleText.Text = $"已完成 ({_memoArchive.Count})";
+
+        // 待办列表（支持搜索过滤）
+        string kw = (MemoSearchBox.Text ?? "").Trim();
+        MemoList.ItemsSource = string.IsNullOrEmpty(kw)
+            ? _memoItems
+            : _memoItems.Where(m => m.Text.Contains(kw, StringComparison.CurrentCultureIgnoreCase)).ToList();
         MemoArchiveList.ItemsSource = _memoArchive;
-        MemoList.SelectedIndex = -1; // 打开时不保留选中状态
+
+        MemoList.SelectedIndex = -1;
         MemoArchiveList.SelectedIndex = -1;
-        MemoArchiveToggleText.Text = $"历史归档 ({_memoArchive.Count})";
+
+        // 空状态：待办为空（且没在搜索）时显示提示
+        MemoEmptyHint.Visibility = _memoItems.Count == 0 && string.IsNullOrEmpty(kw)
+            ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>切换备忘录面板显示/隐藏。</summary>
@@ -1569,5 +1581,43 @@ public partial class MainWindow : Window
     private void OnMemoEditGotFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
         if (sender is TextBox tb) tb.SelectAll();
+    }
+
+    // ==================== 备忘录：搜索 / 编辑按钮 / 恢复 / 清空 ====================
+
+    private void OnMemoSearchToggle(object sender, RoutedEventArgs e)
+    {
+        var show = MemoSearchBox.Visibility != Visibility.Visible;
+        MemoSearchBox.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (show) { MemoSearchBox.Focus(); MemoSearchBox.SelectAll(); }
+        else { MemoSearchBox.Text = ""; }
+    }
+
+    private void OnMemoSearchChanged(object sender, TextChangedEventArgs e) => RefreshMemoList();
+
+    /// <summary>编辑按钮 → 当前笔记进入行内编辑。</summary>
+    private void OnMemoEditBtn(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.FrameworkElement fe && fe.DataContext is MemoItem item) StartEditMemo(item);
+    }
+
+    /// <summary>已完成条目恢复为待办。</summary>
+    private void OnMemoRestore(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.FrameworkElement fe && fe.DataContext is MemoItem item)
+        {
+            _memoArchive.Remove(item);
+            _memoItems.Insert(0, new MemoItem { Text = item.Text });
+            RefreshMemoList();
+            SaveMemo();
+        }
+    }
+
+    /// <summary>清空已完成归档。</summary>
+    private void OnMemoClearDone(object sender, RoutedEventArgs e)
+    {
+        _memoArchive.Clear();
+        RefreshMemoList();
+        SaveMemo();
     }
 }

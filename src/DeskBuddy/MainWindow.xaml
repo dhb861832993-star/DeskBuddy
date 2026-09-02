@@ -471,24 +471,43 @@
         </Border>
 
         <!-- ===== 备忘录面板（右侧独立圆角卡片，可关闭） ===== -->
-        <Border x:Name="MemoPanel" Grid.Column="1" Width="300" Margin="1,0,0,0"
+        <Border x:Name="MemoPanel" Grid.Column="1" Width="310" Margin="1,0,0,0"
                 CornerRadius="26" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1"
                 Background="{DynamicResource CardBg}" Visibility="Collapsed">
             <DockPanel>
-                <!-- 标题 -->
+                <!-- 标题栏 -->
                 <Grid DockPanel.Dock="Top" Height="56">
-                    <TextBlock Text="📝 备忘录" FontSize="14" FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextPrimary}" Margin="14,0,0,0"
-                               VerticalAlignment="Center"/>
-                    <Button x:Name="MemoCloseBtn" ToolTip="关闭备忘录" Click="OnMemoToggle"
-                            HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0"
-                            Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="8,3">
-                        <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="12"
-                                   Foreground="{DynamicResource TextSecondary}"/>
-                    </Button>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                        <TextBlock Text="📝" FontSize="14" VerticalAlignment="Center"/>
+                        <TextBlock Text="我的备忘录" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimary}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,6,0">
+                        <TextBlock x:Name="MemoStats" FontSize="10.5" Foreground="{DynamicResource TextSecondary}"
+                                   VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <Button x:Name="MemoSearchBtn" ToolTip="搜索便签" Click="OnMemoSearchToggle"
+                                Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="7,3">
+                            <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondary}"/>
+                        </Button>
+                        <Button x:Name="MemoCloseBtn" ToolTip="关闭备忘录" Click="OnMemoToggle"
+                                Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="7,3">
+                            <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondary}"/>
+                        </Button>
+                    </StackPanel>
                 </Grid>
                 <Rectangle Height="1" Margin="12,0" Fill="{DynamicResource SeparatorBrush}"/>
-                <!-- 输入区 -->
+
+                <!-- 搜索（可选） -->
+                <TextBox x:Name="MemoSearchBox" DockPanel.Dock="Top" Visibility="Collapsed"
+                         Margin="12,10,12,0" FontSize="12.5" Foreground="{DynamicResource TextPrimary}"
+                         CaretBrush="{DynamicResource TextPrimary}"
+                         Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}"
+                         BorderThickness="1" Padding="8,5" VerticalContentAlignment="Center"
+                         TextChanged="OnMemoSearchChanged"/>
+
+                <!-- 底部输入区 -->
                 <DockPanel DockPanel.Dock="Bottom" Margin="12,8,12,12">
                     <Button x:Name="MemoAddBtn" DockPanel.Dock="Right" Content="添加" Margin="8,0,0,0"
                             FontSize="12" Style="{StaticResource MacButton}" Click="OnMemoAdd"/>
@@ -498,80 +517,25 @@
                              BorderThickness="1" Padding="8,5" KeyDown="OnMemoInputKeyDown"
                              VerticalContentAlignment="Center"/>
                 </DockPanel>
-                <!-- 列表（未完成） -->
-                <ListBox x:Name="MemoList" Margin="8,4,8,4" BorderThickness="0"
-                         Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         MouseDoubleClick="OnMemoListDoubleClick">
-                    <ListBox.ItemContainerStyle>
-                        <Style TargetType="ListBoxItem">
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                            <Setter Property="Margin" Value="0,3"/>
-                            <Setter Property="Background" Value="Transparent"/>
-                            <Setter Property="BorderThickness" Value="0"/>
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="ListBoxItem">
-                                        <!-- 无选中高亮：选中/悬停都不变色 -->
-                                        <ContentPresenter/>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </ListBox.ItemContainerStyle>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Border CornerRadius="8" Background="{DynamicResource BtnBg}"
-                                    BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,7">
-                                <Grid>
-                                    <!-- 阅读视图 -->
-                                    <DockPanel x:Name="MemoReadView">
-                                        <Button DockPanel.Dock="Right" ToolTip="删除这条" Click="OnMemoDelete"
-                                                VerticalAlignment="Center" Margin="6,0,0,0"
-                                                Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="4,2">
-                                            <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="10"
-                                                       Foreground="{DynamicResource TextSecondary}"/>
-                                        </Button>
-                                        <Button DockPanel.Dock="Left" ToolTip="标记为已完成(双击可编辑)" Click="OnMemoDone"
-                                                VerticalAlignment="Center" Margin="0,0,8,0"
-                                                Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="3">
-                                            <Ellipse Width="18" Height="18" Stroke="{DynamicResource TextPrimary}" StrokeThickness="1.5"/>
-                                        </Button>
-                                        <TextBlock Text="{Binding Text}" FontSize="12.5" TextWrapping="Wrap"
-                                                   Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
-                                    </DockPanel>
-                                    <!-- 编辑视图 -->
-                                    <TextBox x:Name="MemoEditBox" Visibility="Collapsed"
-                                             Text="{Binding EditText, UpdateSourceTrigger=PropertyChanged}"
-                                             FontSize="12.5" Foreground="{DynamicResource TextPrimary}"
-                                             CaretBrush="{DynamicResource TextPrimary}"
-                                             Background="Transparent" BorderThickness="0" Padding="0"
-                                             KeyDown="OnMemoEditKey"
-                                             GotKeyboardFocus="OnMemoEditGotFocus"/>
-                                </Grid>
-                            </Border>
-                            <DataTemplate.Triggers>
-                                <DataTrigger Binding="{Binding IsEditing}" Value="True">
-                                    <Setter TargetName="MemoReadView" Property="Visibility" Value="Collapsed"/>
-                                    <Setter TargetName="MemoEditBox" Property="Visibility" Value="Visible"/>
-                                </DataTrigger>
-                            </DataTemplate.Triggers>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
 
-                <!-- 历史归档（已完成） -->
-                <StackPanel DockPanel.Dock="Bottom" Margin="8,0,8,6">
+                <!-- 已完成（可折叠，含清空） -->
+                <StackPanel DockPanel.Dock="Bottom" Margin="12,0,12,6">
                     <DockPanel>
+                        <Button x:Name="MemoArchiveClear" DockPanel.Dock="Right" ToolTip="清空已完成"
+                                Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="5,2" Click="OnMemoClearDone"
+                                Foreground="{DynamicResource TextSecondary}" FontSize="11">
+                            <TextBlock Text="清空" FontSize="11" Foreground="#FF453A"/>
+                        </Button>
                         <Button x:Name="MemoArchiveToggleArrow" DockPanel.Dock="Right" VerticalAlignment="Center"
-                                Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,2"
-                                Click="OnMemoArchiveToggle" ToolTip="展开/收起历史归档">
+                                Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="5,2"
+                                Click="OnMemoArchiveToggle" ToolTip="展开/收起已完成">
                             <TextBlock x:Name="MemoArchiveArrow" Text="&#xE70D;" FontFamily="Segoe MDL2 Assets"
                                        FontSize="9" Foreground="{DynamicResource TextSecondary}"/>
                         </Button>
-                        <TextBlock x:Name="MemoArchiveToggleText" Text="历史归档 (0)" FontSize="11"
+                        <TextBlock x:Name="MemoArchiveToggleText" Text="已完成 (0)" FontSize="11.5" FontWeight="SemiBold"
                                    Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"
                                    Cursor="Hand" MouseLeftButtonDown="OnMemoArchiveToggle"
-                                   Margin="0,0,4,0" TextTrimming="CharacterEllipsis"/>
+                                   Margin="0,0,6,0" TextTrimming="CharacterEllipsis"/>
                     </DockPanel>
                     <ListBox x:Name="MemoArchiveList" Margin="0,4,0,0" Visibility="Collapsed"
                              MaxHeight="220" BorderThickness="0" Background="Transparent"
@@ -585,7 +549,6 @@
                                 <Setter Property="Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="ListBoxItem">
-                                            <!-- 无选中高亮 -->
                                             <ContentPresenter/>
                                         </ControlTemplate>
                                     </Setter.Value>
@@ -599,8 +562,14 @@
                                     <DockPanel>
                                         <Button DockPanel.Dock="Right" ToolTip="删除" Click="OnMemoDelete"
                                                 VerticalAlignment="Center" Margin="6,0,0,0"
-                                                Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="4,2">
+                                                Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="3,2">
                                             <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="10"
+                                                       Foreground="{DynamicResource TextSecondary}"/>
+                                        </Button>
+                                        <Button DockPanel.Dock="Right" ToolTip="恢复为待办" Click="OnMemoRestore"
+                                                VerticalAlignment="Center" Margin="4,0,0,0"
+                                                Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="3,2">
+                                            <TextBlock Text="&#xE896;" FontFamily="Segoe MDL2 Assets" FontSize="11"
                                                        Foreground="{DynamicResource TextSecondary}"/>
                                         </Button>
                                         <TextBlock DockPanel.Dock="Right" Text="✓" FontSize="12"
@@ -614,6 +583,77 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
                 </StackPanel>
+
+                <!-- 待办列表（未完成） + 空状态 -->
+                <Grid>
+                    <ListBox x:Name="MemoList" Margin="8,6,8,4" BorderThickness="0"
+                             Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             MouseDoubleClick="OnMemoListDoubleClick">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="Margin" Value="0,3"/>
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <ContentPresenter/>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border CornerRadius="10" Background="{DynamicResource BtnBg}"
+                                        BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,7">
+                                    <Grid>
+                                        <DockPanel x:Name="MemoReadView">
+                                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                                <Button ToolTip="编辑(或双击)" Click="OnMemoEditBtn"
+                                                        VerticalAlignment="Center" Margin="2,0,0,0"
+                                                        Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="4,2">
+                                                    <TextBlock Text="&#xE70F;" FontFamily="Segoe MDL2 Assets" FontSize="11"
+                                                               Foreground="{DynamicResource TextSecondary}"/>
+                                                </Button>
+                                                <Button ToolTip="删除这条" Click="OnMemoDelete"
+                                                        VerticalAlignment="Center" Margin="2,0,0,0"
+                                                        Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="4,2">
+                                                    <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="10"
+                                                               Foreground="{DynamicResource TextSecondary}"/>
+                                                </Button>
+                                            </StackPanel>
+                                            <Button DockPanel.Dock="Left" ToolTip="标记为已完成" Click="OnMemoDone"
+                                                    VerticalAlignment="Top" Margin="0,2,8,0"
+                                                    Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="2">
+                                                <Ellipse Width="16" Height="16" Stroke="{DynamicResource TextPrimary}" StrokeThickness="1.5"/>
+                                            </Button>
+                                            <TextBlock Text="{Binding Text}" FontSize="12.5" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        </DockPanel>
+                                        <TextBox x:Name="MemoEditBox" Visibility="Collapsed"
+                                                 Text="{Binding EditText, UpdateSourceTrigger=PropertyChanged}"
+                                                 FontSize="12.5" Foreground="{DynamicResource TextPrimary}"
+                                                 CaretBrush="{DynamicResource TextPrimary}"
+                                                 Background="{DynamicResource BtnBg}" BorderThickness="1"
+                                                 BorderBrush="{DynamicResource CardBorder}" Padding="6,4"
+                                                 KeyDown="OnMemoEditKey" GotKeyboardFocus="OnMemoEditGotFocus"/>
+                                    </Grid>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsEditing}" Value="True">
+                                        <Setter TargetName="MemoReadView" Property="Visibility" Value="Collapsed"/>
+                                        <Setter TargetName="MemoEditBox" Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <TextBlock x:Name="MemoEmptyHint" Text="暂无待办，在下方记点什么吧"
+                               FontSize="12" Foreground="{DynamicResource TextSecondary}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                </Grid>
             </DockPanel>
         </Border>
 
