@@ -533,8 +533,21 @@
                                         </Button>
                                         <Button DockPanel.Dock="Left" ToolTip="标记为已完成(双击可编辑)" Click="OnMemoDone"
                                                 VerticalAlignment="Center" Margin="0,0,8,0"
-                                                Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="2">
-                                            <Ellipse Width="14" Height="14" Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.5"/>
+                                                Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="3">
+                                            <Grid Width="18" Height="18">
+                                                <Ellipse Stroke="{DynamicResource TextPrimary}" StrokeThickness="1.5"/>
+                                                <Ellipse x:Name="MemoDoneHover" Fill="{StaticResource AiGradient}"
+                                                         Opacity="0" Margin="3"/>
+                                            </Grid>
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="MemoDoneHover" Property="Opacity" Value="0.5"/>
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
                                         </Button>
                                         <TextBlock Text="{Binding Text}" FontSize="12.5" TextWrapping="Wrap"
                                                    Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
