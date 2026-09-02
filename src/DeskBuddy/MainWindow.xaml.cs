@@ -49,6 +49,8 @@ public sealed class ItemVm : System.ComponentModel.INotifyPropertyChanged
 public sealed class MemoItem
 {
     public required string Text { get; init; }
+    /// <summary>是否已完成（已完成自动归档到历史）。</summary>
+    public bool Done { get; init; }
 }
 
 public partial class MainWindow : Window
@@ -65,7 +67,8 @@ public partial class MainWindow : Window
     private DispatcherTimer? _hideTimer;
 
     // ===== 备忘录 =====
-    private readonly System.Collections.ObjectModel.ObservableCollection<MemoItem> _memoItems = new();
+    private readonly System.Collections.ObjectModel.ObservableCollection<MemoItem> _memoItems = new();   // 未完成
+    private readonly System.Collections.ObjectModel.ObservableCollection<MemoItem> _memoArchive = new(); // 已完成(历史归档)
     private readonly string MemoPath = System.IO.Path.Combine(AppContext.BaseDirectory, "DeskBuddy.memo.json");
 
     /// <summary>配置被重新加载（App 据此更新热键检测器）。</summary>
@@ -1353,33 +1356,51 @@ public partial class MainWindow : Window
         {
             if (System.IO.File.Exists(MemoPath))
             {
-                var list = System.Text.Json.JsonSerializer.Deserialize<List<string>>(System.IO.File.ReadAllText(MemoPath));
+                var json = System.IO.File.ReadAllText(MemoPath);
+                var list = System.Text.Json.JsonSerializer.Deserialize<List<MemoItem>>(json);
+                _memoItems.Clear();
+                _memoArchive.Clear();
                 if (list != null)
                 {
-                    _memoItems.Clear();
-                    // 文件里旧→新，逐个插到最前面 → 显示为最新在前
-                    foreach (var t in list)
+                    // 文件里旧→新，逐个插到最前面 → 显示为最新在前；已完成进归档
+                    foreach (var m in list)
                     {
-                        if (!string.IsNullOrWhiteSpace(t)) _memoItems.Insert(0, new MemoItem { Text = t });
+                        if (string.IsNullOrWhiteSpace(m.Text)) continue;
+                        if (m.Done) _memoArchive.Insert(0, new MemoItem { Text = m.Text, Done = true });
+                        else _memoItems.Insert(0, new MemoItem { Text = m.Text });
                     }
+                }
+                else
+                {
+                    // 兼容旧格式：字符串数组 → 全部作为未完成导入
+                    var old = System.Text.Json.JsonSerializer.Deserialize<List<string>>(json);
+                    if (old != null)
+                        foreach (var t in old) { if (!string.IsNullOrWhiteSpace(t)) _memoItems.Insert(0, new MemoItem { Text = t }); }
                 }
             }
         }
         catch { }
     }
 
-    /// <summary>保存备忘录。</summary>
+    /// <summary>保存备忘录（未完成 + 已完成归档）。</summary>
     private void SaveMemo()
     {
         try
         {
-            // 列表最新在前，保存为最新在前，再次读回即最新在前
-            System.IO.File.WriteAllText(MemoPath, System.Text.Json.JsonSerializer.Serialize(_memoItems.Select(m => m.Text).ToList()));
+            var all = _memoItems.Select(m => new MemoItem { Text = m.Text, Done = false })
+                .Concat(_memoArchive.Select(m => new MemoItem { Text = m.Text, Done = true }))
+                .ToList();
+            System.IO.File.WriteAllText(MemoPath, System.Text.Json.JsonSerializer.Serialize(all));
         }
         catch { }
     }
 
-    private void RefreshMemoList() => MemoList.ItemsSource = _memoItems;
+    private void RefreshMemoList()
+    {
+        MemoList.ItemsSource = _memoItems;
+        MemoArchiveList.ItemsSource = _memoArchive;
+        MemoArchiveToggleText.Text = $"历史归档 ({_memoArchive.Count})";
+    }
 
     /// <summary>切换备忘录面板显示/隐藏。</summary>
     private void OnMemoToggle(object sender, RoutedEventArgs e)
@@ -1414,15 +1435,38 @@ public partial class MainWindow : Window
         if (text.Length == 0) return;
         _memoItems.Insert(0, new MemoItem { Text = text }); // 新笔记置顶
         MemoInput.Text = "";
+        RefreshMemoList();
         SaveMemo();
         MemoInput.Focus();
+    }
+
+    /// <summary>标记为已完成：从未完成列表移到历史归档。</summary>
+    private void OnMemoDone(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.FrameworkElement fe && fe.DataContext is MemoItem item)
+        {
+            _memoItems.Remove(item);
+            _memoArchive.Insert(0, new MemoItem { Text = item.Text, Done = true });
+            RefreshMemoList();
+            SaveMemo();
+        }
+    }
+
+    /// <summary>展开/收起历史归档。</summary>
+    private void OnMemoArchiveToggle(object sender, RoutedEventArgs e)
+    {
+        var isOpen = MemoArchiveList.Visibility == Visibility.Visible;
+        MemoArchiveList.Visibility = isOpen ? Visibility.Collapsed : Visibility.Visible;
+        MemoArchiveArrow.Text = isOpen ? "\uE70D" : "\uE70E"; // chevron-down / chevron-left
     }
 
     private void OnMemoDelete(object sender, RoutedEventArgs e)
     {
         if (sender is System.Windows.FrameworkElement fe && fe.DataContext is MemoItem item)
         {
-            _memoItems.Remove(item); // ObservableCollection 自动刷新界面
+            _memoItems.Remove(item);
+            _memoArchive.Remove(item);
+            RefreshMemoList();
             SaveMemo();
         }
     }

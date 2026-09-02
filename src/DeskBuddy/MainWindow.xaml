@@ -498,8 +498,8 @@
                              BorderThickness="1" Padding="8,5" KeyDown="OnMemoInputKeyDown"
                              VerticalContentAlignment="Center"/>
                 </DockPanel>
-                <!-- 列表 -->
-                <ListBox x:Name="MemoList" Margin="8,4,8,8" BorderThickness="0"
+                <!-- 列表（未完成） -->
+                <ListBox x:Name="MemoList" Margin="8,4,8,4" BorderThickness="0"
                          Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">
@@ -512,23 +512,73 @@
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <Border CornerRadius="8" Background="{DynamicResource BtnBg}"
-                                    BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="10,8">
+                                    BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,7">
                                 <DockPanel>
-                                    <Button DockPanel.Dock="Right" x:Name="MemoDeleteBtn"
-                                            ToolTip="删除这条" Click="OnMemoDelete"
-                                            VerticalAlignment="Top" Margin="8,0,0,0"
+                                    <Button DockPanel.Dock="Right" ToolTip="删除这条" Click="OnMemoDelete"
+                                            VerticalAlignment="Center" Margin="6,0,0,0"
                                             Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="4,2">
                                         <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="10"
                                                    Foreground="{DynamicResource TextSecondary}"/>
                                     </Button>
-                                    <TextBlock Text="{Binding Text}" FontSize="12.5"
-                                               Foreground="{DynamicResource TextPrimary}"
-                                               TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                    <Button DockPanel.Dock="Left" ToolTip="标记为已完成" Click="OnMemoDone"
+                                            VerticalAlignment="Center" Margin="0,0,8,0"
+                                            Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="2">
+                                        <Ellipse Width="14" Height="14" Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.5"/>
+                                    </Button>
+                                    <TextBlock Text="{Binding Text}" FontSize="12.5" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
                                 </DockPanel>
                             </Border>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
+
+                <!-- 历史归档（已完成） -->
+                <StackPanel DockPanel.Dock="Bottom" Margin="8,0,8,6">
+                    <Grid>
+                        <TextBlock x:Name="MemoArchiveToggleText" Text="历史归档 (0)" FontSize="11"
+                                   Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"
+                                   Cursor="Hand" MouseLeftButtonDown="OnMemoArchiveToggle"/>
+                        <Button x:Name="MemoArchiveToggleArrow" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,2"
+                                Click="OnMemoArchiveToggle">
+                            <TextBlock x:Name="MemoArchiveArrow" Text="&#xE70D;" FontFamily="Segoe MDL2 Assets"
+                                       FontSize="9" Foreground="{DynamicResource TextSecondary}"/>
+                        </Button>
+                    </Grid>
+                    <ListBox x:Name="MemoArchiveList" Margin="0,4,0,0" Visibility="Collapsed"
+                             MaxHeight="220" BorderThickness="0" Background="Transparent"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="Margin" Value="0,2"/>
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border CornerRadius="8" Background="Transparent"
+                                        BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8,6">
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right" ToolTip="删除" Click="OnMemoDelete"
+                                                VerticalAlignment="Center" Margin="6,0,0,0"
+                                                Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="4,2">
+                                            <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="10"
+                                                       Foreground="{DynamicResource TextSecondary}"/>
+                                        </Button>
+                                        <TextBlock DockPanel.Dock="Right" Text="✓" FontSize="12"
+                                                   Foreground="#32D583" VerticalAlignment="Center" Margin="0,0,6,0" FontWeight="Bold"/>
+                                        <TextBlock Text="{Binding Text}" FontSize="12" TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource TextSecondary}"
+                                                   TextDecorations="Strikethrough" VerticalAlignment="Center"/>
+                                    </DockPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
             </DockPanel>
         </Border>
 
