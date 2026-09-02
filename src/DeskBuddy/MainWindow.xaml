@@ -638,7 +638,35 @@
                                                  CaretBrush="{DynamicResource TextPrimary}"
                                                  Background="{DynamicResource BtnBg}" BorderThickness="1"
                                                  BorderBrush="{DynamicResource CardBorder}" Padding="6,4"
-                                                 KeyDown="OnMemoEditKey" GotKeyboardFocus="OnMemoEditGotFocus"/>
+                                                 KeyDown="OnMemoEditKey" GotKeyboardFocus="OnMemoEditGotFocus">
+                                            <TextBox.Style>
+                                                <Style TargetType="TextBox">
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="TextBox">
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <Border Grid.Column="0" Background="{DynamicResource BtnBg}"
+                                                                            BorderBrush="{DynamicResource CardBorder}" BorderThickness="1"
+                                                                            CornerRadius="6" Padding="6,4">
+                                                                        <ScrollViewer x:Name="PART_ContentHost"/>
+                                                                    </Border>
+                                                                    <Button Grid.Column="1" ToolTip="确认修改" Click="OnMemoEditConfirm"
+                                                                            Margin="6,0,0,0" Padding="7,3" VerticalAlignment="Center"
+                                                                            Background="Transparent" BorderThickness="0" Cursor="Hand">
+                                                                        <TextBlock Text="&#xE73E;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                                                   Foreground="#32D583"/>
+                                                                    </Button>
+                                                                </Grid>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Style>
+                                            </TextBox.Style>
+                                        </TextBox>
                                     </Grid>
                                 </Border>
                                 <DataTemplate.Triggers>

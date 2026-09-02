@@ -53,7 +53,10 @@ public sealed class MemoItem : System.ComponentModel.INotifyPropertyChanged
     private bool _editing;
     public string Text { get => _text; set { if (_text != value) { _text = value; Notify(nameof(Text)); } } }
     public bool Done { get; set; }
+    /// <summary>编辑态/编辑缓冲区：不写入文件，避免下次打开仍停留在编辑。</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
     public bool IsEditing { get => _editing; set { if (_editing != value) { _editing = value; Notify(nameof(IsEditing)); } } }
+    [System.Text.Json.Serialization.JsonIgnore]
     public string EditText { get => _editText; set { if (_editText != value) { _editText = value; Notify(nameof(EditText)); } } }
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     private void Notify(string p) => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(p));
@@ -108,6 +111,7 @@ public partial class MainWindow : Window
         {
             if (MemoPanel.Visibility != Visibility.Visible)
             {
+                ClearMemoEditing(); // 打开时清除残留编辑态
                 RefreshMemoList();
                 MemoPanel.Visibility = Visibility.Visible;
                 PositionWindow();
@@ -1465,11 +1469,19 @@ public partial class MainWindow : Window
         }
         else
         {
+            ClearMemoEditing(); // 打开时不保持某条的编辑态
             RefreshMemoList();
             MemoPanel.Visibility = Visibility.Visible;
             MemoInput.Focus();
         }
         PositionWindow();
+    }
+
+    /// <summary>取消所有条目的编辑态（打开面板或切换时调用，避免卡在编辑）。</summary>
+    private void ClearMemoEditing()
+    {
+        foreach (var m in _memoItems) m.IsEditing = false;
+        foreach (var m in _memoArchive) m.IsEditing = false;
     }
 
     private void OnMemoAdd(object sender, RoutedEventArgs e) => AddMemo(MemoInput.Text);
@@ -1583,6 +1595,15 @@ public partial class MainWindow : Window
     private void OnMemoEditGotFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
         if (sender is TextBox tb) tb.SelectAll();
+    }
+
+    /// <summary>编辑确认按钮 → 提交修改。</summary>
+    private void OnMemoEditConfirm(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.FrameworkElement fe && fe.DataContext is MemoItem item)
+        {
+            CommitMemoEdit(item);
+        }
     }
 
     // ==================== 备忘录：搜索 / 编辑按钮 / 恢复 / 清空 ====================
