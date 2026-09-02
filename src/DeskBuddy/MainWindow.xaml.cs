@@ -65,7 +65,7 @@ public partial class MainWindow : Window
     private DispatcherTimer? _hideTimer;
 
     // ===== 备忘录 =====
-    private readonly List<MemoItem> _memoItems = new();
+    private readonly System.Collections.ObjectModel.ObservableCollection<MemoItem> _memoItems = new();
     private readonly string MemoPath = System.IO.Path.Combine(AppContext.BaseDirectory, "DeskBuddy.memo.json");
 
     /// <summary>配置被重新加载（App 据此更新热键检测器）。</summary>
@@ -1357,7 +1357,11 @@ public partial class MainWindow : Window
                 if (list != null)
                 {
                     _memoItems.Clear();
-                    _memoItems.AddRange(list.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => new MemoItem { Text = t }));
+                    // 文件里旧→新，逐个插到最前面 → 显示为最新在前
+                    foreach (var t in list)
+                    {
+                        if (!string.IsNullOrWhiteSpace(t)) _memoItems.Insert(0, new MemoItem { Text = t });
+                    }
                 }
             }
         }
@@ -1369,6 +1373,7 @@ public partial class MainWindow : Window
     {
         try
         {
+            // 列表最新在前，保存为最新在前，再次读回即最新在前
             System.IO.File.WriteAllText(MemoPath, System.Text.Json.JsonSerializer.Serialize(_memoItems.Select(m => m.Text).ToList()));
         }
         catch { }
@@ -1407,9 +1412,8 @@ public partial class MainWindow : Window
     {
         text = text?.Trim() ?? "";
         if (text.Length == 0) return;
-        _memoItems.Add(new MemoItem { Text = text });
+        _memoItems.Insert(0, new MemoItem { Text = text }); // 新笔记置顶
         MemoInput.Text = "";
-        RefreshMemoList();
         SaveMemo();
         MemoInput.Focus();
     }
@@ -1418,8 +1422,7 @@ public partial class MainWindow : Window
     {
         if (sender is System.Windows.FrameworkElement fe && fe.DataContext is MemoItem item)
         {
-            _memoItems.Remove(item);
-            RefreshMemoList();
+            _memoItems.Remove(item); // ObservableCollection 自动刷新界面
             SaveMemo();
         }
     }
