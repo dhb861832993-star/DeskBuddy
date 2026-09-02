@@ -45,12 +45,18 @@ public sealed class ItemVm : System.ComponentModel.INotifyPropertyChanged
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 }
 
-/// <summary>备忘录条目。</summary>
-public sealed class MemoItem
+/// <summary>备忘录条目（支持双击行内编辑）。</summary>
+public sealed class MemoItem : System.ComponentModel.INotifyPropertyChanged
 {
-    public required string Text { get; init; }
-    /// <summary>是否已完成（已完成自动归档到历史）。</summary>
-    public bool Done { get; init; }
+    private string _text;
+    private string _editText = "";
+    private bool _editing;
+    public string Text { get => _text; set { if (_text != value) { _text = value; Notify(nameof(Text)); } } }
+    public bool Done { get; set; }
+    public bool IsEditing { get => _editing; set { if (_editing != value) { _editing = value; Notify(nameof(IsEditing)); } } }
+    public string EditText { get => _editText; set { if (_editText != value) { _editText = value; Notify(nameof(EditText)); } } }
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    private void Notify(string p) => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(p));
 }
 
 public partial class MainWindow : Window
@@ -1278,6 +1284,17 @@ public partial class MainWindow : Window
         return d as T;
     }
 
+    private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T t) return t;
+            if (FindVisualChild<T>(child) is { } found) return found;
+        }
+        return null;
+    }
+
     // ==================== 失焦自动关闭 ====================
 
     private DateTime _shownTime;
@@ -1484,5 +1501,65 @@ public partial class MainWindow : Window
             RefreshMemoList();
             SaveMemo();
         }
+    }
+
+    /// <summary>双击笔记 → 进入行内编辑。</summary>
+    private void OnMemoListDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        var lbi = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
+        if (lbi?.DataContext is MemoItem item) StartEditMemo(item);
+    }
+
+    private void StartEditMemo(MemoItem item)
+    {
+        // 取消其它正在编辑的
+        foreach (var m in _memoItems) m.IsEditing = false;
+        foreach (var m in _memoArchive) m.IsEditing = false;
+        item.EditText = item.Text;
+        item.IsEditing = true;
+        // 等模板刷新后聚焦输入框并全选
+        Dispatcher.BeginInvoke(() =>
+        {
+            var container = MemoList.ItemContainerGenerator.ContainerFromItem(item) as ListBoxItem
+                            ?? MemoArchiveList.ItemContainerGenerator.ContainerFromItem(item) as ListBoxItem;
+            if (container == null) return;
+            var tb = FindVisualChild<TextBox>(container);
+            if (tb is { Visibility: Visibility.Visible })
+            {
+                tb.Focus();
+                tb.SelectAll();
+            }
+        }, System.Windows.Threading.DispatcherPriority.Input);
+    }
+
+    /// <summary>编辑框回车提交 / ESC 取消。</summary>
+    private void OnMemoEditKey(object sender, KeyEventArgs e)
+    {
+        if (sender is not System.Windows.FrameworkElement fe || fe.DataContext is not MemoItem item) return;
+        if (e.Key == Key.Enter)
+        {
+            CommitMemoEdit(item);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            item.IsEditing = false; // 取消：丢弃 EditText，不改动 Text
+            e.Handled = true;
+        }
+    }
+
+    private void CommitMemoEdit(MemoItem item)
+    {
+        var t = item.EditText?.Trim() ?? "";
+        if (t.Length == 0) t = item.Text; // 清空视为不修改
+        item.Text = t;
+        item.IsEditing = false;
+        SaveMemo();
+    }
+
+    /// <summary>编辑框获得焦点时全选文本，方便直接覆盖。</summary>
+    private void OnMemoEditGotFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (sender is TextBox tb) tb.SelectAll();
     }
 }
