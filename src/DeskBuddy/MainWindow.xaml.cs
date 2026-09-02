@@ -658,9 +658,12 @@ public partial class MainWindow : Window
     }
 
     /// <summary>宫格每行列数（与 WrapPanel 实际换行一致）。用 Width 而非 ActualWidth，
-    /// 因为首次显示时窗口尚未布局、ActualWidth 为 0。</summary>
-    private int GridColumnCount() =>
-        Math.Max(1, (int)((Width - 20) / TileWidth));
+    /// 因为首次显示时窗口尚未布局、ActualWidth 为 0。备忘录展开时减去其占用宽度。</summary>
+    private int GridColumnCount()
+    {
+        var menuWidth = Width - (MemoPanel.Visibility == Visibility.Visible ? MemoPanel.Width + 1 : 0);
+        return Math.Max(1, (int)((menuWidth - 20) / TileWidth));
+    }
 
     // ==================== 交互 ====================
 
