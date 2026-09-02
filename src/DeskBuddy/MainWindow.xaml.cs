@@ -626,10 +626,8 @@ public partial class MainWindow : Window
         }
         else
         {
-            // 网格（现状）：普通左对齐顺序网格，条目依次从左到右、从上到下排列
-            var factory = new FrameworkElementFactory(typeof(WrapPanel));
-            factory.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
-            panel = new ItemsPanelTemplate(factory);
+            // 网格（现状）：FillWrapPanel 均匀填满整行，避免右侧留空（配合自适应窗口宽度，间隙小而整齐）
+            panel = new ItemsPanelTemplate(new FrameworkElementFactory(typeof(FillWrapPanel)));
             ItemList.ItemContainerStyle = (Style)FindResource("TileContainerStyle");
             ItemList.ItemTemplate = (DataTemplate)FindResource("TileTemplate");
         }
@@ -639,9 +637,17 @@ public partial class MainWindow : Window
     private void PositionWindow()
     {
         var wa = SystemParameters.WorkArea;
+        // 宫格模式下：窗口宽度自适应条目数量（避免条目少时右侧大片留白）
         var width = _config.WindowWidth > 400 ? _config.WindowWidth : 900;
+        if (_config.LayoutMode != "list" && _filtered.Count > 0)
+        {
+            // 选一个较紧的列数：ceil(sqrt(n))，让每列都能铺上条目、减少空白
+            var cols = Math.Clamp((int)Math.Ceiling(Math.Sqrt(_filtered.Count)), 2, 8);
+            var needW = cols * TileWidth + 20;
+            width = Math.Min(width, Math.Max(needW, 480));
+        }
         // 备忘录面板展开时在右侧加宽
-        if (MemoPanel.Visibility == Visibility.Visible) width += MemoPanel.Width + 1;
+        if (MemoPanel.Visibility == Visibility.Visible) width = Math.Max(width, MemoPanel.Width + 200);
         Width = Math.Clamp(width, 480, wa.Width - 40);
 
         var header = 58 + 1 + 34 + 14 + 12; // 搜索栏 + 分隔线 + 底部 + 边距
