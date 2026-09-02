@@ -647,9 +647,15 @@ public partial class MainWindow : Window
         {
             width = GridColumns * TileWidth + 24; // 一排固定 GridColumns 个
         }
-        // 备忘录面板展开时在右侧加宽
-        if (MemoPanel.Visibility == Visibility.Visible) width = Math.Max(width, MemoPanel.Width + 200);
+        // 备忘录面板展开时，宽度要同时容纳网格 + 备忘录两栏，否则网格被挤窄、图标被裁
+        if (MemoPanel.Visibility == Visibility.Visible)
+            width = width + MemoPanel.Width + 12;
         Width = Math.Clamp(width, 480, wa.Width - 40);
+        _ = Dispatcher.BeginInvoke(new Action(() =>
+        {
+            var listW = ItemList.ActualWidth;
+            DebugLog.Write($"PositionWindow: mode={_config.LayoutMode} Width={Width:F0} listW={listW:F0} cell≈{(listW > 0 ? listW / GridColumns : 0):F0} cols={GridColumns}");
+        }));
 
         var header = 58 + 1 + 34 + 14 + 12; // 搜索栏 + 分隔线 + 底部 + 边距
         double desired;
