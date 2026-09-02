@@ -626,8 +626,10 @@ public partial class MainWindow : Window
         }
         else
         {
-            // 网格（现状）：改用 FillWrapPanel 均匀分布，瓷砖等距铺满整行，避免右侧留空
-            panel = new ItemsPanelTemplate(new FrameworkElementFactory(typeof(FillWrapPanel)));
+            // 网格（现状）：普通左对齐顺序网格，条目依次从左到右、从上到下排列
+            var factory = new FrameworkElementFactory(typeof(WrapPanel));
+            factory.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+            panel = new ItemsPanelTemplate(factory);
             ItemList.ItemContainerStyle = (Style)FindResource("TileContainerStyle");
             ItemList.ItemTemplate = (DataTemplate)FindResource("TileTemplate");
         }
