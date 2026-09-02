@@ -630,7 +630,7 @@ public partial class MainWindow : Window
         {
             // 网格（现状）：普通顺序网格，从左到右、从上到下依次排列
             var factory = new FrameworkElementFactory(typeof(WrapPanel));
-            factory.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+            factory.SetValue(System.Windows.Controls.WrapPanel.OrientationProperty, Orientation.Horizontal);
             panel = new ItemsPanelTemplate(factory);
             ItemList.ItemContainerStyle = (Style)FindResource("TileContainerStyle");
             ItemList.ItemTemplate = (DataTemplate)FindResource("TileTemplate");
