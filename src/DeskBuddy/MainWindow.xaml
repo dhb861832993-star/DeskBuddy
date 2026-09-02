@@ -561,17 +561,18 @@
 
                 <!-- 历史归档（已完成） -->
                 <StackPanel DockPanel.Dock="Bottom" Margin="8,0,8,6">
-                    <Grid>
-                        <TextBlock x:Name="MemoArchiveToggleText" Text="历史归档 (0)" FontSize="11"
-                                   Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"
-                                   Cursor="Hand" MouseLeftButtonDown="OnMemoArchiveToggle"/>
-                        <Button x:Name="MemoArchiveToggleArrow" HorizontalAlignment="Right" VerticalAlignment="Center"
+                    <DockPanel>
+                        <Button x:Name="MemoArchiveToggleArrow" DockPanel.Dock="Right" VerticalAlignment="Center"
                                 Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,2"
-                                Click="OnMemoArchiveToggle">
+                                Click="OnMemoArchiveToggle" ToolTip="展开/收起历史归档">
                             <TextBlock x:Name="MemoArchiveArrow" Text="&#xE70D;" FontFamily="Segoe MDL2 Assets"
                                        FontSize="9" Foreground="{DynamicResource TextSecondary}"/>
                         </Button>
-                    </Grid>
+                        <TextBlock x:Name="MemoArchiveToggleText" Text="历史归档 (0)" FontSize="11"
+                                   Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"
+                                   Cursor="Hand" MouseLeftButtonDown="OnMemoArchiveToggle"
+                                   Margin="0,0,4,0" TextTrimming="CharacterEllipsis"/>
+                    </DockPanel>
                     <ListBox x:Name="MemoArchiveList" Margin="0,4,0,0" Visibility="Collapsed"
                              MaxHeight="220" BorderThickness="0" Background="Transparent"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
