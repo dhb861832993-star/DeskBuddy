@@ -661,11 +661,12 @@ public partial class MainWindow : Window
             var fileRows = Math.Min(_fileResults.Count, 14);
             desired += 24 + fileRows * 42;
         }
-        // 备忘录面板展开时：窗口至少够高，让待办区能显示约 14 条（其余滚动）
+        // 备忘录面板展开时：窗口高度跟随实际待办数量（自适应），其余靠列表滚动
         if (MemoPanel.Visibility == Visibility.Visible)
         {
-            var memoMin = 160 + 14 * 36; // 面板标题/输入/归档 头尾 + 14 行
-            desired = Math.Max(desired, memoMin);
+            // 面板头尾（标题/分隔/搜索/输入/已完成头）约 170px + 每行约 34px
+            var memoH = 170 + _memoItems.Count * 34;
+            desired = Math.Max(desired, memoH);
         }
         // 有文件结果或备忘录面板展开时允许扩展到整个工作区高度（否则受 MaxWindowHeight 限制）
         // ——备忘录展开时窗口加高，能显示更多条目
