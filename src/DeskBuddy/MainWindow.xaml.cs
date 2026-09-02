@@ -265,6 +265,8 @@ public partial class MainWindow : Window
         Resources["SeparatorBrush"] = Frozen(_theme.Separator);
         Resources["SearchGlyphBrush"] = Frozen(_theme.TextSecondary);
         Resources["CardBg"] = new SolidColorBrush(_theme.CardTint) { Opacity = _theme.CardAlpha };
+        Resources["BtnBg"] = Frozen(_theme.HoverBg);
+        Resources["BtnBgHover"] = Frozen(Color.FromArgb(0x3D, _theme.HoverBg.R, _theme.HoverBg.G, _theme.HoverBg.B));
         RootCard.Background = Resources["CardBg"] as Brush;
     }
 
