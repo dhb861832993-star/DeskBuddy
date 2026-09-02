@@ -58,6 +58,33 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- 通用 mac 风格按钮（备忘录「添加」等） -->
+        <Style x:Key="MacButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="Background" Value="{DynamicResource BtnBg}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="12,5"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="7"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource BtnBgHover}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.75"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <!-- 宫格（现状）容器：固定磁贴尺寸 -->
         <Style x:Key="TileContainerStyle" TargetType="ListBoxItem">
             <Setter Property="Width" Value="96"/>
@@ -464,7 +491,7 @@
                 <!-- 输入区 -->
                 <DockPanel DockPanel.Dock="Bottom" Margin="12,8,12,12">
                     <Button x:Name="MemoAddBtn" DockPanel.Dock="Right" Content="添加" Margin="8,0,0,0"
-                            FontSize="12" Click="OnMemoAdd"/>
+                            FontSize="12" Style="{StaticResource MacButton}" Click="OnMemoAdd"/>
                     <TextBox x:Name="MemoInput" FontSize="13" Foreground="{DynamicResource TextPrimary}"
                              CaretBrush="{DynamicResource TextPrimary}"
                              Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}"
