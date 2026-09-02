@@ -604,6 +604,8 @@ public partial class MainWindow : Window
     private const double TileWidth = 96;
     private const double TileHeight = 100;
     private const double ListRowHeight = 50;
+    /// <summary>宫格每排固定瓷砖数（超过就开新一排）。</summary>
+    private const int GridColumns = 5;
 
     /// <summary>按配置切换条目排布：grid 宫格现状 / fill 宫格填充整行 / list 列表。</summary>
     private void ApplyLayoutMode()
@@ -626,8 +628,10 @@ public partial class MainWindow : Window
         }
         else
         {
-            // 网格（现状）：FillWrapPanel 均匀填满整行，避免右侧留空（配合自适应窗口宽度，间隙小而整齐）
-            panel = new ItemsPanelTemplate(new FrameworkElementFactory(typeof(FillWrapPanel)));
+            // 网格（现状）：普通顺序网格，从左到右、从上到下依次排列
+            var factory = new FrameworkElementFactory(typeof(WrapPanel));
+            factory.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+            panel = new ItemsPanelTemplate(factory);
             ItemList.ItemContainerStyle = (Style)FindResource("TileContainerStyle");
             ItemList.ItemTemplate = (DataTemplate)FindResource("TileTemplate");
         }
@@ -637,14 +641,11 @@ public partial class MainWindow : Window
     private void PositionWindow()
     {
         var wa = SystemParameters.WorkArea;
-        // 宫格模式下：窗口宽度自适应条目数量（避免条目少时右侧大片留白）
+        // 宫格模式：窗口宽度固定容纳一排瓷砖，避免右侧大片留白
         var width = _config.WindowWidth > 400 ? _config.WindowWidth : 900;
-        if (_config.LayoutMode != "list" && _filtered.Count > 0)
+        if (_config.LayoutMode != "list")
         {
-            // 选一个较紧的列数：ceil(sqrt(n))，让每列都能铺上条目、减少空白
-            var cols = Math.Clamp((int)Math.Ceiling(Math.Sqrt(_filtered.Count)), 2, 8);
-            var needW = cols * TileWidth + 20;
-            width = Math.Min(width, Math.Max(needW, 480));
+            width = GridColumns * TileWidth + 24; // 一排固定 GridColumns 个
         }
         // 备忘录面板展开时在右侧加宽
         if (MemoPanel.Visibility == Visibility.Visible) width = Math.Max(width, MemoPanel.Width + 200);
@@ -689,13 +690,8 @@ public partial class MainWindow : Window
         Top = wa.Top + wa.Height * 0.18;
     }
 
-    /// <summary>宫格每行列数（与 WrapPanel 实际换行一致）。用 Width 而非 ActualWidth，
-    /// 因为首次显示时窗口尚未布局、ActualWidth 为 0。备忘录展开时减去其占用宽度。</summary>
-    private int GridColumnCount()
-    {
-        var menuWidth = Width - (MemoPanel.Visibility == Visibility.Visible ? MemoPanel.Width + 1 : 0);
-        return Math.Max(1, (int)((menuWidth - 20) / TileWidth));
-    }
+    /// <summary>宫格每排固定瓷砖数（超过就开新一排）。</summary>
+    private int GridColumnCount() => GridColumns;
 
     // ==================== 交互 ====================
 
