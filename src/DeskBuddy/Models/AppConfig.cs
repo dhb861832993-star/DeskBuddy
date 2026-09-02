@@ -68,4 +68,9 @@ public class AppConfig
 
     /// <summary>是否允许 AI 工具通过 MCP 添加/删除/查看快捷菜单（默认开启，仅本机可连）。</summary>
     public bool McpEnabled { get; set; } = true;
+
+    // ===== 备忘录 =====
+
+    /// <summary>是否启用右侧备忘录面板（开启后呼出菜单自动显示；默认关闭）。</summary>
+    public bool MemoEnabled { get; set; }
 }

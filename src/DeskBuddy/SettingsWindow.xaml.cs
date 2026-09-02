@@ -78,6 +78,9 @@ public partial class SettingsWindow : Window
             _ => 0
         };
 
+        // 备忘录
+        MemoEnabledBox.IsChecked = config.MemoEnabled;
+
         SelectCategory("general"); // 默认显示「通用」
 
         Loaded += (_, _) => ApplyTheme();
@@ -484,6 +487,7 @@ public partial class SettingsWindow : Window
             AiApiKey = _config.AiApiKey,
             AiSystemPrompt = _config.AiSystemPrompt,
             McpEnabled = McpEnabledBox.IsChecked == true,
+            MemoEnabled = MemoEnabledBox.IsChecked == true,
             EnableFileSearch = EnableFileSearchBox.IsChecked == true,
             SearchRoots = SearchRootsBox.Text
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

@@ -262,7 +262,11 @@
     </Window.Resources>
 
     <Grid>
-        <Border x:Name="RootCard" CornerRadius="26" BorderThickness="1"
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Border x:Name="RootCard" Grid.Column="0" CornerRadius="26" BorderThickness="1"
                 BorderBrush="{DynamicResource CardBorder}"
                 Background="{DynamicResource CardBg}"
                 AllowDrop="True"
@@ -272,7 +276,6 @@
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
                 <RowDefinition Height="58"/>
@@ -437,67 +440,69 @@
                 </StackPanel>
             </Border>
 
-            <!-- ===== 备忘录面板（右侧，可关闭） ===== -->
-            <Border x:Name="MemoPanel" Grid.Column="1" Grid.RowSpan="4" Width="300"
-                    BorderBrush="{DynamicResource CardBorder}" BorderThickness="1,0,0,0"
-                    Background="{DynamicResource CardBg}" Visibility="Collapsed">
-                <DockPanel>
-                    <!-- 标题 -->
-                    <Grid DockPanel.Dock="Top" Height="58">
-                        <TextBlock Text="📝 备忘录" FontSize="14" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource TextPrimary}" Margin="14,0,0,0"
-                                   VerticalAlignment="Center"/>
-                        <Button x:Name="MemoCloseBtn" ToolTip="关闭备忘录" Click="OnMemoToggle"
-                                HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0"
-                                Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="8,3">
-                            <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="12"
-                                       Foreground="{DynamicResource TextSecondary}"/>
-                        </Button>
-                    </Grid>
-                    <!-- 输入区 -->
-                    <DockPanel DockPanel.Dock="Bottom" Margin="12,8,12,12">
-                        <Button x:Name="MemoAddBtn" DockPanel.Dock="Right" Content="添加" Margin="8,0,0,0"
-                                FontSize="12" Click="OnMemoAdd"/>
-                        <TextBox x:Name="MemoInput" FontSize="13" Foreground="{DynamicResource TextPrimary}"
-                                 CaretBrush="{DynamicResource TextPrimary}"
-                                 Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}"
-                                 BorderThickness="1" Padding="8,5" KeyDown="OnMemoInputKeyDown"
-                                 VerticalContentAlignment="Center"/>
-                    </DockPanel>
-                    <!-- 列表 -->
-                    <ListBox x:Name="MemoList" Margin="8,2,8,8" BorderThickness="0"
-                             Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                        <ListBox.ItemContainerStyle>
-                            <Style TargetType="ListBoxItem">
-                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                                <Setter Property="Margin" Value="0,3"/>
-                                <Setter Property="Background" Value="Transparent"/>
-                                <Setter Property="BorderThickness" Value="0"/>
-                            </Style>
-                        </ListBox.ItemContainerStyle>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border CornerRadius="8" Background="{DynamicResource BtnBg}"
-                                        BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="10,8">
-                                    <DockPanel>
-                                        <Button DockPanel.Dock="Right" x:Name="MemoDeleteBtn"
-                                                ToolTip="删除这条" Click="OnMemoDelete"
-                                                VerticalAlignment="Top" Margin="8,0,0,0"
-                                                Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="4,2">
-                                            <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="10"
-                                                       Foreground="{DynamicResource TextSecondary}"/>
-                                        </Button>
-                                        <TextBlock Text="{Binding Text}" FontSize="12.5"
-                                                   Foreground="{DynamicResource TextPrimary}"
-                                                   TextWrapping="Wrap" VerticalAlignment="Center"/>
-                                    </DockPanel>
-                                </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+            </Grid>
+        </Border>
+
+        <!-- ===== 备忘录面板（右侧独立圆角卡片，可关闭） ===== -->
+        <Border x:Name="MemoPanel" Grid.Column="1" Width="300" Margin="1,0,0,0"
+                CornerRadius="26" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1"
+                Background="{DynamicResource CardBg}" Visibility="Collapsed">
+            <DockPanel>
+                <!-- 标题 -->
+                <Grid DockPanel.Dock="Top" Height="56">
+                    <TextBlock Text="📝 备忘录" FontSize="14" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimary}" Margin="14,0,0,0"
+                               VerticalAlignment="Center"/>
+                    <Button x:Name="MemoCloseBtn" ToolTip="关闭备忘录" Click="OnMemoToggle"
+                            HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0"
+                            Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="8,3">
+                        <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                   Foreground="{DynamicResource TextSecondary}"/>
+                    </Button>
+                </Grid>
+                <Rectangle Height="1" Margin="12,0" Fill="{DynamicResource SeparatorBrush}"/>
+                <!-- 输入区 -->
+                <DockPanel DockPanel.Dock="Bottom" Margin="12,8,12,12">
+                    <Button x:Name="MemoAddBtn" DockPanel.Dock="Right" Content="添加" Margin="8,0,0,0"
+                            FontSize="12" Click="OnMemoAdd"/>
+                    <TextBox x:Name="MemoInput" FontSize="13" Foreground="{DynamicResource TextPrimary}"
+                             CaretBrush="{DynamicResource TextPrimary}"
+                             Background="{DynamicResource BtnBg}" BorderBrush="{DynamicResource CardBorder}"
+                             BorderThickness="1" Padding="8,5" KeyDown="OnMemoInputKeyDown"
+                             VerticalContentAlignment="Center"/>
                 </DockPanel>
-            </Border>
-        </Grid>
+                <!-- 列表 -->
+                <ListBox x:Name="MemoList" Margin="8,4,8,8" BorderThickness="0"
+                         Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            <Setter Property="Margin" Value="0,3"/>
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="BorderThickness" Value="0"/>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border CornerRadius="8" Background="{DynamicResource BtnBg}"
+                                    BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="10,8">
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" x:Name="MemoDeleteBtn"
+                                            ToolTip="删除这条" Click="OnMemoDelete"
+                                            VerticalAlignment="Top" Margin="8,0,0,0"
+                                            Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="4,2">
+                                        <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="10"
+                                                   Foreground="{DynamicResource TextSecondary}"/>
+                                    </Button>
+                                    <TextBlock Text="{Binding Text}" FontSize="12.5"
+                                               Foreground="{DynamicResource TextPrimary}"
+                                               TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                </DockPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
         </Border>
 
         <!-- 图标右键操作菜单 -->

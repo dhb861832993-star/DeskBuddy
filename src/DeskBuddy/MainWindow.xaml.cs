@@ -94,6 +94,22 @@ public partial class MainWindow : Window
         ReloadConfig();
         ApplyTheme();
 
+        // 备忘录：启用则在每次呼出时右侧自动显示，否则隐藏
+        if (_config.MemoEnabled)
+        {
+            if (MemoPanel.Visibility != Visibility.Visible)
+            {
+                RefreshMemoList();
+                MemoPanel.Visibility = Visibility.Visible;
+                PositionWindow();
+            }
+        }
+        else if (MemoPanel.Visibility == Visibility.Visible)
+        {
+            MemoPanel.Visibility = Visibility.Collapsed;
+            PositionWindow();
+        }
+
         RefreshItems();
         ApplyLayoutMode();
         CancelFileSearch();
