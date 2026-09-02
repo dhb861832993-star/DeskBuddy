@@ -605,7 +605,7 @@ public partial class MainWindow : Window
     private const double TileHeight = 100;
     private const double ListRowHeight = 50;
     /// <summary>宫格每排固定瓷砖数（超过就开新一排）。</summary>
-    private const int GridColumns = 5;
+    private const int GridColumns = 7;
 
     /// <summary>按配置切换条目排布：grid 宫格现状 / fill 宫格填充整行 / list 列表。</summary>
     private void ApplyLayoutMode()
@@ -628,9 +628,9 @@ public partial class MainWindow : Window
         }
         else
         {
-            // 网格（现状）：普通顺序网格，从左到右、从上到下依次排列
-            var factory = new FrameworkElementFactory(typeof(WrapPanel));
-            factory.SetValue(System.Windows.Controls.WrapPanel.OrientationProperty, Orientation.Horizontal);
+            // 网格：用 UniformGrid 固定每排 GridColumns 个，严格从左到右、从上到下依次排列
+            var factory = new FrameworkElementFactory(typeof(System.Windows.Controls.Primitives.UniformGrid));
+            factory.SetValue(System.Windows.Controls.Primitives.UniformGrid.ColumnsProperty, GridColumns);
             panel = new ItemsPanelTemplate(factory);
             ItemList.ItemContainerStyle = (Style)FindResource("TileContainerStyle");
             ItemList.ItemTemplate = (DataTemplate)FindResource("TileTemplate");
