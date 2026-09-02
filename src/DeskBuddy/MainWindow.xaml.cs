@@ -121,6 +121,7 @@ public partial class MainWindow : Window
 
         RefreshItems();
         ApplyLayoutMode();
+        ItemList.SelectedIndex = -1; // 打开时不显示选中高亮
         CancelFileSearch();
         _fileResults = new List<ItemVm>();
         // 提前预热文件索引（后台），让首次搜索就快
@@ -376,7 +377,7 @@ public partial class MainWindow : Window
         if (!ReferenceEquals(ItemList.ItemsSource, _filtered))
         {
             ItemList.ItemsSource = _filtered;
-            ItemList.SelectedIndex = _filtered.Count > 0 ? 0 : -1;
+            ItemList.SelectedIndex = -1; // 打开时不自动选中，避免高亮残留
         }
 
         // 文件结果：独立列表（名称+路径+修改时间，最新在前）
@@ -890,7 +891,12 @@ public partial class MainWindow : Window
             HideMenu();
             return;
         }
-        if (ItemList.SelectedItem is not ItemVm vm) return;
+        // 未选中时回退到第一项（回车直接打开首个结果）
+        if (ItemList.SelectedItem is not ItemVm vm)
+        {
+            if (_filtered.Count > 0) vm = _filtered[0];
+            else return;
+        }
         if (vm.Kind == "file-section") return; // 分区标题不可启动
         if (vm.Kind == "file")
         {
