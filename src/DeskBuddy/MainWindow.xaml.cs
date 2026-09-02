@@ -1357,9 +1357,14 @@ public partial class MainWindow : Window
             if (System.IO.File.Exists(MemoPath))
             {
                 var json = System.IO.File.ReadAllText(MemoPath);
-                var list = System.Text.Json.JsonSerializer.Deserialize<List<MemoItem>>(json);
                 _memoItems.Clear();
                 _memoArchive.Clear();
+
+                // 新格式：List<MemoItem>{Text,Done}
+                List<MemoItem>? list = null;
+                try { list = System.Text.Json.JsonSerializer.Deserialize<List<MemoItem>>(json); }
+                catch { /* 新格式解析失败（可能是旧格式或损坏） */ }
+
                 if (list != null)
                 {
                     // 文件里旧→新，逐个插到最前面 → 显示为最新在前；已完成进归档
@@ -1372,21 +1377,31 @@ public partial class MainWindow : Window
                 }
                 else
                 {
-                    // 兼容旧格式：字符串数组 → 全部作为未完成导入
-                    var old = System.Text.Json.JsonSerializer.Deserialize<List<string>>(json);
-                    if (old != null)
-                        foreach (var t in old) { if (!string.IsNullOrWhiteSpace(t)) _memoItems.Insert(0, new MemoItem { Text = t }); }
+                    // 旧格式兼容：字符串数组 → 全部作为未完成导入
+                    try
+                    {
+                        var old = System.Text.Json.JsonSerializer.Deserialize<List<string>>(json);
+                        if (old != null)
+                            foreach (var t in old) { if (!string.IsNullOrWhiteSpace(t)) _memoItems.Insert(0, new MemoItem { Text = t }); }
+                    }
+                    catch { }
                 }
             }
         }
         catch { }
     }
 
-    /// <summary>保存备忘录（未完成 + 已完成归档）。</summary>
+    /// <summary>保存备忘录（未完成 + 已完成归档）。写前自动备份旧内容到 .bak，避免误覆盖丢失。</summary>
     private void SaveMemo()
     {
         try
         {
+            // 备份旧文件（保留最近一次内容）
+            if (System.IO.File.Exists(MemoPath))
+            {
+                try { System.IO.File.Copy(MemoPath, MemoPath + ".bak", true); }
+                catch { }
+            }
             var all = _memoItems.Select(m => new MemoItem { Text = m.Text, Done = false })
                 .Concat(_memoArchive.Select(m => new MemoItem { Text = m.Text, Done = true }))
                 .ToList();
