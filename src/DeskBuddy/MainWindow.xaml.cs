@@ -45,6 +45,12 @@ public sealed class ItemVm : System.ComponentModel.INotifyPropertyChanged
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 }
 
+/// <summary>备忘录条目。</summary>
+public sealed class MemoItem
+{
+    public required string Text { get; init; }
+}
+
 public partial class MainWindow : Window
 {
     private AppConfig _config = new();
@@ -58,6 +64,10 @@ public partial class MainWindow : Window
     private DateTime _lastLaunchTime = DateTime.MinValue;
     private DispatcherTimer? _hideTimer;
 
+    // ===== 备忘录 =====
+    private readonly List<MemoItem> _memoItems = new();
+    private readonly string MemoPath = System.IO.Path.Combine(AppContext.BaseDirectory, "DeskBuddy.memo.json");
+
     /// <summary>配置被重新加载（App 据此更新热键检测器）。</summary>
     public event Action<AppConfig>? ConfigChanged;
 
@@ -65,6 +75,8 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         RoundedWindow.Apply(this, RootCard.CornerRadius.TopLeft);
+        LoadMemo();
+        RefreshMemoList();
     }
 
     // ==================== 显示 / 隐藏 ====================
@@ -595,6 +607,8 @@ public partial class MainWindow : Window
     {
         var wa = SystemParameters.WorkArea;
         var width = _config.WindowWidth > 400 ? _config.WindowWidth : 900;
+        // 备忘录面板展开时在右侧加宽
+        if (MemoPanel.Visibility == Visibility.Visible) width += MemoPanel.Width + 1;
         Width = Math.Clamp(width, 480, wa.Width - 40);
 
         var header = 58 + 1 + 34 + 14 + 12; // 搜索栏 + 分隔线 + 底部 + 边距
@@ -1309,5 +1323,85 @@ public partial class MainWindow : Window
     {
         _hideTimer?.Stop();
         _hideTimer = null;
+    }
+
+    // ==================== 备忘录 ====================
+
+    /// <summary>加载备忘录（程序目录下 DeskBuddy.memo.json）。</summary>
+    private void LoadMemo()
+    {
+        try
+        {
+            if (System.IO.File.Exists(MemoPath))
+            {
+                var list = System.Text.Json.JsonSerializer.Deserialize<List<string>>(System.IO.File.ReadAllText(MemoPath));
+                if (list != null)
+                {
+                    _memoItems.Clear();
+                    _memoItems.AddRange(list.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => new MemoItem { Text = t }));
+                }
+            }
+        }
+        catch { }
+    }
+
+    /// <summary>保存备忘录。</summary>
+    private void SaveMemo()
+    {
+        try
+        {
+            System.IO.File.WriteAllText(MemoPath, System.Text.Json.JsonSerializer.Serialize(_memoItems.Select(m => m.Text).ToList()));
+        }
+        catch { }
+    }
+
+    private void RefreshMemoList() => MemoList.ItemsSource = _memoItems;
+
+    /// <summary>切换备忘录面板显示/隐藏。</summary>
+    private void OnMemoToggle(object sender, RoutedEventArgs e)
+    {
+        if (MemoPanel.Visibility == Visibility.Visible)
+        {
+            MemoPanel.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            RefreshMemoList();
+            MemoPanel.Visibility = Visibility.Visible;
+            MemoInput.Focus();
+        }
+        PositionWindow();
+    }
+
+    private void OnMemoAdd(object sender, RoutedEventArgs e) => AddMemo(MemoInput.Text);
+
+    private void OnMemoInputKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            AddMemo(MemoInput.Text);
+            e.Handled = true;
+        }
+    }
+
+    private void AddMemo(string text)
+    {
+        text = text?.Trim() ?? "";
+        if (text.Length == 0) return;
+        _memoItems.Add(new MemoItem { Text = text });
+        MemoInput.Text = "";
+        RefreshMemoList();
+        SaveMemo();
+        MemoInput.Focus();
+    }
+
+    private void OnMemoDelete(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.FrameworkElement fe && fe.DataContext is MemoItem item)
+        {
+            _memoItems.Remove(item);
+            RefreshMemoList();
+            SaveMemo();
+        }
     }
 }
