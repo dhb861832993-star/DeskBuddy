@@ -1431,6 +1431,8 @@ public partial class MainWindow : Window
     {
         MemoList.ItemsSource = _memoItems;
         MemoArchiveList.ItemsSource = _memoArchive;
+        MemoList.SelectedIndex = -1; // 打开时不保留选中状态
+        MemoArchiveList.SelectedIndex = -1;
         MemoArchiveToggleText.Text = $"历史归档 ({_memoArchive.Count})";
     }
 
