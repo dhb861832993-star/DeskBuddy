@@ -695,6 +695,8 @@ public partial class MainWindow : Window
         var maxH = (_fileResults.Count > 0 || memoOpen)
             ? Math.Max(wa.Height - 60, _config.MaxWindowHeight)
             : Math.Min(_config.MaxWindowHeight, wa.Height - 60);
+        // 整体加高三分之一（主面板含备忘录）
+        desired = desired * 4 / 3;
         var newH = Math.Clamp(desired, 240, maxH);
         // 高度没变化就跳过设置，避免无谓的重排抖动
         if (Math.Abs(Height - newH) > 2) Height = newH;
