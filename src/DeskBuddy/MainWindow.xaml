@@ -695,7 +695,7 @@
 
                 <!-- 悬浮气泡：预览主题 + 细节 -->
                 <Popup x:Name="MemoHoverPopup" Placement="MousePoint" AllowsTransparency="True"
-                       StaysOpen="True" PlacementRectangle="4,4,0,0">
+                       StaysOpen="True" HorizontalOffset="16" VerticalOffset="10">
                     <Border CornerRadius="10" BorderThickness="1"
                             BorderBrush="{DynamicResource CardBorder}"
                             Background="{DynamicResource CardBg}" MaxWidth="260" Padding="10">
