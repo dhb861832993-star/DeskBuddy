@@ -584,8 +584,10 @@
                     </ListBox>
                 </StackPanel>
 
-                <!-- 待办：列表视图 -->
-                <Grid x:Name="MemoListGrid">
+                <!-- 待办区：外层 Grid 填满 DockPanel，内部列表视图 / 编辑视图重叠铺满全宽 -->
+                <Grid>
+                    <!-- 待办：列表视图 -->
+                    <Grid x:Name="MemoListGrid">
                     <ListBox x:Name="MemoList" Margin="6,6,6,4" BorderThickness="0"
                              Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              MouseDoubleClick="OnMemoListDoubleClick"
@@ -687,6 +689,7 @@
                                 Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="12,5"
                                 FontSize="12" Foreground="{DynamicResource TextSecondary}"/>
                     </StackPanel>
+                </Grid>
                 </Grid>
 
                 <!-- 悬浮气泡：预览主题 + 细节 -->
