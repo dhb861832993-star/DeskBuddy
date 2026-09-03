@@ -1694,8 +1694,9 @@ public partial class MainWindow : Window
         MemoHoverTitle.Text = item.Text;
         MemoHoverDetail.Text = string.IsNullOrEmpty(item.Detail) ? "" : item.Detail;
         MemoHoverDetail.Visibility = string.IsNullOrEmpty(item.Detail) ? Visibility.Collapsed : Visibility.Visible;
-        // 跟随鼠标定位(MousePoint + 右下偏移); PlacementTarget 固定为面板提供稳定锚点,防止飘到左上角
-        if (!MemoHoverPopup.IsOpen) MemoHoverPopup.IsOpen = true;
+        // 跟随鼠标定位：每次移动都强制重开，使 MousePoint 按当前光标重新计算，避免停留/飘走
+        if (MemoHoverPopup.IsOpen) MemoHoverPopup.IsOpen = false;
+        MemoHoverPopup.IsOpen = true;
     }
 
     private void OnMemoListMouseLeave(object sender, MouseEventArgs e)
