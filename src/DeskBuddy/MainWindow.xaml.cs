@@ -862,6 +862,11 @@ public partial class MainWindow : Window
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // 焦点在备忘录区域时，按键交给备忘录自己处理（Enter 添加、方向键在文本框内移动），全局不拦截
+        if (IsMemoFocused())
+        {
+            return;
+        }
         switch (e.Key)
         {
             case Key.Down:
@@ -898,6 +903,19 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 break;
         }
+    }
+
+    /// <summary>键盘焦点是否落在备忘录区域（输入框/编辑框/列表）。</summary>
+    private bool IsMemoFocused()
+    {
+        if (MemoPanel.Visibility != Visibility.Visible) return false;
+        var f = Keyboard.FocusedElement as DependencyObject;
+        while (f != null)
+        {
+            if (ReferenceEquals(f, MemoPanel)) return true;
+            f = VisualTreeHelper.GetParent(f);
+        }
+        return false;
     }
 
     /// <summary>宫格导航：dx 左右移动一格，dy 上下移动一行（行末不足时落到最后一个）。</summary>
@@ -1583,11 +1601,16 @@ public partial class MainWindow : Window
         }, System.Windows.Threading.DispatcherPriority.Input);
     }
 
-    /// <summary>编辑视图回车（主题框/细节框 Enter）→ 保存；ESC → 取消。</summary>
+    /// <summary>编辑视图回车：焦点在「主题」框 Enter → 保存；在「细节」多行框 Enter → 换行；ESC → 取消。</summary>
     private void OnMemoEditKey(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
         {
+            // 若焦点在细节多行框，Enter 换行不保存；主题框/其它 Enter 保存
+            if (ReferenceEquals(Keyboard.FocusedElement, MemoEditDetail))
+            {
+                return; // 允许 TextBox 自己插入换行
+            }
             CommitMemoEdit();
             e.Handled = true;
         }
