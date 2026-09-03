@@ -644,10 +644,6 @@
                                                     <TextBlock Text="📄 详情" FontSize="9" Foreground="#32D583"/>
                                                 </Border>
                                             </DockPanel>
-                                            <TextBlock Text="{Binding Detail}" FontSize="10.5"
-                                                       Foreground="{DynamicResource TextSecondary}"
-                                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
-                                                       MaxHeight="32" Margin="0,1,0,0"/>
                                         </StackPanel>
                                     </DockPanel>
                                 </Border>
