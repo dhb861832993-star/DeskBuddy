@@ -86,6 +86,11 @@ public partial class MainWindow : Window
     private readonly System.Collections.ObjectModel.ObservableCollection<MemoItem> _memoArchive = new(); // 已完成(历史归档)
     private readonly string MemoPath = System.IO.Path.Combine(AppContext.BaseDirectory, "DeskBuddy.memo.json");
     private MemoItem? _editingMemo; // 正在编辑视图编辑的条目
+    // 待办拖拽换序状态
+    private MemoItem? _memoDragItem;
+    private System.Windows.Point _memoDragStart;
+    private bool _memoDragging;
+    private ListBoxItem? _memoDragContainer;
 
     /// <summary>配置被重新加载（App 据此更新热键检测器）。</summary>
     public event Action<AppConfig>? ConfigChanged;
@@ -1727,9 +1732,22 @@ public partial class MainWindow : Window
         if (sender is System.Windows.FrameworkElement fe && fe.DataContext is MemoItem item && !item.Done) StartEditMemo(item);
     }
 
-    /// <summary>鼠标在待办列表上移动 → 悬浮预览（无细节不弹）。</summary>
+    /// <summary>鼠标在待办列表上移动 → 悬浮预览 / 拖拽换序识别。</summary>
     private void OnMemoMouseMove(object sender, MouseEventArgs e)
     {
+        // 拖拽换序：按下左键移动超过阈值 → 进入拖拽模式
+        if (_memoDragItem != null && e.LeftButton == MouseButtonState.Pressed && !_memoDragging)
+        {
+            var pos = e.GetPosition(this);
+            if ((pos - _memoDragStart).Length > 10)
+            {
+                _memoDragging = true;
+                if (_memoDragContainer != null) _memoDragContainer.Opacity = 0.45;
+                MemoHoverPopup.IsOpen = false;
+            }
+        }
+        if (_memoDragging) { MemoHoverPopup.IsOpen = false; return; } // 拖拽中不弹悬浮
+
         var lbi = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
         var item = lbi?.DataContext as MemoItem;
         if (item == null || item.Done)
@@ -1742,9 +1760,50 @@ public partial class MainWindow : Window
         MemoHoverTitle.Text = item.Text;
         MemoHoverDetail.Text = string.IsNullOrEmpty(item.Detail) ? "" : item.Detail;
         MemoHoverDetail.Visibility = string.IsNullOrEmpty(item.Detail) ? Visibility.Collapsed : Visibility.Visible;
-        // 跟随鼠标定位：每次移动都强制重开，使 MousePoint 按当前光标重新计算，避免停留/飘走
+        // 每次移动都强制重开，使 MousePoint 按当前光标重新计算，避免停留/飘走
         if (MemoHoverPopup.IsOpen) MemoHoverPopup.IsOpen = false;
         MemoHoverPopup.IsOpen = true;
+    }
+
+    /// <summary>待办左键按下 → 记录拖拽起点。</summary>
+    private void OnMemoListMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+        var lbi = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
+        if (lbi?.DataContext is not MemoItem item || item.Done) return;
+        _memoDragItem = item;
+        _memoDragStart = e.GetPosition(this);
+        _memoDragging = false;
+        _memoDragContainer = lbi;
+        MemoHoverPopup.IsOpen = false;
+    }
+
+    /// <summary>待办松手 → 若在拖拽则换序并保存。</summary>
+    private void OnMemoListMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_memoDragging)
+        {
+            var lbi = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
+            if (lbi?.DataContext is MemoItem target && !ReferenceEquals(target, _memoDragItem) && !target.Done)
+            {
+                var srcI = _memoItems.IndexOf(_memoDragItem);
+                var tgtI = _memoItems.IndexOf(target);
+                if (srcI >= 0 && tgtI >= 0 && srcI != tgtI)
+                {
+                    _memoItems.Move(srcI, tgtI); // 拖动换序
+                    RefreshMemoList();
+                    SaveMemo();
+                    MemoList.SelectedIndex = -1;
+                }
+            }
+            if (_memoDragContainer != null) _memoDragContainer.Opacity = 1.0;
+            _memoDragContainer = null;
+            _memoDragItem = null;
+            _memoDragging = false;
+            e.Handled = true;
+            return;
+        }
+        _memoDragItem = null;
     }
 
     private void OnMemoListMouseLeave(object sender, MouseEventArgs e)

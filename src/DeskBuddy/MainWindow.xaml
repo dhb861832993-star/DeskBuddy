@@ -608,7 +608,8 @@
                     <ListBox x:Name="MemoList" Margin="6,6,6,4" BorderThickness="0"
                              Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              MouseDoubleClick="OnMemoListDoubleClick"
-                             PreviewMouseMove="OnMemoMouseMove" MouseLeave="OnMemoListMouseLeave">
+                             PreviewMouseMove="OnMemoMouseMove" MouseLeave="OnMemoListMouseLeave"
+                             PreviewMouseLeftButtonDown="OnMemoListMouseDown" MouseLeftButtonUp="OnMemoListMouseUp">
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <VirtualizingStackPanel Orientation="Vertical"/>
