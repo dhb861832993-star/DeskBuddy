@@ -1690,11 +1690,12 @@ public partial class MainWindow : Window
             return;
         }
         if (MemoEditGrid.Visibility == Visibility.Visible) { MemoHoverPopup.IsOpen = false; return; }
-        // 有细节才弹；无细节只显示主题短气泡
+        // 预览内容
         MemoHoverTitle.Text = item.Text;
         MemoHoverDetail.Text = string.IsNullOrEmpty(item.Detail) ? "" : item.Detail;
         MemoHoverDetail.Visibility = string.IsNullOrEmpty(item.Detail) ? Visibility.Collapsed : Visibility.Visible;
-        MemoHoverPopup.PlacementTarget = lbi;
+        // 纯跟随鼠标定位（MousePoint + 右下偏移 = 鼠标右下侧）
+        MemoHoverPopup.PlacementTarget = null;
         if (!MemoHoverPopup.IsOpen) MemoHoverPopup.IsOpen = true;
     }
 
