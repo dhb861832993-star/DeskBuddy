@@ -181,6 +181,36 @@ public partial class MainWindow : Window
             Show();
         }
 
+        // 自动化布局自检：DSH_MEMOTEST=1 时，程序启动后自动进入备忘录编辑视图并测量各控件实际宽度
+        if (Environment.GetEnvironmentVariable("DSH_MEMOTEST") == "1")
+        {
+            DebugLog.Write("MEMOTEST armed");
+            var selfTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+            selfTimer.Tick += (s2, e2) =>
+            {
+                selfTimer.Stop();
+                DebugLog.Write("MEMOTEST tick");
+                try
+                {
+                    Show(); Activate();
+                    MemoPanel.Width = 310;
+                    MemoPanel.Visibility = Visibility.Visible;
+                    MemoListGrid.Visibility = Visibility.Collapsed;
+                    MemoEditGrid.Visibility = Visibility.Visible;
+                    Dispatcher.Invoke(() => { MemoEditGrid.UpdateLayout(); }, System.Windows.Threading.DispatcherPriority.Render);
+                    Dispatcher.Invoke(() => { MemoEditGrid.UpdateLayout(); }, System.Windows.Threading.DispatcherPriority.Loaded);
+                    var pw = MemoPanel.ActualWidth;
+                    var w = MemoEditGrid.ActualWidth;
+                    var titleW = MemoEditTitle.ActualWidth;
+                    var detailW = MemoEditDetail.ActualWidth;
+                    DebugLog.Write($"MEMOTEST panelW={pw:F0} editGridW={w:F0} titleW={titleW:F0} detailW={detailW:F0} filled={(w >= pw - 20)}");
+                    Dispatcher.BeginInvoke(new Action(() => Close()), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                }
+                catch (Exception ex) { DebugLog.Write("MEMOTEST err: " + ex); }
+            };
+            selfTimer.Start();
+        }
+
         // 延迟到窗口真正显示后再抢焦点（绕过 Windows 前台锁）
         Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
         {

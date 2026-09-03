@@ -584,7 +584,24 @@
                     </ListBox>
                 </StackPanel>
 
-                <!-- 待办区：外层 Grid 填满 DockPanel，内部列表视图 / 编辑视图重叠铺满全宽 -->
+                <!-- 悬浮气泡：预览主题 + 细节 -->
+                <Popup x:Name="MemoHoverPopup" DockPanel.Dock="Top" Placement="MousePoint" AllowsTransparency="True"
+                       StaysOpen="True" HorizontalOffset="16" VerticalOffset="10"
+                       PlacementTarget="{Binding ElementName=MemoPanel}">
+                    <Border CornerRadius="10" BorderThickness="1"
+                            BorderBrush="{DynamicResource CardBorder}"
+                            Background="{DynamicResource CardBg}" MaxWidth="260" Padding="10">
+                        <StackPanel>
+                            <TextBlock x:Name="MemoHoverTitle" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="MemoHoverDetail" FontSize="11.5"
+                                       Foreground="{DynamicResource TextSecondary}"
+                                       TextWrapping="Wrap" Margin="0,5,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </Popup>
+
+                <!-- 待办区：外层 Grid 是 DockPanel 最后一个子元素（填充），内部列表视图 / 编辑视图重叠铺满全宽 -->
                 <Grid>
                     <!-- 待办：列表视图 -->
                     <Grid x:Name="MemoListGrid">
@@ -691,23 +708,6 @@
                     </StackPanel>
                 </Grid>
                 </Grid>
-
-                <!-- 悬浮气泡：预览主题 + 细节 -->
-                <Popup x:Name="MemoHoverPopup" DockPanel.Dock="Top" Placement="MousePoint" AllowsTransparency="True"
-                       StaysOpen="True" HorizontalOffset="16" VerticalOffset="10"
-                       PlacementTarget="{Binding ElementName=MemoPanel}">
-                    <Border CornerRadius="10" BorderThickness="1"
-                            BorderBrush="{DynamicResource CardBorder}"
-                            Background="{DynamicResource CardBg}" MaxWidth="260" Padding="10">
-                        <StackPanel>
-                            <TextBlock x:Name="MemoHoverTitle" FontSize="13" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap"/>
-                            <TextBlock x:Name="MemoHoverDetail" FontSize="11.5"
-                                       Foreground="{DynamicResource TextSecondary}"
-                                       TextWrapping="Wrap" Margin="0,5,0,0"/>
-                        </StackPanel>
-                    </Border>
-                </Popup>
             </DockPanel>
         </Border>
 
