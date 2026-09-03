@@ -49,15 +49,21 @@ public sealed class ItemVm : System.ComponentModel.INotifyPropertyChanged
 public sealed class MemoItem : System.ComponentModel.INotifyPropertyChanged
 {
     private string _text;
+    private string _detail = "";
     private string _editText = "";
+    private string _editDetail = "";
     private bool _editing;
     public string Text { get => _text; set { if (_text != value) { _text = value; Notify(nameof(Text)); } } }
+    /// <summary>细节描述（可选）。</summary>
+    public string Detail { get => _detail; set { if (_detail != value) { _detail = value; Notify(nameof(Detail)); } } }
     public bool Done { get; set; }
     /// <summary>编辑态/编辑缓冲区：不写入文件，避免下次打开仍停留在编辑。</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsEditing { get => _editing; set { if (_editing != value) { _editing = value; Notify(nameof(IsEditing)); } } }
     [System.Text.Json.Serialization.JsonIgnore]
     public string EditText { get => _editText; set { if (_editText != value) { _editText = value; Notify(nameof(EditText)); } } }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string EditDetail { get => _editDetail; set { if (_editDetail != value) { _editDetail = value; Notify(nameof(EditDetail)); } } }
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     private void Notify(string p) => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(p));
 }
@@ -79,6 +85,7 @@ public partial class MainWindow : Window
     private readonly System.Collections.ObjectModel.ObservableCollection<MemoItem> _memoItems = new();   // 未完成
     private readonly System.Collections.ObjectModel.ObservableCollection<MemoItem> _memoArchive = new(); // 已完成(历史归档)
     private readonly string MemoPath = System.IO.Path.Combine(AppContext.BaseDirectory, "DeskBuddy.memo.json");
+    private MemoItem? _editingMemo; // 正在编辑视图编辑的条目
 
     /// <summary>配置被重新加载（App 据此更新热键检测器）。</summary>
     public event Action<AppConfig>? ConfigChanged;
@@ -1418,8 +1425,8 @@ public partial class MainWindow : Window
                     foreach (var m in list)
                     {
                         if (string.IsNullOrWhiteSpace(m.Text)) continue;
-                        if (m.Done) _memoArchive.Insert(0, new MemoItem { Text = m.Text, Done = true });
-                        else _memoItems.Insert(0, new MemoItem { Text = m.Text });
+                        if (m.Done) _memoArchive.Insert(0, new MemoItem { Text = m.Text, Detail = m.Detail ?? "", Done = true });
+                        else _memoItems.Insert(0, new MemoItem { Text = m.Text, Detail = m.Detail ?? "" });
                     }
                 }
                 else
@@ -1449,8 +1456,8 @@ public partial class MainWindow : Window
                 try { System.IO.File.Copy(MemoPath, MemoPath + ".bak", true); }
                 catch { }
             }
-            var all = _memoItems.Select(m => new MemoItem { Text = m.Text, Done = false })
-                .Concat(_memoArchive.Select(m => new MemoItem { Text = m.Text, Done = true }))
+            var all = _memoItems.Select(m => new MemoItem { Text = m.Text, Detail = m.Detail ?? "", Done = false })
+                .Concat(_memoArchive.Select(m => new MemoItem { Text = m.Text, Detail = m.Detail ?? "", Done = true }))
                 .ToList();
             System.IO.File.WriteAllText(MemoPath, System.Text.Json.JsonSerializer.Serialize(all));
         }
@@ -1463,11 +1470,15 @@ public partial class MainWindow : Window
         MemoStats.Text = $"待办 {_memoItems.Count} · 已完成 {_memoArchive.Count}";
         MemoArchiveToggleText.Text = $"已完成 ({_memoArchive.Count})";
 
-        // 待办列表（支持搜索过滤）
+        // 待办列表（支持搜索过滤：主题 + 细节）
         string kw = (MemoSearchBox.Text ?? "").Trim();
-        MemoList.ItemsSource = string.IsNullOrEmpty(kw)
-            ? _memoItems
-            : _memoItems.Where(m => m.Text.Contains(kw, StringComparison.CurrentCultureIgnoreCase)).ToList();
+        if (string.IsNullOrEmpty(kw))
+            MemoList.ItemsSource = _memoItems;
+        else
+            MemoList.ItemsSource = _memoItems
+                .Where(m => m.Text.Contains(kw, StringComparison.CurrentCultureIgnoreCase)
+                         || m.Detail.Contains(kw, StringComparison.CurrentCultureIgnoreCase))
+                .ToList();
         MemoArchiveList.ItemsSource = _memoArchive;
 
         MemoList.SelectedIndex = -1;
@@ -1495,9 +1506,13 @@ public partial class MainWindow : Window
         PositionWindow();
     }
 
-    /// <summary>取消所有条目的编辑态（打开面板或切换时调用，避免卡在编辑）。</summary>
+    /// <summary>取消所有条目的编辑态并回到列表视图（打开面板或切换时调用）。</summary>
     private void ClearMemoEditing()
     {
+        _editingMemo = null;
+        MemoListGrid.Visibility = Visibility.Visible;
+        MemoEditGrid.Visibility = Visibility.Collapsed;
+        MemoHoverPopup.IsOpen = false;
         foreach (var m in _memoItems) m.IsEditing = false;
         foreach (var m in _memoArchive) m.IsEditing = false;
     }
@@ -1530,7 +1545,7 @@ public partial class MainWindow : Window
         if (sender is System.Windows.FrameworkElement fe && fe.DataContext is MemoItem item)
         {
             _memoItems.Remove(item);
-            _memoArchive.Insert(0, new MemoItem { Text = item.Text, Done = true });
+            _memoArchive.Insert(0, new MemoItem { Text = item.Text, Detail = item.Detail ?? "", Done = true });
             RefreshMemoList();
             SaveMemo();
         }
@@ -1555,73 +1570,64 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>双击笔记 → 进入行内编辑。</summary>
-    private void OnMemoListDoubleClick(object sender, MouseButtonEventArgs e)
-    {
-        var lbi = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
-        if (lbi?.DataContext is MemoItem item) StartEditMemo(item);
-    }
-
+    /// <summary>双击/点编辑 → 切换到编辑视图（主题 + 细节）。</summary>
     private void StartEditMemo(MemoItem item)
     {
-        // 取消其它正在编辑的
-        foreach (var m in _memoItems) m.IsEditing = false;
-        foreach (var m in _memoArchive) m.IsEditing = false;
-        item.EditText = item.Text;
-        item.IsEditing = true;
-        // 等模板刷新后聚焦输入框并全选
+        _editingMemo = item;
+        MemoEditTitle.Text = item.Text;
+        MemoEditDetail.Text = item.Detail ?? "";
+        MemoListGrid.Visibility = Visibility.Collapsed;
+        MemoEditGrid.Visibility = Visibility.Visible;
+        MemoHoverPopup.IsOpen = false;
         Dispatcher.BeginInvoke(() =>
         {
-            var container = MemoList.ItemContainerGenerator.ContainerFromItem(item) as ListBoxItem
-                            ?? MemoArchiveList.ItemContainerGenerator.ContainerFromItem(item) as ListBoxItem;
-            if (container == null) return;
-            var tb = FindVisualChild<TextBox>(container);
-            if (tb is { Visibility: Visibility.Visible })
-            {
-                tb.Focus();
-                tb.SelectAll();
-            }
+            MemoEditTitle.Focus();
+            MemoEditTitle.SelectAll();
         }, System.Windows.Threading.DispatcherPriority.Input);
     }
 
-    /// <summary>编辑框回车提交 / ESC 取消。</summary>
+    /// <summary>编辑视图回车（主题框/细节框 Enter）→ 保存；ESC → 取消。</summary>
     private void OnMemoEditKey(object sender, KeyEventArgs e)
     {
-        if (sender is not System.Windows.FrameworkElement fe || fe.DataContext is not MemoItem item) return;
         if (e.Key == Key.Enter)
         {
-            CommitMemoEdit(item);
+            CommitMemoEdit();
             e.Handled = true;
         }
         else if (e.Key == Key.Escape)
         {
-            item.IsEditing = false; // 取消：丢弃 EditText，不改动 Text
+            CancelMemoEdit();
             e.Handled = true;
         }
     }
 
-    private void CommitMemoEdit(MemoItem item)
+    private void OnMemoEditSave(object sender, RoutedEventArgs e) => CommitMemoEdit();
+
+    private void OnMemoEditCancel(object sender, RoutedEventArgs e) => CancelMemoEdit();
+
+    private void CommitMemoEdit()
     {
-        var t = item.EditText?.Trim() ?? "";
-        if (t.Length == 0) t = item.Text; // 清空视为不修改
+        var item = _editingMemo;
+        if (item == null) return;
+        var t = MemoEditTitle.Text?.Trim() ?? "";
+        if (t.Length == 0) t = item.Text; // 主题清空视为不修改
         item.Text = t;
-        item.IsEditing = false;
+        item.Detail = MemoEditDetail.Text?.Trim() ?? "";
+        ExitEditView();
         SaveMemo();
     }
 
-    /// <summary>编辑框获得焦点时全选文本，方便直接覆盖。</summary>
-    private void OnMemoEditGotFocus(object sender, KeyboardFocusChangedEventArgs e)
+    private void CancelMemoEdit()
     {
-        if (sender is TextBox tb) tb.SelectAll();
+        ExitEditView();
     }
 
-    /// <summary>编辑确认按钮 → 提交修改。</summary>
-    private void OnMemoEditConfirm(object sender, RoutedEventArgs e)
+    private void ExitEditView()
     {
-        if (sender is System.Windows.FrameworkElement fe && fe.DataContext is MemoItem item)
-        {
-            CommitMemoEdit(item);
-        }
+        _editingMemo = null;
+        MemoEditGrid.Visibility = Visibility.Collapsed;
+        MemoListGrid.Visibility = Visibility.Visible;
+        RefreshMemoList();
     }
 
     // ==================== 备忘录：搜索 / 编辑按钮 / 恢复 / 清空 ====================
@@ -1636,19 +1642,13 @@ public partial class MainWindow : Window
 
     private void OnMemoSearchChanged(object sender, TextChangedEventArgs e) => RefreshMemoList();
 
-    /// <summary>编辑按钮 → 当前笔记进入行内编辑。</summary>
-    private void OnMemoEditBtn(object sender, RoutedEventArgs e)
-    {
-        if (sender is System.Windows.FrameworkElement fe && fe.DataContext is MemoItem item) StartEditMemo(item);
-    }
-
     /// <summary>已完成条目恢复为待办。</summary>
     private void OnMemoRestore(object sender, RoutedEventArgs e)
     {
         if (sender is System.Windows.FrameworkElement fe && fe.DataContext is MemoItem item)
         {
             _memoArchive.Remove(item);
-            _memoItems.Insert(0, new MemoItem { Text = item.Text });
+            _memoItems.Insert(0, new MemoItem { Text = item.Text, Detail = item.Detail ?? "" });
             RefreshMemoList();
             SaveMemo();
         }
@@ -1660,5 +1660,44 @@ public partial class MainWindow : Window
         _memoArchive.Clear();
         RefreshMemoList();
         SaveMemo();
+    }
+
+    // ==================== 备忘录：双击 / 编辑视图 入口 / 悬浮预览 ====================
+
+    /// <summary>双击待办 → 进入编辑视图。</summary>
+    private void OnMemoListDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        var lbi = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
+        if (lbi?.DataContext is MemoItem item && !item.Done) StartEditMemo(item);
+    }
+
+    /// <summary>编辑按钮 → 进入编辑视图。</summary>
+    private void OnMemoEditBtn(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.FrameworkElement fe && fe.DataContext is MemoItem item && !item.Done) StartEditMemo(item);
+    }
+
+    /// <summary>鼠标在待办列表上移动 → 悬浮预览（无细节不弹）。</summary>
+    private void OnMemoMouseMove(object sender, MouseEventArgs e)
+    {
+        var lbi = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
+        var item = lbi?.DataContext as MemoItem;
+        if (item == null || item.Done)
+        {
+            MemoHoverPopup.IsOpen = false;
+            return;
+        }
+        if (MemoEditGrid.Visibility == Visibility.Visible) { MemoHoverPopup.IsOpen = false; return; }
+        // 有细节才弹；无细节只显示主题短气泡
+        MemoHoverTitle.Text = item.Text;
+        MemoHoverDetail.Text = string.IsNullOrEmpty(item.Detail) ? "" : item.Detail;
+        MemoHoverDetail.Visibility = string.IsNullOrEmpty(item.Detail) ? Visibility.Collapsed : Visibility.Visible;
+        MemoHoverPopup.PlacementTarget = lbi;
+        if (!MemoHoverPopup.IsOpen) MemoHoverPopup.IsOpen = true;
+    }
+
+    private void OnMemoListMouseLeave(object sender, MouseEventArgs e)
+    {
+        MemoHoverPopup.IsOpen = false;
     }
 }
