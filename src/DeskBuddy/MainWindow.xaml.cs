@@ -924,13 +924,8 @@ public partial class MainWindow : Window
             HideMenu();
             return;
         }
-        // 未选中时回退到第一项（回车直接打开首个结果）
-        if (ItemList.SelectedItem is not ItemVm vm)
-        {
-            if (_filtered.Count > 0) vm = _filtered[0];
-            else return;
-        }
-        if (vm.Kind == "file-section") return; // 分区标题不可启动
+        // 仅启动「已选中」的条目；未选中则不做任何事（避免误启动首个条目/弹 PowerShell）
+        if (ItemList.SelectedItem is not ItemVm vm) return;
         if (vm.Kind == "file")
         {
             _lastLaunchTime = DateTime.UtcNow;
