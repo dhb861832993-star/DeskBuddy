@@ -693,7 +693,7 @@
                 </Grid>
 
                 <!-- 悬浮气泡：预览主题 + 细节 -->
-                <Popup x:Name="MemoHoverPopup" Placement="MousePoint" AllowsTransparency="True"
+                <Popup x:Name="MemoHoverPopup" DockPanel.Dock="Top" Placement="MousePoint" AllowsTransparency="True"
                        StaysOpen="True" HorizontalOffset="16" VerticalOffset="10"
                        PlacementTarget="{Binding ElementName=MemoPanel}">
                     <Border CornerRadius="10" BorderThickness="1"
