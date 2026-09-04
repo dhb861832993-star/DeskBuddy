@@ -180,13 +180,12 @@ public partial class MindmapWindow : Window
     }
     private void AddNodeCard(CvNode n)
     {
-        var baseSolid = ColorFromHex(n.Color);
-        // 「鲜艳但精致」：鲜艳色 + 细腻高光渐变 + 顶部高光层，层次分明不土
+        // Apple 风格：统一灰阶玻璃卡片（半透明深灰 + 顶部极淡高光），色彩只留端口点缀
         var nodeBg = new LinearGradientBrush(new GradientStopCollection
         {
-            new GradientStop(Color.FromArgb(0xFF, (byte)Math.Min(255, baseSolid.R + 26), (byte)Math.Min(255, baseSolid.G + 26), (byte)Math.Min(255, baseSolid.B + 26)), 0),
-            new GradientStop(Color.FromArgb(0xFF, baseSolid.R, baseSolid.G, baseSolid.B), 0.5),
-            new GradientStop(Color.FromArgb(0xFF, (byte)(baseSolid.R * 0.72), (byte)(baseSolid.G * 0.72), (byte)(baseSolid.B * 0.72)), 1)
+            new GradientStop(Color.FromArgb(0xE8, 0x3A, 0x3A, 0x3C), 0),
+            new GradientStop(Color.FromArgb(0xE0, 0x2C, 0x2C, 0x2E), 0.5),
+            new GradientStop(Color.FromArgb(0xE0, 0x25, 0x25, 0x27), 1)
         }, new Point(0, 0), new Point(0, 1));
         var root = new Grid();
         var content = new StackPanel();
@@ -206,7 +205,7 @@ public partial class MindmapWindow : Window
             if (i < n.Inputs.Count)
             {
                 var p = n.Inputs[i];
-                var dot = MakeDot(Brushes.White, false);
+                var dot = MakeDot(new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF)), false);
                 dot.HorizontalAlignment = HorizontalAlignment.Left;
                 Grid.SetColumn(dot, 0); row.Children.Add(dot);
                 RegisterPort(p.Id, dot, null);
@@ -214,7 +213,7 @@ public partial class MindmapWindow : Window
             if (i < n.Outputs.Count)
             {
                 var p = n.Outputs[i];
-                var dot = MakeDot(Brushes.White, true);
+                var dot = MakeDot(new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF)), true);
                 dot.HorizontalAlignment = HorizontalAlignment.Right;
                 Grid.SetColumn(dot, 0); row.Children.Add(dot);
                 RegisterPort(p.Id, dot, null);
@@ -223,6 +222,19 @@ public partial class MindmapWindow : Window
             portArea.Children.Add(row);
         }
         content.Children.Add(portArea);
+
+        // 彩色极小点缀：左侧一条 3px 细色条（用 n.Color，单选面板仍可改色但克制）
+        var baseSolid = ColorFromHex(n.Color);
+        var colorAccent = new Border
+        {
+            Width = 3,
+            CornerRadius = new CornerRadius(1, 0, 0, 1),
+            Background = new SolidColorBrush(Color.FromArgb(0xFF, baseSolid.R, baseSolid.G, baseSolid.B)),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            IsHitTestVisible = false
+        };
+        root.Children.Add(colorAccent);
 
         var card = new Border
         {
@@ -405,8 +417,19 @@ public partial class MindmapWindow : Window
         if (n.Title != PropText.Text) { BeforeChange(); n.Title = PropText.Text; _dirty = true; var card = _findCard(n.Id); if (card?.Child is StackPanel r && r.Children.Count > 0 && r.Children[0] is Border tb2 && tb2.Child is TextBlock tbx) tbx.Text = n.Title; }
     }
     private Border? _findCard(string id) => _nodeCards.TryGetValue(id, out var c) ? c : null;
-    private void OnPickColor(object s, RoutedEventArgs e) { if (_selNodeId == null) return; var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return; BeforeChange(); n.Color = (string)((Button)s).Tag; if (_nodeCards.TryGetValue(n.Id, out var c)) c.Background = new SolidColorBrush(ColorFromHex(n.Color)); _dirty = true; }
-    private void OnCycleColor(object s, RoutedEventArgs e) { if (_selNodeId == null) return; var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return; var cols = new[] { "#FF0A84FF", "#FFFF453A", "#FF30D158", "#FFFF9F0A", "#FFBF5AF2" }; var i = Array.IndexOf(cols, n.Color); var idx = i < 0 ? 0 : (i + 1) % cols.Length; BeforeChange(); n.Color = cols[idx]; if (_nodeCards.TryGetValue(n.Id, out var c)) c.Background = new SolidColorBrush(ColorFromHex(n.Color)); _dirty = true; }
+    private void OnPickColor(object s, RoutedEventArgs e) { if (_selNodeId == null) return; var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return; BeforeChange(); n.Color = (string)((Button)s).Tag; ApplyAccentColor(n); _dirty = true; }
+    private void OnCycleColor(object s, RoutedEventArgs e) { if (_selNodeId == null) return; var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return; var cols = new[] { "#FF0A84FF", "#FFFF453A", "#FF30D158", "#FFFF9F0A", "#FFBF5AF2", "#FFA7AEB8" }; var i = Array.IndexOf(cols, n.Color); var idx = i < 0 ? 0 : (i + 1) % cols.Length; BeforeChange(); n.Color = cols[idx]; ApplyAccentColor(n); _dirty = true; }
+    private void ApplyAccentColor(CvNode n)
+    {
+        // 只更新卡片左侧细色条，卡片保持灰阶玻璃；无色条则整体重渲
+        if (_nodeCards.TryGetValue(n.Id, out var card) && card.Child is Grid g)
+        {
+            var col = ColorFromHex(n.Color);
+            foreach (var child in g.Children.OfType<Border>())
+                if (child.Width <= 3.1) { child.Background = new SolidColorBrush(Color.FromArgb(0xFF, col.R, col.G, col.B)); return; }
+        }
+        Rebuild();
+    }
 
     // ==================== 撤销 / 快捷键 / 导出 ====================
     private void BeforeChange() { _undo.Push(CloneDoc(_doc)); if (_undo.Count > 60) { var a = _undo.ToArray(); Array.Reverse(a); _undo.Clear(); foreach (var x in a.Take(59)) _undo.Push(x); } _redo.Clear(); }
