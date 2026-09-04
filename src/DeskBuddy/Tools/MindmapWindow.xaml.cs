@@ -104,7 +104,7 @@ public partial class MindmapWindow : Window
         if (card.Child is not StackPanel root || root.Children.Count == 0) return;
         if (root.Children[0] is not Border titleBar) return;
         if (titleBar.Child is not TextBlock title) return;
-        var box = new TextBox { Text = n.Title, FontSize = 16, Foreground = Brushes.White, Background = new SolidColorBrush(Color.FromArgb(0x50, 0, 0, 0)), BorderThickness = new Thickness(0), Padding = new Thickness(8, 5, 8, 5), TextAlignment = TextAlignment.Center };
+        var box = new TextBox { Text = n.Title, FontSize = 19, Foreground = Brushes.White, Background = new SolidColorBrush(Color.FromArgb(0x50, 0, 0, 0)), BorderThickness = new Thickness(0), Padding = new Thickness(8, 5, 8, 5), TextAlignment = TextAlignment.Center };
         titleBar.Child = box;
         box.Focus(); box.SelectAll();
         box.KeyDown += (_, e) =>
@@ -117,7 +117,7 @@ public partial class MindmapWindow : Window
 
     private static void ReplaceTitle(Border titleBar, CvNode n)
     {
-        var tb = new TextBlock { Text = n.Title, FontSize = 16, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, MaxWidth = 220, HorizontalAlignment = HorizontalAlignment.Center };
+        var tb = new TextBlock { Text = n.Title, FontSize = 19, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, MaxWidth = 220, HorizontalAlignment = HorizontalAlignment.Center };
         titleBar.Child = tb;
     }
 
@@ -190,13 +190,13 @@ public partial class MindmapWindow : Window
         var root = new Grid();
         var content = new StackPanel();
         root.Children.Add(content);
-        // 标题：居中、大留白（工程扁平风，无装饰）
-        var title = new TextBlock { Text = n.Title, FontSize = 16, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, MaxWidth = 240, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(18, 16, 18, 8) };
+        // 标题：居中，字号加大，上下留白紧凑（节点更扁）
+        var title = new TextBlock { Text = n.Title, FontSize = 19, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, MaxWidth = 240, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(18, 10, 18, 4) };
         title.MouseLeftButtonDown += (s, e) => { if (IsDoubleClick()) { EditNodeTitle(n); e.Handled = true; } };
         content.Children.Add(title);
 
         // 端口区：小圆点，左入右出
-        var portArea = new StackPanel { Margin = new Thickness(8, 6, 8, 12) };
+        var portArea = new StackPanel { Margin = new Thickness(6, 2, 6, 6) };
         var rows = Math.Max(Math.Max(n.Inputs.Count, n.Outputs.Count), 1);
         for (int i = 0; i < rows; i++)
         {
@@ -218,7 +218,7 @@ public partial class MindmapWindow : Window
                 Grid.SetColumn(dot, 0); row.Children.Add(dot);
                 RegisterPort(p.Id, dot, null);
             }
-            row.Height = 24;
+            row.Height = 20;
             portArea.Children.Add(row);
         }
         content.Children.Add(portArea);
