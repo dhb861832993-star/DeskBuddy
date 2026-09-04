@@ -135,7 +135,27 @@ public partial class MindmapWindow : Window
     private void OnPreviewMouseWheel(object s, MouseWheelEventArgs e) { SetZoom(_zoom * (e.Delta > 0 ? 1.15 : 1 / 1.15), e.GetPosition(CanvasHost)); e.Handled = true; }
     private void OnZoomIn(object s, RoutedEventArgs e) => SetZoom(_zoom * 1.2, Center());
     private void OnZoomOut(object s, RoutedEventArgs e) => SetZoom(_zoom / 1.2, Center());
-    private void OnResetView(object s, RoutedEventArgs e) { _zoom = 1.0; ZoomTf.ScaleX = ZoomTf.ScaleY = 1; CenterView(); ZoomText.Text = "100%"; }
+    private void OnResetView(object s, RoutedEventArgs e)
+    {
+        // 一键自适应：缩放+平移，让所有节点完整进入视野（居中、留边距）
+        if (_doc.Nodes.Count == 0) { CenterView(); return; }
+        var nodes = _doc.Nodes;
+        double minX = nodes.Min(x => x.X), minY = nodes.Min(x => x.Y);
+        double maxX = nodes.Max(x => x.X + Math.Max(x.W, 170));
+        double maxY = nodes.Max(x => x.Y + 90); // 估算节点高度
+        double bw = maxX - minX, bh = maxY - minY;
+        double pad = 80;
+        double viewW = Math.Max(200, CanvasHost.ActualWidth - pad * 2);
+        double viewH = Math.Max(150, CanvasHost.ActualHeight - pad * 2);
+        double scale = Math.Min(viewW / Math.Max(bw, 60), viewH / Math.Max(bh, 60));
+        scale = Math.Clamp(scale, 0.2, 1.6);
+        _zoom = scale; ZoomTf.ScaleX = ZoomTf.ScaleY = scale;
+        // 让 bbox 中心对齐视口中心（视口中心 - bbox中心*zoom）
+        double cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+        PanTf.X = CanvasHost.ActualWidth / 2 - cx * scale;
+        PanTf.Y = CanvasHost.ActualHeight / 2 - cy * scale;
+        ZoomText.Text = (int)(_zoom * 100) + "%";
+    }
     private Point Center() => new Point(CanvasHost.ActualWidth / 2, CanvasHost.ActualHeight / 2);
 
     // ==================== 文档 ====================
@@ -411,7 +431,7 @@ public partial class MindmapWindow : Window
         {
             _lastBlankDown = DateTime.MinValue;
             var cv = HostToCanvas(e.GetPosition(CanvasHost));
-            var nn = new CvNode { Title = "节点", X = cv.X - 90, Y = cv.Y - 20, Color = "#FF3A3A3C" };
+            var nn = new CvNode { Title = "节点", X = cv.X - 85, Y = cv.Y - 30, Color = "#FF3A3A3C" };
             nn.Inputs.Add(new CvPort()); nn.Outputs.Add(new CvPort());
             BeforeChange(); _doc.Nodes.Add(nn); Rebuild(); _dirty = true; SelectNode(nn.Id);
             e.Handled = true; return;
