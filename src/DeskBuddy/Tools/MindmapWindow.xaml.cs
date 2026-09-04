@@ -180,20 +180,22 @@ public partial class MindmapWindow : Window
     }
     private void AddNodeCard(CvNode n)
     {
-        // Apple 风格：统一灰阶玻璃卡片（半透明深灰 + 顶部极淡高光），色彩只留端口点缀
+        // 节点用节点色（卡片 + 边框同色），默认暗灰；文字暗灰不凸显
+        var baseC = ColorFromHex(n.Color);
         var nodeBg = new LinearGradientBrush(new GradientStopCollection
         {
-            new GradientStop(Color.FromArgb(0xE8, 0x3A, 0x3A, 0x3C), 0),
-            new GradientStop(Color.FromArgb(0xE0, 0x2C, 0x2C, 0x2E), 0.5),
-            new GradientStop(Color.FromArgb(0xE0, 0x25, 0x25, 0x27), 1)
+            new GradientStop(Color.FromArgb(0xFA, baseC.R, baseC.G, baseC.B), 0),
+            new GradientStop(Color.FromArgb(0xF2, (byte)(baseC.R * 0.82), (byte)(baseC.G * 0.82), (byte)(baseC.B * 0.82)), 1)
         }, new Point(0, 0), new Point(0, 1));
         var root = new Grid();
         var content = new StackPanel();
         root.Children.Add(content);
-        // 标题：居中，字号加大，上下留白紧凑（节点更扁）
-        var title = new TextBlock { Text = n.Title, FontSize = 19, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, MaxWidth = 240, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(18, 10, 18, 4) };
+        // 标题：上下左右居中，暗灰字
+        var titleHost = new Border { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, Padding = new Thickness(20, 12, 20, 8) };
+        var title = new TextBlock { Text = n.Title, FontSize = 19, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromRgb(0xC2, 0xC2, 0xC8)), TextWrapping = TextWrapping.Wrap, MaxWidth = 240, TextAlignment = TextAlignment.Center };
         title.MouseLeftButtonDown += (s, e) => { if (IsDoubleClick()) { EditNodeTitle(n); e.Handled = true; } };
-        content.Children.Add(title);
+        titleHost.Child = title;
+        content.Children.Add(titleHost);
 
         // 端口区：小圆点，左入右出
         var portArea = new StackPanel { Margin = new Thickness(6, 2, 6, 6) };
@@ -223,23 +225,10 @@ public partial class MindmapWindow : Window
         }
         content.Children.Add(portArea);
 
-        // 彩色极小点缀：左侧一条 3px 细色条（用 n.Color，单选面板仍可改色但克制）
-        var baseSolid = ColorFromHex(n.Color);
-        var colorAccent = new Border
-        {
-            Width = 3,
-            CornerRadius = new CornerRadius(1, 0, 0, 1),
-            Background = new SolidColorBrush(Color.FromArgb(0xFF, baseSolid.R, baseSolid.G, baseSolid.B)),
-            HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Stretch,
-            IsHitTestVisible = false
-        };
-        root.Children.Add(colorAccent);
-
         var card = new Border
         {
             Tag = n, Background = nodeBg, CornerRadius = new CornerRadius(11),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(0x28, 0xFF, 0xFF, 0xFF)), BorderThickness = new Thickness(1),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x99, baseC.R, baseC.G, baseC.B)), BorderThickness = new Thickness(1.4),
             Padding = new Thickness(0), MinWidth = 170, Child = root
         };
         card.Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Colors.Black, Opacity = 0.18, BlurRadius = 16, ShadowDepth = 1.5, Direction = 270 };
@@ -421,12 +410,17 @@ public partial class MindmapWindow : Window
     private void OnCycleColor(object s, RoutedEventArgs e) { if (_selNodeId == null) return; var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return; var cols = new[] { "#FF0A84FF", "#FFFF453A", "#FF30D158", "#FFFF9F0A", "#FFBF5AF2", "#FFA7AEB8" }; var i = Array.IndexOf(cols, n.Color); var idx = i < 0 ? 0 : (i + 1) % cols.Length; BeforeChange(); n.Color = cols[idx]; ApplyAccentColor(n); _dirty = true; }
     private void ApplyAccentColor(CvNode n)
     {
-        // 只更新卡片左侧细色条，卡片保持灰阶玻璃；无色条则整体重渲
-        if (_nodeCards.TryGetValue(n.Id, out var card) && card.Child is Grid g)
+        // 改色：卡片背景渐变 + 边框一起变，文字保持暗灰
+        if (_nodeCards.TryGetValue(n.Id, out var card))
         {
-            var col = ColorFromHex(n.Color);
-            foreach (var child in g.Children.OfType<Border>())
-                if (child.Width <= 3.1) { child.Background = new SolidColorBrush(Color.FromArgb(0xFF, col.R, col.G, col.B)); return; }
+            var c = ColorFromHex(n.Color);
+            card.Background = new LinearGradientBrush(new GradientStopCollection
+            {
+                new GradientStop(Color.FromArgb(0xFA, c.R, c.G, c.B), 0),
+                new GradientStop(Color.FromArgb(0xF2, (byte)(c.R * 0.82), (byte)(c.G * 0.82), (byte)(c.B * 0.82)), 1)
+            }, new Point(0, 0), new Point(0, 1));
+            card.BorderBrush = new SolidColorBrush(Color.FromArgb(0x99, c.R, c.G, c.B));
+            return;
         }
         Rebuild();
     }
@@ -453,7 +447,7 @@ public partial class MindmapWindow : Window
         if (e.Key == Key.Delete) { if (_selNodeId != null) DeleteNode(_selNodeId); if (_selLinkId != null) DeleteLink(_selLinkId); e.Handled = true; }
     }
     private Point CanvasCenterCanvas() => HostToCanvas(Center());
-    private void AddNodeAt(Point c) { BeforeChange(); var n = new CvNode { Title = "节点", X = c.X - 90, Y = c.Y - 15, Color = "#FFA7AEB8" }; n.Inputs.Add(new CvPort()); n.Outputs.Add(new CvPort()); _doc.Nodes.Add(n); Rebuild(); _dirty = true; SelectNode(n.Id); }
+    private void AddNodeAt(Point c) { BeforeChange(); var n = new CvNode { Title = "节点", X = c.X - 90, Y = c.Y - 15, Color = "#FF3A3A3C" }; n.Inputs.Add(new CvPort()); n.Outputs.Add(new CvPort()); _doc.Nodes.Add(n); Rebuild(); _dirty = true; SelectNode(n.Id); }
     private void DeleteNode(string id) { var n = _doc.Nodes.FirstOrDefault(x => x.Id == id); if (n == null) return; BeforeChange(); var ps = n.Inputs.Select(p => p.Id).Concat(n.Outputs.Select(p => p.Id)).ToHashSet(); _doc.Nodes.Remove(n); _doc.Links.RemoveAll(x => ps.Contains(x.FromPort) || ps.Contains(x.ToPort)); _selNodeId = null; Rebuild(); _dirty = true; }
     private void DeleteLink(string id) { BeforeChange(); _doc.Links.RemoveAll(x => x.Id == id); _selLinkId = null; RedrawLinks(); _dirty = true; }
 
