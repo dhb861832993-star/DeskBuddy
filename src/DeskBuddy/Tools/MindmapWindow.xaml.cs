@@ -204,7 +204,7 @@ public partial class MindmapWindow : Window
         for (int i = 0; i < rows; i++)
         {
             var row = new Grid();
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Star }); // 整行拉伸
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // 整行拉伸
             if (i < n.Inputs.Count)
             {
                 var p = n.Inputs[i];
