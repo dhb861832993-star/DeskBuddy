@@ -256,6 +256,7 @@ public partial class MindmapWindow : Window
         border.MouseLeftButtonDown += OnNodeDown;
         border.MouseMove += OnNodeMove;
         border.MouseLeftButtonUp += OnNodeUp;
+        border.MouseLeave += OnNodeMouseLeave;
         border.ContextMenu = BuildNodeMenu(n);
         _nodeVisuals[n.Id] = border;
         NodeCanvas.Children.Add(border);
@@ -308,22 +309,45 @@ public partial class MindmapWindow : Window
         }
         _lastNodeDown = DateTime.UtcNow; _lastNodeDownBorder = sender as Border;
 
-        // 开始拖拽（画布坐标）
-        var b = (Border)sender; _dragNode = b;
-        b.CaptureMouse(); e.Handled = true;
+        var b = (Border)sender;
+        var canv = e.GetPosition(NodeCanvas);
+
+        // 在节点边缘（8px 内）按下 → 进入「拖线连线」模式
+        var left = Canvas.GetLeft(b); var top = Canvas.GetTop(b);
+        var insideEdge = canv.X < left + 8 || canv.X > left + b.ActualWidth - 8 ||
+                         canv.Y < top + 8 || canv.Y > top + b.ActualHeight - 8;
+        if (insideEdge)
+        {
+            _linkFrom = b; _linkCur = canv; _linking = true;
+            CanvasHost.CaptureMouse();
+            RedrawLinks(); RedrawLinkPreview();
+            e.Handled = true; return;
+        }
+
+        // 中间 → 拖拽移动
+        _dragNode = b;
+        b.CaptureMouse();
+        e.Handled = true;
     }
+
     private void OnNodeMove(object sender, MouseEventArgs e)
     {
-        if (_dragNode != sender || e.LeftButton != MouseButtonState.Pressed) return;
-        var c = e.GetPosition(NodeCanvas);
-        Canvas.SetLeft(_dragNode, c.X - _dragNode.ActualWidth / 2);
-        Canvas.SetTop(_dragNode, c.Y - _dragNode.ActualHeight / 2);
-        RedrawLinks(); _dirty = true;
+        if (_dragNode == sender && e.LeftButton == MouseButtonState.Pressed)
+        {
+            var c = e.GetPosition(NodeCanvas);
+            Canvas.SetLeft(_dragNode, c.X - _dragNode.ActualWidth / 2);
+            Canvas.SetTop(_dragNode, c.Y - _dragNode.ActualHeight / 2);
+            RedrawLinks(); _dirty = true;
+        }
     }
     private void OnNodeUp(object sender, MouseButtonEventArgs e)
     {
         if (_dragNode == sender) _dragNode = null;
         ((Border)sender).ReleaseMouseCapture();
+    }
+    private void OnNodeMouseLeave(object sender, MouseEventArgs e)
+    {
+        // 拖线过程中移出节点 → 交给画布继续跟踪（不自爆）
     }
 
     // ==================== 编辑 / 删除 / 颜色 / 连线 ====================
