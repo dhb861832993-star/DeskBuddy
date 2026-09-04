@@ -269,16 +269,16 @@ public partial class MindmapWindow : Window
         if (e.ChangedButton == MouseButton.Middle)
         {
             // 中键拖拽平移画布
-            _panning = true; _panStart = e.GetPosition(CanvasHost); CanvasHost.CaptureMouse(); e.Handled = true; return;
+            _panning = true; _panStart = e.GetPosition(this); CanvasHost.CaptureMouse(); e.Handled = true; return;
         }
         if (e.ChangedButton != MouseButton.Left) return;
         SelectNode(null); SelectLink(null);
-        _panning = true; _panStart = e.GetPosition(CanvasHost); CanvasHost.CaptureMouse(); e.Handled = true;
+        _panning = true; _panStart = e.GetPosition(this); CanvasHost.CaptureMouse(); e.Handled = true;
     }
     private void OnCanvasMouseMove(object s, MouseEventArgs e)
     {
         if (_linking && _dragPort != null) { _linkCur = e.GetPosition(NodeCanvas); RedrawLinkPreview(); }
-        else if (_panning) { var h = e.GetPosition(CanvasHost); PanTf.X += (h.X - _panStart.X) / _zoom; PanTf.Y += (h.Y - _panStart.Y) / _zoom; _panStart = h; }
+        else if (_panning) { var h = e.GetPosition(this); PanTf.X += (h.X - _panStart.X) / _zoom; PanTf.Y += (h.Y - _panStart.Y) / _zoom; _panStart = h; }
     }
     private void OnCanvasMouseUp(object s, MouseButtonEventArgs e)
     {
