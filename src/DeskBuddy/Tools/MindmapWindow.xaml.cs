@@ -268,8 +268,7 @@ public partial class MindmapWindow : Window
         // 输入端口：按住它不能拖出线，只有输出端口能拖出。但这里统一允许右端输出拖线。
         dot.MouseLeftButtonDown += (s, e) =>
         {
-            var isOutput = IsOutputPort(pid);
-            if (!isOutput) return;
+            // 输入/输出端口都可作为连接起点（支持双向连接）
             _dragPort = dot; _linkCur = GetPortCenter(dot); _linking = true; CanvasHost.CaptureMouse();
             RedrawLinkPreview(); e.Handled = true;
         };
@@ -292,17 +291,36 @@ public partial class MindmapWindow : Window
         foreach (var l in _doc.Links)
         {
             if (!_portDots.TryGetValue(l.FromPort, out var f) || !_portDots.TryGetValue(l.ToPort, out var t)) continue;
+            var p1 = GetPortCenter(f); var p2 = GetPortCenter(t);
+            var mx = (p1.X + p2.X) / 2;
             var g = new StreamGeometry();
             using (var ctx = g.Open())
             {
-                ctx.BeginFigure(GetPortCenter(f), false, false);
-                var mx = (GetPortCenter(f).X + GetPortCenter(t).X) / 2;
-                ctx.BezierTo(new Point(mx, GetPortCenter(f).Y), new Point(mx, GetPortCenter(t).Y), GetPortCenter(t), true, false);
+                ctx.BeginFigure(p1, false, false);
+                ctx.BezierTo(new Point(mx, p1.Y), new Point(mx, p2.Y), p2, true, false);
             }
             g.Freeze();
-            var ph = new System.Windows.Shapes.Path { Stroke = (_selLinkId == l.Id) ? new SolidColorBrush(Color.FromRgb(0x4A, 0x90, 0xFF)) : new SolidColorBrush(Color.FromArgb(0x9A, 0xA2, 0xB0, 0xB8)), StrokeThickness = 2, Data = g, Tag = l.Id, Cursor = Cursors.Hand };
+            var stroke = (_selLinkId == l.Id) ? new SolidColorBrush(Color.FromRgb(0x4A, 0x90, 0xFF)) : new SolidColorBrush(Color.FromArgb(0x9A, 0xA2, 0xB0, 0xB8));
+            var ph = new System.Windows.Shapes.Path { Stroke = stroke, StrokeThickness = 2, Data = g, Tag = l.Id, Cursor = Cursors.Hand };
             ph.MouseLeftButtonDown += (s, e) => { _selLinkId = l.Id; _selNodeId = null; RefreshProps(); RedrawLinks(); e.Handled = true; };
             LinkCanvas.Children.Add(ph);
+            // 终点箭头：沿 控制点→终点 方向
+            var dir = p2 - new Point(mx, p2.Y);
+            if (dir.Length < 1e-4) dir = p2 - p1;
+            dir.Normalize();
+            var angle = Math.Atan2(dir.Y, dir.X) * 180 / Math.PI;
+            var arrow = new System.Windows.Shapes.Path
+            {
+                Fill = stroke,
+                Data = Geometry.Parse("M 0,0 L -10,-5 L -10,5 Z"),
+                RenderTransform = new RotateTransform(angle, p2.X, p2.Y),
+                Margin = new Thickness(0)
+            };
+            Canvas.SetLeft(arrow, p2.X - 6);
+            Canvas.SetTop(arrow, p2.Y - 6);
+            Canvas.SetZIndex(arrow, 5);
+            arrow.RenderTransformOrigin = new Point(0.6, 0.5);
+            LinkCanvas.Children.Add(arrow);
         }
     }
     private void RedrawLinkPreview()
@@ -339,11 +357,8 @@ public partial class MindmapWindow : Window
             if (drop != null && !ReferenceEquals(_dragPort, drop))
             {
                 var toPortId = PortIdOf(drop);
-                var isInput = !IsOutputPort(toPortId);
-                if (isInput)
-                {
-                    BeforeChange(); _doc.Links.Add(new CvLink { FromPort = PortIdOf(_dragPort), ToPort = toPortId }); _dirty = true;
-                }
+                // 任意端口都可作目标（双向连接），线方向 = 起点→终点
+                BeforeChange(); _doc.Links.Add(new CvLink { FromPort = PortIdOf(_dragPort), ToPort = toPortId }); _dirty = true;
             }
             _linking = false; _dragPort = null; _linkStartIsBlank = false; CanvasHost.ReleaseMouseCapture(); RedrawLinks();
         }
