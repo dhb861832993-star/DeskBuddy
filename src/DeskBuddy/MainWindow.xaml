@@ -319,21 +319,38 @@
                     <TextBlock Text="内置工具" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="2,0,0,8"/>
                     <Button x:Name="MindmapToolBtn" Click="OnOpenMindmap" Cursor="Hand"
                             HorizontalContentAlignment="Stretch">
-                        <Border CornerRadius="12" Background="{DynamicResource BtnBg}"
-                                BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="12,10">
-                            <DockPanel>
-                                <Border Width="36" Height="36" CornerRadius="10" Background="#2232D583"
-                                        VerticalAlignment="Center">
-                                    <TextBlock Text="🔗" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </Border>
-                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="连连看" FontSize="13" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimary}"/>
-                                    <TextBlock Text="思维导图 / 流程图（双击打开）" FontSize="10.5"
-                                               Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
-                                </StackPanel>
-                            </DockPanel>
-                        </Border>
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="bd" CornerRadius="12" Background="{TemplateBinding Background}"
+                                                    BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="12,10">
+                                                <ContentPresenter/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="bd" Property="Background" Value="{DynamicResource BtnBgHover}"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </Button.Style>
+                        <DockPanel>
+                            <Border Width="36" Height="36" CornerRadius="10" Background="#2232D583"
+                                    VerticalAlignment="Center">
+                                <TextBlock Text="🔗" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="连连看" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimary}"/>
+                                <TextBlock Text="思维导图 / 流程图（双击打开）" FontSize="10.5"
+                                           Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </DockPanel>
                     </Button>
                 </StackPanel>
             </DockPanel>
