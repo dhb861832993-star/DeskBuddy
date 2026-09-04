@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using DeskBuddy.Models;
 using DeskBuddy.Services;
@@ -20,8 +21,12 @@ public partial class MindmapWindow : Window
     private MindmapDoc _doc = new();
     private string? _path;
     private readonly Dictionary<string, Border> _nodeVisuals = new();
+    private readonly Dictionary<string, Ellipse> _connectors = new();
     private bool _dirty;
     private double _zoom = 1.0;
+    private readonly Stack<MindmapDoc> _undo = new();
+    private readonly Stack<MindmapDoc> _redo = new();
+    private bool _duringUndo;
 
     // 画布 Viewport 坐标（挂 CanvasHost 下，不含变换）
     private Point _panStartHost;
@@ -117,7 +122,7 @@ public partial class MindmapWindow : Window
         {
             var c = HostToCanvas(host);
             var n = new MindNode { Text = "新节点", X = c.X - 55, Y = c.Y - 16 };
-            _doc.Nodes.Add(n); Rebuild(); _dirty = true; EditNodeText(n);
+            BeforeChange(); _doc.Nodes.Add(n); Rebuild(); _dirty = true; EditNodeText(n);
             _lastBlankDown = DateTime.MinValue;
             e.Handled = true;
             return;
@@ -154,7 +159,7 @@ public partial class MindmapWindow : Window
             if (target != null && !ReferenceEquals(target, _linkFrom) &&
                 !_doc.Links.Any(x => x.From == NodeId(_linkFrom) && x.To == NodeId(target)))
             {
-                _doc.Links.Add(new MindLink { From = NodeId(_linkFrom), To = NodeId(target) });
+                BeforeChange(); _doc.Links.Add(new MindLink { From = NodeId(_linkFrom), To = NodeId(target) });
                 _dirty = true;
             }
         }
@@ -189,6 +194,7 @@ public partial class MindmapWindow : Window
     });
     private void OnSave(object s, RoutedEventArgs e) => Save();
     private void OnHistory(object s, RoutedEventArgs e) => ShowHistory();
+    private void OnExport(object s, RoutedEventArgs e) => ExportPng();
     private void OnClose(object s, RoutedEventArgs e) => EnsureSaved(Close);
 
     private void Save() { if (_path == null) ChooseDirAndSave(); else { _doc.Save(_path); _dirty = false; AddRecent(_path); UpdateTitle(); } }
@@ -230,12 +236,13 @@ public partial class MindmapWindow : Window
     // ==================== 渲染 ====================
     private void Rebuild()
     {
-        NodeCanvas.Children.Clear(); _nodeVisuals.Clear();
+        NodeCanvas.Children.Clear(); _nodeVisuals.Clear(); _connectors.Clear();
         foreach (var n in _doc.Nodes) AddNodeVisual(n);
         RedrawLinks();
     }
     private void AddNodeVisual(MindNode n)
     {
+        // 节点主体
         var border = new Border
         {
             Tag = n,
@@ -243,23 +250,51 @@ public partial class MindmapWindow : Window
             CornerRadius = new CornerRadius(10),
             BorderBrush = new SolidColorBrush(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)),
             BorderThickness = new Thickness(1),
-            Padding = new Thickness(12, 8, 12, 8),
+            Padding = new Thickness(12, 8, 14, 8),
             Cursor = Cursors.Hand
         };
         var text = new TextBlock { Text = n.Text, FontSize = 12.5, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, MaxWidth = 250 };
         border.Child = text;
-        border.Measure(new Size(300, 80));
+        border.Measure(new Size(300, 120));
         n.W = Math.Max(90, border.DesiredSize.Width + 8);
         border.Width = n.W;
         Canvas.SetLeft(border, n.X); Canvas.SetTop(border, n.Y);
 
+        // 尾部选接小圆圈（节点右侧中部，拖动它连线）
+        var c = new Ellipse
+        {
+            Width = 14, Height = 14,
+            Fill = Brushes.White,
+            Stroke = new SolidColorBrush(Color.FromRgb(0x4A, 0x90, 0xFF)),
+            StrokeThickness = 2,
+            Cursor = Cursors.Cross,
+            ToolTip = "按住拖到其它节点上连线"
+        };
+        Canvas.SetLeft(c, Canvas.GetLeft(border) + border.Width + 2);
+        Canvas.SetTop(c, Canvas.GetTop(border) + 18);
+        Canvas.SetZIndex(c, 50);
+        c.MouseLeftButtonDown += (s2, e2) => StartLinkFromCircle(border, c, e2);
+        _nodeVisuals[n.Id] = border;
+        _connectors[n.Id] = c;
+
+        NodeCanvas.Children.Add(border);
+        NodeCanvas.Children.Add(c);
+
         border.MouseLeftButtonDown += OnNodeDown;
         border.MouseMove += OnNodeMove;
         border.MouseLeftButtonUp += OnNodeUp;
-        border.MouseLeave += OnNodeMouseLeave;
         border.ContextMenu = BuildNodeMenu(n);
-        _nodeVisuals[n.Id] = border;
-        NodeCanvas.Children.Add(border);
+    }
+
+    private void StartLinkFromCircle(Border node, Ellipse c, MouseButtonEventArgs e)
+    {
+        // 从小圆圈拖出线连线
+        _linkFrom = node;
+        _linkCur = new Point(Canvas.GetLeft(node) + node.Width + 9, Canvas.GetTop(node) + 25);
+        _linking = true;
+        CanvasHost.CaptureMouse();
+        RedrawLinks(); RedrawLinkPreview();
+        e.Handled = true;
     }
 
     private ContextMenu BuildNodeMenu(MindNode n)
@@ -310,21 +345,8 @@ public partial class MindmapWindow : Window
         _lastNodeDown = DateTime.UtcNow; _lastNodeDownBorder = sender as Border;
 
         var b = (Border)sender;
-        var canv = e.GetPosition(NodeCanvas);
-
-        // 在节点边缘（8px 内）按下 → 进入「拖线连线」模式
-        var left = Canvas.GetLeft(b); var top = Canvas.GetTop(b);
-        var insideEdge = canv.X < left + 8 || canv.X > left + b.ActualWidth - 8 ||
-                         canv.Y < top + 8 || canv.Y > top + b.ActualHeight - 8;
-        if (insideEdge)
-        {
-            _linkFrom = b; _linkCur = canv; _linking = true;
-            CanvasHost.CaptureMouse();
-            RedrawLinks(); RedrawLinkPreview();
-            e.Handled = true; return;
-        }
-
-        // 中间 → 拖拽移动
+        _focusNodeId = ((MindNode)b.Tag).Id;
+        // 中间按下 → 拖拽移动（连线走尾部小圆圈）
         _dragNode = b;
         b.CaptureMouse();
         e.Handled = true;
@@ -337,6 +359,13 @@ public partial class MindmapWindow : Window
             var c = e.GetPosition(NodeCanvas);
             Canvas.SetLeft(_dragNode, c.X - _dragNode.ActualWidth / 2);
             Canvas.SetTop(_dragNode, c.Y - _dragNode.ActualHeight / 2);
+            // 选接小圆圈跟随节点
+            var n = (MindNode)_dragNode.Tag;
+            if (_connectors.TryGetValue(n.Id, out var conn))
+            {
+                Canvas.SetLeft(conn, Canvas.GetLeft(_dragNode) + _dragNode.Width + 2);
+                Canvas.SetTop(conn, Canvas.GetTop(_dragNode) + 18);
+            }
             RedrawLinks(); _dirty = true;
         }
     }
@@ -359,14 +388,15 @@ public partial class MindmapWindow : Window
         b.Child = box; box.Focus(); box.SelectAll();
         box.KeyDown += (_, e) =>
         {
-            if (e.Key == Key.Enter) { n.Text = box.Text.Trim(); if (n.Text.Length == 0) n.Text = "新节点"; Rebuild(); _dirty = true; e.Handled = true; }
+            if (e.Key == Key.Enter) { BeforeChange(); n.Text = box.Text.Trim(); if (n.Text.Length == 0) n.Text = "新节点"; Rebuild(); _dirty = true; e.Handled = true; }
             else if (e.Key == Key.Escape) { Rebuild(); e.Handled = true; }
         };
-        box.LostKeyboardFocus += (_, _) => { if (box.Text != n.Text && !string.IsNullOrWhiteSpace(box.Text)) { n.Text = box.Text.Trim(); _dirty = true; } Rebuild(); };
+        box.LostKeyboardFocus += (_, _) => { if (box.Text != n.Text && !string.IsNullOrWhiteSpace(box.Text)) { BeforeChange(); n.Text = box.Text.Trim(); _dirty = true; } Rebuild(); };
     }
 
     private void DeleteNode(MindNode n)
     {
+        BeforeChange();
         _doc.Nodes.RemoveAll(x => x.Id == n.Id);
         _doc.Links.RemoveAll(x => x.From == n.Id || x.To == n.Id);
         Rebuild(); _dirty = true;
@@ -374,6 +404,7 @@ public partial class MindmapWindow : Window
     private static readonly string[] _colors = { "#224A90FF", "#22FF453A", "#2232D583", "#22FF9F0A", "#22BF5AF2", "#22FF2D95" };
     private void CycleNodeColor(MindNode n)
     {
+        BeforeChange();
         var i = Array.IndexOf(_colors, n.Color); n.Color = _colors[(i + 1) % _colors.Length];
         if (_nodeVisuals.TryGetValue(n.Id, out var b)) b.Background = new SolidColorBrush(ColorFromHex(n.Color));
         _dirty = true;
@@ -413,7 +444,84 @@ public partial class MindmapWindow : Window
 
     private void OnWindowKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape && _linking) { _linking = false; _linkFrom = null; RedrawLinks(); e.Handled = true; }
+        // 文本框内不拦截
+        if (Keyboard.FocusedElement is TextBox) return;
+
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.Z && !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+        { Undo(); e.Handled = true; return; }
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && (e.Key == Key.Y || (e.Key == Key.Z && Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))))
+        { Redo(); e.Handled = true; return; }
+
+        switch (e.Key)
+        {
+            case Key.Escape:
+                if (_linking) { _linking = false; _linkFrom = null; RedrawLinks(); }
+                e.Handled = true; break;
+            case Key.Enter:
+                if (_focusNodeId != null) { EnsureNewNode(); }
+                e.Handled = true; break;
+            case Key.Delete:
+                if (_focusNodeId != null) DeleteNode(_focusNodeId); else if (_focusLinkId != null) DeleteLink(_focusLinkId);
+                e.Handled = true; break;
+        }
+    }
+
+    private string? _focusNodeId; private string? _focusLinkId;
+
+    // ==================== 撤销 / 重做 ====================
+    private void BeforeChange()
+    {
+        if (_duringUndo) return;
+        _undo.Push(CloneDoc(_doc));
+        if (_undo.Count > 50) { var a = _undo.ToArray(); Array.Reverse(a); _undo.Clear(); foreach (var x in a.Take(49)) _undo.Push(x); }
+        _redo.Clear();
+    }
+    private static MindmapDoc CloneDoc(MindmapDoc d) => new MindmapDoc { Nodes = d.Nodes.Select(x => new MindNode { Id = x.Id, Text = x.Text, X = x.X, Y = x.Y, Color = x.Color, W = x.W }).ToList(), Links = d.Links.Select(x => new MindLink { Id = x.Id, From = x.From, To = x.To }).ToList() };
+    private void Undo()
+    {
+        if (_undo.Count == 0) return;
+        _redo.Push(CloneDoc(_doc));
+        _doc = _undo.Pop(); _dirty = true; Rebuild();
+    }
+    private void Redo()
+    {
+        if (_redo.Count == 0) return;
+        _undo.Push(CloneDoc(_doc));
+        _doc = _redo.Pop(); _dirty = true; Rebuild();
+    }
+
+    private void DeleteNode(string id) => DeleteNode(_doc.Nodes.FirstOrDefault(x => x.Id == id) ?? new MindNode());
+
+    private void DeleteLink(string linkId)
+    {
+        BeforeChange();
+        _doc.Links.RemoveAll(x => x.Id == linkId);
+        RedrawLinks(); _dirty = true;
+    }
+    private void EnsureNewNode()
+    {
+        // Enter 在当前聚焦节点下方建同级节点
+        // 简化：聚焦节点中央下方新建
+        if (_focusNodeId == null) return;
+        var src = _doc.Nodes.FirstOrDefault(x => x.Id == _focusNodeId); if (src == null) return;
+        BeforeChange();
+        var n = new MindNode { Text = "新节点", X = src.X, Y = src.Y + 70 };
+        _doc.Nodes.Add(n); Rebuild(); _dirty = true; EditNodeText(n);
+    }
+
+    private void ExportPng()
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog { Filter = "PNG 图片 (*.png)|*.png", Title = "导出为图片" };
+        if (dlg.ShowDialog(this) != true) return;
+        try
+        {
+            var rt = new RenderTargetBitmap((int)Math.Ceiling(CanvasGroup.ActualWidth), (int)Math.Ceiling(CanvasGroup.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+            rt.Render(CanvasGroup);
+            var enc = new PngBitmapEncoder(); enc.Frames.Add(BitmapFrame.Create(rt));
+            using var fs = File.Create(dlg.FileName); enc.Save(fs);
+            MessageBox.Show(this, "已导出：" + PathIO.GetFileName(dlg.FileName), "导出");
+        }
+        catch (Exception ex) { MessageBox.Show(this, "导出失败：" + ex.Message, "错误"); }
     }
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)

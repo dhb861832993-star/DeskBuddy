@@ -56,6 +56,7 @@
                         <Button Content="新建" Click="OnNew" Margin="0,0,6,0" Style="{StaticResource ToolBtn}"/>
                         <Button Content="打开" Click="OnOpen" Margin="0,0,6,0" Style="{StaticResource ToolBtn}"/>
                         <Button Content="保存" Click="OnSave" Margin="0,0,6,0" Style="{StaticResource ToolBtn}"/>
+                        <Button Content="导出" Click="OnExport" Margin="0,0,6,0" Style="{StaticResource ToolBtn}"/>
                         <Button Content="历史" Click="OnHistory" Margin="0,0,6,0" Style="{StaticResource ToolBtn}"/>
                         <Button x:Name="BtnClose" Content="✕" Click="OnClose" Padding="10,4" Style="{StaticResource ToolBtn}"/>
                     </StackPanel>
