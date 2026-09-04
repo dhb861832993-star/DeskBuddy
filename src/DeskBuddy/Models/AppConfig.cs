@@ -73,4 +73,17 @@ public class AppConfig
 
     /// <summary>是否启用右侧备忘录面板（开启后呼出菜单自动显示；默认关闭）。</summary>
     public bool MemoEnabled { get; set; }
+
+    // ===== 工具箱（左侧工具面板） =====
+
+    /// <summary>是否启用左侧工具面板（开启后呼出菜单自动显示；默认关闭）。</summary>
+    public bool ToolsEnabled { get; set; }
+
+    // ===== 连连看（思维导图） =====
+
+    /// <summary>思维导图保存目录（首次使用需选定；空则弹出选择）。</summary>
+    public string? MindmapDir { get; set; }
+
+    /// <summary>最近打开的思维导图历史（路径）。</summary>
+    public List<string> RecentMindmaps { get; set; } = new();
 }

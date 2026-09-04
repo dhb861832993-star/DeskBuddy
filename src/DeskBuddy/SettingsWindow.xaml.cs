@@ -80,6 +80,7 @@ public partial class SettingsWindow : Window
 
         // 备忘录
         MemoEnabledBox.IsChecked = config.MemoEnabled;
+        ToolsEnabledBox.IsChecked = config.ToolsEnabled;
 
         SelectCategory("general"); // 默认显示「通用」
 
@@ -488,6 +489,7 @@ public partial class SettingsWindow : Window
             AiSystemPrompt = _config.AiSystemPrompt,
             McpEnabled = McpEnabledBox.IsChecked == true,
             MemoEnabled = MemoEnabledBox.IsChecked == true,
+            ToolsEnabled = ToolsEnabledBox.IsChecked == true,
             EnableFileSearch = EnableFileSearchBox.IsChecked == true,
             SearchRoots = SearchRootsBox.Text
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

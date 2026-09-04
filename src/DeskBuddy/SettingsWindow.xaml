@@ -316,6 +316,8 @@
 
                                 <CheckBox x:Name="MemoEnabledBox" Margin="0,16,0,0" Content="启用备忘录面板（呼出菜单时右侧自动显示）"
                                           FontSize="12" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                                <CheckBox x:Name="ToolsEnabledBox" Margin="0,10,0,0" Content="启用工具箱面板（呼出菜单时左侧自动显示）"
+                                          FontSize="12" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
                             </StackPanel>
 
                             <!-- ========== 搜索 ========== -->

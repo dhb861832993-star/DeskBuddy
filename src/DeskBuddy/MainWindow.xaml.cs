@@ -135,6 +135,21 @@ public partial class MainWindow : Window
             PositionWindow();
         }
 
+        // 工具箱：启用则在每次呼出时左侧自动显示，否则隐藏
+        if (_config.ToolsEnabled)
+        {
+            if (ToolsPanel.Visibility != Visibility.Visible)
+            {
+                ToolsPanel.Visibility = Visibility.Visible;
+                PositionWindow();
+            }
+        }
+        else if (ToolsPanel.Visibility == Visibility.Visible)
+        {
+            ToolsPanel.Visibility = Visibility.Collapsed;
+            PositionWindow();
+        }
+
         RefreshItems();
         ApplyLayoutMode();
         ItemList.SelectedIndex = -1; // 打开时不显示选中高亮
@@ -692,6 +707,9 @@ public partial class MainWindow : Window
         // 备忘录面板展开时，宽度要同时容纳网格 + 备忘录两栏，否则网格被挤窄、图标被裁
         if (MemoPanel.Visibility == Visibility.Visible)
             width = width + MemoPanel.Width + 12;
+        // 左侧工具面板展开时同样叠加宽度
+        if (ToolsPanel.Visibility == Visibility.Visible)
+            width = width + ToolsPanel.Width + 12;
         Width = Math.Clamp(width, 480, wa.Width - 40);
         _ = Dispatcher.BeginInvoke(new Action(() =>
         {
@@ -1554,6 +1572,24 @@ public partial class MainWindow : Window
             MemoInput.Focus();
         }
         PositionWindow();
+    }
+
+    /// <summary>切换左侧工具面板（工具箱）显示/隐藏。</summary>
+    private void OnToolsToggle(object sender, RoutedEventArgs e)
+    {
+        if (ToolsPanel.Visibility == Visibility.Visible)
+            ToolsPanel.Visibility = Visibility.Collapsed;
+        else
+            ToolsPanel.Visibility = Visibility.Visible;
+        PositionWindow();
+    }
+
+    /// <summary>双击「连连看」→ 打开思维导图编辑器。首次使用需确定保存路径。</summary>
+    private void OnOpenMindmap(object sender, RoutedEventArgs e)
+    {
+        var win = new DeskBuddy.Tools.MindmapWindow();
+        win.Show();
+        win.NewDocument(); // 新建空白图（保存时才选路径/目录）
     }
 
     /// <summary>取消所有条目的编辑态并回到列表视图（打开面板或切换时调用）。</summary>

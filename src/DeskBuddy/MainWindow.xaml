@@ -290,10 +290,56 @@
 
     <Grid>
         <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
-        <Border x:Name="RootCard" Grid.Column="0" CornerRadius="26" BorderThickness="1"
+
+        <!-- ===== 左侧工具面板（工具箱） ===== -->
+        <Border x:Name="ToolsPanel" Grid.Column="0" Width="250" Margin="0,0,1,0"
+                CornerRadius="26" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1"
+                Background="{DynamicResource CardBg}" Visibility="Collapsed">
+            <DockPanel>
+                <Grid DockPanel.Dock="Top" Height="56">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                        <TextBlock Text="🧰" FontSize="14" VerticalAlignment="Center"/>
+                        <TextBlock Text="工具箱" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimary}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <Button x:Name="ToolsCloseBtn" ToolTip="关闭工具箱" Click="OnToolsToggle"
+                            HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0"
+                            Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="8,3">
+                        <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                   Foreground="{DynamicResource TextSecondary}"/>
+                    </Button>
+                </Grid>
+                <Rectangle Height="1" Margin="12,0" Fill="{DynamicResource SeparatorBrush}"/>
+                <!-- 工具列表 -->
+                <StackPanel DockPanel.Dock="Top" Margin="12,12,12,0">
+                    <TextBlock Text="内置工具" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="2,0,0,8"/>
+                    <Button x:Name="MindmapToolBtn" Click="OnOpenMindmap" Cursor="Hand"
+                            HorizontalContentAlignment="Stretch">
+                        <Border CornerRadius="12" Background="{DynamicResource BtnBg}"
+                                BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="12,10">
+                            <DockPanel>
+                                <Border Width="36" Height="36" CornerRadius="10" Background="#2232D583"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="🔗" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="连连看" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimary}"/>
+                                    <TextBlock Text="思维导图 / 流程图（双击打开）" FontSize="10.5"
+                                               Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+                    </Button>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Border x:Name="RootCard" Grid.Column="1" CornerRadius="26" BorderThickness="1"
                 BorderBrush="{DynamicResource CardBorder}"
                 Background="{DynamicResource CardBg}"
                 AllowDrop="True"
@@ -443,6 +489,10 @@
                         <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="12"
                                    Foreground="{DynamicResource FooterBrush}"/>
                     </Button>
+                    <Button x:Name="ToolsToggleBtn" ToolTip="工具箱" Click="OnToolsToggle"
+                            Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="8,3">
+                        <TextBlock Text="🧰" FontSize="12" Foreground="{DynamicResource FooterBrush}"/>
+                    </Button>
                     <Button x:Name="MemoToggleBtn" ToolTip="备忘录" Click="OnMemoToggle"
                             Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="8,3">
                         <TextBlock Text="📝" FontSize="12" Foreground="{DynamicResource FooterBrush}"/>
@@ -455,7 +505,7 @@
             </Grid>
 
             <!-- 拖拽添加提示层 -->
-            <Border x:Name="DropOverlay" Grid.ColumnSpan="2" Grid.RowSpan="4"
+            <Border x:Name="DropOverlay" Grid.ColumnSpan="3" Grid.RowSpan="4"
                     Visibility="Collapsed" IsHitTestVisible="False"
                     CornerRadius="14" BorderBrush="{DynamicResource CardBorder}" BorderThickness="2.5"
                     Margin="4" Background="#660A84FF">
@@ -471,7 +521,7 @@
         </Border>
 
         <!-- ===== 备忘录面板（右侧独立圆角卡片，可关闭） ===== -->
-        <Border x:Name="MemoPanel" Grid.Column="1" Width="310" Margin="1,0,0,0"
+        <Border x:Name="MemoPanel" Grid.Column="2" Width="310" Margin="1,0,0,0"
                 CornerRadius="26" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1"
                 Background="{DynamicResource CardBg}" Visibility="Collapsed">
             <DockPanel>
