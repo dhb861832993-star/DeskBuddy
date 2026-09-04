@@ -197,7 +197,10 @@ public partial class MindmapWindow : Window
         _nodeCards.Clear(); _portDots.Clear(); _portOwners.Clear();
         _portDots.Clear();
         foreach (var n in _doc.Nodes) AddNodeCard(n);
-        RedrawLinks(); RefreshProps();
+        RefreshProps();
+        // 新节点尚未布局，端口位置是0 → 连线位置会错/消失；延迟到布局完成后重绘
+        RedrawLinks();
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(RedrawLinks));
     }
     private static void ApplyShape(Border card, CvNode n)
     {
