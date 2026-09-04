@@ -50,7 +50,7 @@
             <!-- 顶部工具栏 -->
             <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource CardBorder}" BorderThickness="0,0,0,1" Padding="10,8">
                 <DockPanel>
-                    <TextBlock Text="连连看" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"
+                    <TextBlock Text="🌳 连连看" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"
                                VerticalAlignment="Center" Margin="4,0,12,0"/>
                     <TextBlock x:Name="DocNameText" FontSize="11" Foreground="{DynamicResource TextSecondary}"
                                VerticalAlignment="Center" Margin="0,0,12,0" TextTrimming="CharacterEllipsis" MaxWidth="220"/>
