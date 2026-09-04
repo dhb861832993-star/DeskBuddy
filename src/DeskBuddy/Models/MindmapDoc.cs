@@ -5,18 +5,20 @@ using System.Text.Json;
 
 namespace DeskBuddy.Models;
 
-/// <summary>连连看：思维导图中的一个节点（自由摆放，无层级）。</summary>
+/// <summary>连连看：思维导图中的一个节点（层级树）。</summary>
 public sealed class MindNode
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     /// <summary>节点文字。</summary>
     public string Text { get; set; } = "新节点";
-    /// <summary>画布坐标（未缩放）。</summary>
+    /// <summary>父节点 Id（""=根）。</summary>
+    public string ParentId { get; set; } = "";
+    /// <summary>画布坐标（未缩放，由自动布局计算）。</summary>
     public double X { get; set; }
     public double Y { get; set; }
     /// <summary>主题色（ARGB 十六进制 #AARRGGBB）。</summary>
     public string Color { get; set; } = "#224A90FF";
-    /// <summary>节点宽度（自适应文字大小）。</summary>
+    /// <summary>节点宽度。</summary>
     public double W { get; set; } = 110;
 }
 

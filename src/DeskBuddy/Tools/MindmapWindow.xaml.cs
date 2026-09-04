@@ -97,7 +97,7 @@ public partial class MindmapWindow : Window
         var host = e.GetPosition(CanvasHost); var canv = HostToCanvas(host);
 
         if (IsEraseTool) { var hit = HitTestNode(canv); if (hit != null) { DeleteNode(((MindNode)hit.Tag).Id); return; } }
-        if (IsNodeTool) { var n = new MindNode { Text = "新节点", X = canv.X - 55, Y = canv.Y - 16 }; BeforeChange(); _doc.Nodes.Add(n); Rebuild(); _dirty = true; SelectNode(n.Id); EditNodeText(n); return; }
+        if (IsNodeTool) { BeforeChange(); var n = new MindNode { Text = "新节点", X = canv.X - 55, Y = canv.Y - 16, ParentId = "" }; _doc.Nodes.Add(n); MindLayout.Layout(_doc.Nodes); Rebuild(); _dirty = true; SelectNode(n.Id); EditNodeText(n); return; }
 
         // 双击空白新建
         _panning = true; _panStart = host; CanvasHost.CaptureMouse();
@@ -134,22 +134,45 @@ public partial class MindmapWindow : Window
         {
             var c = e.GetPosition(NodeCanvas);
             if ((c - _dragStart).Length > 4) _moved = true;
-            if (_moved) { MoveNode(_dragNode, c); }
+            // 拖动时跟随预览（松手再决定成子/成根移动）
+            if (_moved) { Canvas.SetLeft(_dragNode, c.X - _dragNode.ActualWidth / 2); Canvas.SetTop(_dragNode, c.Y - _dragNode.ActualHeight / 2); }
         }
-    }
-    private void MoveNode(Border b, Point c)
-    {
-        var g = 10.0;
-        var nx = Math.Round(c.X / g) * g; var ny = Math.Round(c.Y / g) * g;
-        Canvas.SetLeft(b, nx - b.ActualWidth / 2); Canvas.SetTop(b, ny - b.ActualHeight / 2);
-        var n = (MindNode)b.Tag; n.X = Canvas.GetLeft(b); n.Y = Canvas.GetTop(b);
-        if (_connectors.TryGetValue(n.Id, out var cc)) { Canvas.SetLeft(cc, n.X + b.Width + 2); Canvas.SetTop(cc, n.Y + 18); }
-        RedrawLinks(); _dirty = true;
     }
     private void OnNodeUp(object sender, MouseButtonEventArgs e)
     {
-        if (_dragNode == sender) _dragNode = null;
-        ((Border)sender).ReleaseMouseCapture();
+        var src = (Border)sender; _dragNode = null; src.ReleaseMouseCapture();
+        if (!_moved) return;
+        _moved = false;
+        var drop = HitTestNode(e.GetPosition(NodeCanvas));
+        var srcN = (MindNode)src.Tag;
+        // 已在此节点上且不是自己/不是自己的子孙 → 成为其子节点
+        if (drop != null && !ReferenceEquals(drop, src) && !IsDescendant(srcN.Id, ((MindNode)drop.Tag).Id))
+        {
+            var dropN = (MindNode)drop.Tag;
+            // 若作为根的兄弟已被手动移过则切父
+            BeforeChange(); srcN.ParentId = dropN.Id;
+            RestoreLayoutAndRender();
+            return;
+        }
+        // 未落在节点上（空白）→ 作为根节点放到落点附近
+        BeforeChange(); srcN.ParentId = "";
+        var c2 = e.GetPosition(NodeCanvas);
+        srcN.X = c2.X - srcN.W / 2; srcN.Y = c2.Y - 20;
+        RestoreLayoutAndRender();
+    }
+
+    private bool IsDescendant(string id, string ancestorId)
+    {
+        var node = _doc.Nodes.FirstOrDefault(x => x.Id == ancestorId); if (node == null) return false;
+        if (node.ParentId == id) return true;
+        if (node.ParentId == "") return false;
+        return IsDescendant(id, node.ParentId);
+    }
+    private void RestoreLayoutAndRender()
+    {
+        // 重算整树布局（根节点保持手动位置？Xmind重排整树）——这里整树重排
+        MindLayout.Layout(_doc.Nodes);
+        Rebuild(); _dirty = true;
     }
     private void OnNodeDouble(MindNode n) => EditNodeText(n);
 
@@ -195,17 +218,18 @@ public partial class MindmapWindow : Window
     {
         OverlayCanvas.Children.Clear();
         LinkCanvas.Children.Clear(); _linkVisuals.Clear();
-        foreach (var l in _doc.Links)
+        // 由父子关系派生连线：父右侧 → 子左侧
+        foreach (var n in _doc.Nodes.Where(x => !string.IsNullOrEmpty(x.ParentId)))
         {
-            if (!_nodeVisuals.TryGetValue(l.From, out var a) || !_nodeVisuals.TryGetValue(l.To, out var b)) continue;
-            var p1 = Center(a); var p2 = Center(b);
+            if (!_nodeVisuals.TryGetValue(n.ParentId, out var a) || !_nodeVisuals.TryGetValue(n.Id, out var b)) continue;
+            var p1 = new Point(Canvas.GetLeft(a) + a.Width, Canvas.GetTop(a) + a.ActualHeight / 2);
+            var p2 = new Point(Canvas.GetLeft(b), Canvas.GetTop(b) + b.ActualHeight / 2);
+            var mx = p1.X + (p2.X - p1.X) * 0.5;
             var g = new StreamGeometry();
-            using (var ctx = g.Open()) { ctx.BeginFigure(p1, false, false); var mx = p1.X + (p2.X - p1.X) / 2; ctx.BezierTo(new Point(mx, p1.Y), new Point(mx, p2.Y), p2, true, false); }
+            using (var ctx = g.Open()) { ctx.BeginFigure(p1, false, false); ctx.BezierTo(new Point(mx, p1.Y), new Point(mx, p2.Y), p2, true, false); }
             g.Freeze();
-            var ph = new System.Windows.Shapes.Path { Stroke = new SolidColorBrush(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)), StrokeThickness = l.W >= 1 ? l.W : 1.6, Data = g, Tag = l.Id, Cursor = Cursors.Hand };
-            ph.MouseLeftButtonDown += OnLinkPick;
-            if (_selectLinkId == l.Id) { ph.Stroke = new SolidColorBrush(Color.FromRgb(0x4A, 0x90, 0xFF)); ph.StrokeThickness += 2; }
-            _linkVisuals[l.Id] = ph;
+            var ph = new System.Windows.Shapes.Path { Stroke = new SolidColorBrush(Color.FromRgb(0x9A, 0xA0, 0xB0)), StrokeThickness = 2, Data = g };
+            _linkVisuals[n.Id] = ph;
             LinkCanvas.Children.Add(ph);
         }
     }
@@ -292,9 +316,8 @@ public partial class MindmapWindow : Window
     private void OnRedo(object s, RoutedEventArgs e) => Redo();
 
     public void NewDocument() { BeforeChange(); _doc = new MindmapDoc(); _path = null; _dirty = false;
-        _doc.Nodes.Add(new MindNode { Text = "中心主题", X = 0, Y = 0, W = 140 });
-        _doc.Nodes.Add(new MindNode { Text = "分支 A", X = 280, Y = -120 }); _doc.Nodes.Add(new MindNode { Text = "分支 B", X = 280, Y = 120 });
-        _doc.Links.Add(new MindLink { From = _doc.Nodes[0].Id, To = _doc.Nodes[1].Id }); _doc.Links.Add(new MindLink { From = _doc.Nodes[0].Id, To = _doc.Nodes[2].Id });
+        _doc.Nodes.Add(new MindNode { Text = "中心主题", X = 0, Y = 0, W = 140, ParentId = "" });
+        MindLayout.Layout(_doc.Nodes);
         Rebuild(); UpdateTitle(); }
     private void OnNew(object s, RoutedEventArgs e) => EnsureSaved(NewDocument);
     private void OnOpen(object s, RoutedEventArgs e) => EnsureSaved(() => { var d = new Microsoft.Win32.OpenFileDialog { Filter = _filter, Title = "打开" }; if (d.ShowDialog(this) == true) { _doc = MindmapDoc.Load(d.FileName); _path = d.FileName; _dirty = false; Rebuild(); UpdateTitle(); AddRecent(d.FileName); } });
