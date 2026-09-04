@@ -131,7 +131,7 @@
                                         <GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,24,24"/></GeometryDrawing.Geometry>
                                     </GeometryDrawing>
                                     <GeometryDrawing Brush="{DynamicResource DotBrush}">
-                                        <GeometryDrawing.Geometry><EllipseGeometry Center="1,1" RadiusX="1" RadiusY="1"/></GeometryDrawing.Geometry>
+                                        <GeometryDrawing.Geometry><EllipseGeometry Center="1.4,1.4" RadiusX="1.4" RadiusY="1.4"/></GeometryDrawing.Geometry>
                                     </GeometryDrawing>
                                 </DrawingGroup>
                             </DrawingBrush.Drawing>

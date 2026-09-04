@@ -70,7 +70,7 @@ public partial class MindmapWindow : Window
             Resources["CardBg"] = Frozen(Color.FromArgb(0xE6, 0x1C, 0x1C, 0x1E));   // 近不透明白灰
             Resources["CanvasBg"] = Frozen(Color.FromArgb(0xF2, 0x17, 0x17, 0x1A)); // 画布稍深
             Resources["ContextBg"] = Frozen(Color.FromArgb(0xE6, 0x28, 0x28, 0x2B));
-            Resources["DotBrush"] = Frozen(Color.FromArgb(0x28, 0x84, 0x88, 0x96));
+            Resources["DotBrush"] = Frozen(Color.FromArgb(0x55, 0x9A, 0x9F, 0xAF));
         }
         else
         {
@@ -81,6 +81,7 @@ public partial class MindmapWindow : Window
             Resources["CardBg"] = Frozen(Color.FromArgb(0xE8, 0xF5, 0xF5, 0xF7));
             Resources["CanvasBg"] = Frozen(Color.FromArgb(0xF0, 0xE8, 0xE8, 0xEC));
             Resources["ContextBg"] = Frozen(Color.FromArgb(0xE8, 0xFF, 0xFF, 0xFF));
+            Resources["DotBrush"] = Frozen(Color.FromArgb(0x40, 0x8E, 0x8E, 0x93));
         }
         // 画板背景如果缺失则用 CardBg 派生
         if (!Resources.Contains("CanvasBg")) Resources["CanvasBg"] = Resources["CardBg"];
