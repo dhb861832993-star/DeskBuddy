@@ -85,6 +85,15 @@
                                Width="46" TextAlignment="Center" VerticalAlignment="Center"/>
                     <Button Content="＋" Click="OnZoomIn" Width="30" Height="30" Style="{StaticResource ToolBtn}"/>
                 </StackPanel>
+
+                <!-- 右下角窗口 resize 手柄（无边框窗口没有系统手柄，自绘一个） -->
+                <Border x:Name="ResizeGrip" Width="22" Height="22" Background="Transparent"
+                        Cursor="SizeNWSE" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                        Margin="0,0,6,6" MouseLeftButtonDown="OnResizeGripDown"
+                        MouseMove="OnWindowResizeMove" MouseLeftButtonUp="OnResizeGripUp">
+                    <Path Data="M 4,18 L 18,4 M 4,12 L 12,4 M 4,6 L 6,4" Stroke="{DynamicResource TextSecondary}"
+                          StrokeThickness="1.5" StrokeStartLineCap="Round" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="2"/>
+                </Border>
             </Grid>
         </DockPanel>
     </Border>

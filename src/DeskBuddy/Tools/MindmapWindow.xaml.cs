@@ -110,6 +110,39 @@ public partial class MindmapWindow : Window
     private void OnZoomOut(object s, RoutedEventArgs e) => SetZoom(_zoom / 1.2, CenterHost());
     private Point CenterHost() => new Point(CanvasHost.ActualWidth / 2, CanvasHost.ActualHeight / 2);
 
+    // ==================== 窗口 resize 手柄 ====================
+    private bool _resizing;
+    private Vector _resizeStartOffset;
+    private double _resizeStartW, _resizeStartH;
+
+    private void OnResizeGripDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+        _resizing = true;
+        _resizeStartOffset = e.GetPosition(this); // 相对窗口
+        _resizeStartW = Width; _resizeStartH = Height;
+        ResizeGrip.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void OnWindowResizeMove(object sender, MouseEventArgs e)
+    {
+        if (!_resizing || e.LeftButton != MouseButtonState.Pressed) return;
+        var cur = e.GetPosition(this);
+        var d = cur - _resizeStartOffset;
+        var wa = SystemParameters.WorkArea;
+        Width = Math.Clamp(_resizeStartW + d.X, 520, wa.Width);
+        Height = Math.Clamp(_resizeStartH + d.Y, 360, wa.Height);
+        e.Handled = true;
+    }
+
+    private void OnResizeGripUp(object sender, MouseButtonEventArgs e)
+    {
+        _resizing = false;
+        ResizeGrip.ReleaseMouseCapture();
+        e.Handled = true;
+    }
+
     // ==================== 画布鼠标：平移 / 空白双击 ====================
 
     private void OnCanvasMouseDown(object sender, MouseButtonEventArgs e)
