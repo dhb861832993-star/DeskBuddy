@@ -87,6 +87,31 @@ public partial class MindmapWindow : Window
     private void InitSwatches() { foreach (var s in new[] { Swatch1, Swatch2, Swatch3, Swatch4, Swatch5 }) if (s != null) try { s.Background = new SolidColorBrush(ColorFromHex((string)s.Tag)); } catch { } }
     private Color ColorFromHex(string hex) { try { return (Color)ColorConverter.ConvertFromString(hex); } catch { return Color.FromArgb(0x22, 0x4A, 0x90, 0xFF); } }
 
+    // ==================== 双击检测 / 节点改字 ====================
+    private DateTime _lastClick = DateTime.MinValue;
+    private bool IsDoubleClick()
+    {
+        var now = DateTime.UtcNow;
+        var isDbl = (now - _lastClick).TotalMilliseconds < 350;
+        _lastClick = now;
+        return isDbl;
+    }
+    private void EditNodeTitle(CvNode n)
+    {
+        if (!_nodeCards.TryGetValue(n.Id, out var card)) return;
+        if (card.Child is not StackPanel sp || sp.Children.Count == 0) return;
+        var title = sp.Children[0] as TextBlock; if (title == null) return;
+        var box = new TextBox { Text = n.Title, FontSize = 14.5, Foreground = Brushes.White, Background = new SolidColorBrush(Color.FromArgb(0x40, 0, 0, 0)), BorderThickness = new Thickness(0), Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(8, 8, 8, 4) };
+        sp.Children[0] = box;
+        box.Focus(); box.SelectAll();
+        box.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter) { BeforeChange(); n.Title = box.Text.Trim(); if (n.Title.Length == 0) n.Title = "节点"; sp.Children[0] = new TextBlock { Text = n.Title, FontSize = 14.5, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, Margin = new Thickness(14, 10, 14, 6), TextWrapping = TextWrapping.Wrap, MaxWidth = 220 }; _dirty = true; e.Handled = true; }
+            else if (e.Key == Key.Escape) { sp.Children[0] = new TextBlock { Text = n.Title, FontSize = 14.5, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, Margin = new Thickness(14, 10, 14, 6), TextWrapping = TextWrapping.Wrap, MaxWidth = 220 }; e.Handled = true; }
+        };
+        box.LostKeyboardFocus += (_, _) => { if (box.Text != n.Title && !string.IsNullOrWhiteSpace(box.Text)) { BeforeChange(); n.Title = box.Text.Trim(); _dirty = true; } sp.Children[0] = new TextBlock { Text = n.Title, FontSize = 14.5, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, Margin = new Thickness(14, 10, 14, 6), TextWrapping = TextWrapping.Wrap, MaxWidth = 220 }; };
+    }
+
     // ==================== 变换核心（已验证数学） ====================
     private Point HostToCanvas(Point h) => new Point((h.X - PanTf.X) / _zoom, (h.Y - PanTf.Y) / _zoom);
     private void CenterView() { PanTf.X = CanvasHost.ActualWidth / 2; PanTf.Y = CanvasHost.ActualHeight / 2; }
@@ -169,7 +194,8 @@ public partial class MindmapWindow : Window
         Canvas.SetLeft(card, n.X); Canvas.SetTop(card, n.Y); Canvas.SetZIndex(card, 10);
         var root = new StackPanel();
         // 标题
-        var title = new TextBlock { Text = n.Title, FontSize = 12.5, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, Margin = new Thickness(14, 10, 14, 6), TextWrapping = TextWrapping.Wrap, MaxWidth = 220 };
+        var title = new TextBlock { Text = n.Title, FontSize = 14.5, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, Margin = new Thickness(14, 10, 14, 6), TextWrapping = TextWrapping.Wrap, MaxWidth = 220 };
+        title.MouseLeftButtonDown += (s, e) => { if (IsDoubleClick()) { EditNodeTitle(n); e.Handled = true; } };
         root.Children.Add(title);
         // 端口行：左输入，右输出
         var rows = Math.Max(Math.Max(n.Inputs.Count, n.Outputs.Count), 1);
@@ -211,7 +237,7 @@ public partial class MindmapWindow : Window
         NodeCanvas.Children.Add(card);
     }
     private Ellipse MakeDot(Brush fill, bool solid) => new Ellipse { Width = 14, Height = 14, Fill = fill, Stroke = Brushes.Black, StrokeThickness = 1, StrokeDashArray = solid ? null : new DoubleCollection { 2, 1 }, Cursor = Cursors.Cross };
-    private TextBlock PortLabel(CvPort p, string def) => new TextBlock { Text = string.IsNullOrEmpty(p.Name) ? def : p.Name, FontSize = 11, Foreground = Brushes.White };
+    private TextBlock PortLabel(CvPort p, string def) => new TextBlock { Text = string.IsNullOrEmpty(p.Name) ? def : p.Name, FontSize = 12, Foreground = Brushes.White };
     private void RegisterPort(string pid, Ellipse dot, Border card)
     {
         _portDots[pid] = dot; _portOwners[pid] = card;
