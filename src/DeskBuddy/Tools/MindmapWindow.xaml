@@ -65,7 +65,7 @@
             </Border>
             <!-- 画布视口：支持缩放 + 平移 -->
             <Grid Background="{DynamicResource CanvasBg}" ClipToBounds="True">
-                <Grid x:Name="Viewport" MouseDown="OnViewportMouseDown" MouseMove="OnViewportMouseMove" MouseUp="OnViewportMouseUp">
+                <Grid x:Name="Viewport" Background="Transparent" MouseDown="OnViewportMouseDown" MouseMove="OnViewportMouseMove" MouseUp="OnViewportMouseUp">
                     <Grid.RenderTransform>
                         <TransformGroup>
                             <ScaleTransform x:Name="ZoomTransform" CenterX="0" CenterY="0" ScaleX="1" ScaleY="1"/>
