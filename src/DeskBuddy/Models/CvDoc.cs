@@ -15,6 +15,8 @@ public sealed class CvNode
     public double X { get; set; }
     public double Y { get; set; }
     public string Color { get; set; } = "#224A90FF";
+    /// <summary>节点标题字号。</summary>
+    public double FontSize { get; set; } = 19;
     /// <summary>节点宽度。</summary>
     public double W { get; set; } = 180;
     /// <summary>输入端口。</summary>
@@ -35,6 +37,8 @@ public sealed class CvLink
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string FromPort { get; set; } = ""; // 输出端口
     public string ToPort { get; set; } = "";   // 输入端口
+    /// <summary>线宽。</summary>
+    public double W { get; set; } = 2;
 }
 
 /// <summary>连连看文档（.llk）。</summary>

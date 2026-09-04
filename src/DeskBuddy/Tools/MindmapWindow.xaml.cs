@@ -104,7 +104,7 @@ public partial class MindmapWindow : Window
         if (card.Child is not StackPanel root || root.Children.Count == 0) return;
         if (root.Children[0] is not Border titleBar) return;
         if (titleBar.Child is not TextBlock title) return;
-        var box = new TextBox { Text = n.Title, FontSize = 19, Foreground = Brushes.White, Background = new SolidColorBrush(Color.FromArgb(0x50, 0, 0, 0)), BorderThickness = new Thickness(0), Padding = new Thickness(8, 5, 8, 5), TextAlignment = TextAlignment.Center };
+        var box = new TextBox { Text = n.Title, FontSize = n.FontSize >= 12 ? n.FontSize : 19, Foreground = Brushes.White, Background = new SolidColorBrush(Color.FromArgb(0x50, 0, 0, 0)), BorderThickness = new Thickness(0), Padding = new Thickness(8, 5, 8, 5), TextAlignment = TextAlignment.Center };
         titleBar.Child = box;
         box.Focus(); box.SelectAll();
         box.KeyDown += (_, e) =>
@@ -117,7 +117,7 @@ public partial class MindmapWindow : Window
 
     private static void ReplaceTitle(Border titleBar, CvNode n)
     {
-        var tb = new TextBlock { Text = n.Title, FontSize = 19, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, MaxWidth = 220, HorizontalAlignment = HorizontalAlignment.Center };
+        var tb = new TextBlock { Text = n.Title, FontSize = n.FontSize >= 12 ? n.FontSize : 19, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromRgb(0xC2, 0xC2, 0xC8)), TextWrapping = TextWrapping.Wrap, MaxWidth = 240, TextAlignment = TextAlignment.Center };
         titleBar.Child = tb;
     }
 
@@ -192,7 +192,7 @@ public partial class MindmapWindow : Window
         root.Children.Add(content);
         // 标题：上下左右居中，暗灰字
         var titleHost = new Border { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, Padding = new Thickness(20, 12, 20, 8) };
-        var title = new TextBlock { Text = n.Title, FontSize = 19, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromRgb(0xC2, 0xC2, 0xC8)), TextWrapping = TextWrapping.Wrap, MaxWidth = 240, TextAlignment = TextAlignment.Center };
+        var title = new TextBlock { Text = n.Title, FontSize = n.FontSize >= 12 ? n.FontSize : 19, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromRgb(0xC2, 0xC2, 0xC8)), TextWrapping = TextWrapping.Wrap, MaxWidth = 240, TextAlignment = TextAlignment.Center };
         title.MouseLeftButtonDown += (s, e) => { if (IsDoubleClick()) { EditNodeTitle(n); e.Handled = true; } };
         titleHost.Child = title;
         content.Children.Add(titleHost);
@@ -288,7 +288,7 @@ public partial class MindmapWindow : Window
             }
             g.Freeze();
             var stroke = (_selLinkId == l.Id) ? new SolidColorBrush(Color.FromRgb(0x4A, 0x90, 0xFF)) : new SolidColorBrush(Color.FromArgb(0x9A, 0xA2, 0xB0, 0xB8));
-            var ph = new System.Windows.Shapes.Path { Stroke = stroke, StrokeThickness = 2, Data = g, Tag = l.Id, Cursor = Cursors.Hand };
+            var ph = new System.Windows.Shapes.Path { Stroke = stroke, StrokeThickness = l.W, Data = g, Tag = l.Id, Cursor = Cursors.Hand };
             ph.MouseLeftButtonDown += (s, e) => { _selLinkId = l.Id; _selNodeId = null; RefreshProps(); RedrawLinks(); e.Handled = true; };
             LinkCanvas.Children.Add(ph);
             // 终点箭头：几何 tip 在原点(0,0)指向+X，Canvas 定位到 p2，仅旋转 → tip 始终对准 p2(落点/终点)
@@ -307,7 +307,7 @@ public partial class MindmapWindow : Window
             Canvas.SetLeft(arrow, p2.X);
             Canvas.SetTop(arrow, p2.Y);
             Canvas.SetZIndex(arrow, 5);
-            LinkCanvas.Children.Add(arrow);
+            OverlayCanvas.Children.Add(arrow); // 放最上层，避免被不透明节点卡片盖住
         }
     }
     private void RedrawLinkPreview()
@@ -393,8 +393,8 @@ public partial class MindmapWindow : Window
         _suppressProp = true;
         try
         {
-            if (_selNodeId != null) { var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n != null) { PropTitle.Text = "节点属性"; PropText.Text = n.Title; PropThickness.Value = 1; } }
-            else if (_selLinkId != null) { PropTitle.Text = "连线属性"; PropText.Text = ""; PropThickness.Value = 2; }
+            if (_selNodeId != null) { var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n != null) { PropTitle.Text = "节点属性"; PropText.Text = n.Title; PropFontSize.Value = n.FontSize; PropThickness.Value = 1.6; } }
+            else if (_selLinkId != null) { var l = _doc.Links.FirstOrDefault(x => x.Id == _selLinkId); PropTitle.Text = "连线属性"; PropText.Text = ""; PropThickness.Value = l != null ? l.W : 2; }
             else { PropTitle.Text = "属性"; PropText.Text = ""; }
         }
         finally { _suppressProp = false; }
@@ -403,7 +403,7 @@ public partial class MindmapWindow : Window
     {
         if (_suppressProp || _selNodeId == null) return;
         var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return;
-        if (n.Title != PropText.Text) { BeforeChange(); n.Title = PropText.Text; _dirty = true; var card = _findCard(n.Id); if (card?.Child is StackPanel r && r.Children.Count > 0 && r.Children[0] is Border tb2 && tb2.Child is TextBlock tbx) tbx.Text = n.Title; }
+        if (n.Title != PropText.Text) { BeforeChange(); n.Title = PropText.Text; _dirty = true; var card = _findCard(n.Id); if (card?.Child is Grid gg) { var host = gg.Children.OfType<StackPanel>().SelectMany(x => x.Children.OfType<Border>()).FirstOrDefault(b => b.Child is TextBlock); if (host?.Child is TextBlock tbx) tbx.Text = n.Title; } }
     }
     private Border? _findCard(string id) => _nodeCards.TryGetValue(id, out var c) ? c : null;
     private void OnPickColor(object s, RoutedEventArgs e) { if (_selNodeId == null) return; var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return; BeforeChange(); n.Color = (string)((Button)s).Tag; ApplyAccentColor(n); _dirty = true; }
@@ -427,7 +427,7 @@ public partial class MindmapWindow : Window
 
     // ==================== 撤销 / 快捷键 / 导出 ====================
     private void BeforeChange() { _undo.Push(CloneDoc(_doc)); if (_undo.Count > 60) { var a = _undo.ToArray(); Array.Reverse(a); _undo.Clear(); foreach (var x in a.Take(59)) _undo.Push(x); } _redo.Clear(); }
-    private static CvDoc CloneDoc(CvDoc d) => new CvDoc { Nodes = d.Nodes.Select(x => new CvNode { Id = x.Id, Title = x.Title, X = x.X, Y = x.Y, Color = x.Color, W = x.W, Inputs = x.Inputs.Select(p => new CvPort { Id = p.Id, Name = p.Name }).ToList(), Outputs = x.Outputs.Select(p => new CvPort { Id = p.Id, Name = p.Name }).ToList() }).ToList(), Links = d.Links.Select(x => new CvLink { Id = x.Id, FromPort = x.FromPort, ToPort = x.ToPort }).ToList() };
+    private static CvDoc CloneDoc(CvDoc d) => new CvDoc { Nodes = d.Nodes.Select(x => new CvNode { Id = x.Id, Title = x.Title, X = x.X, Y = x.Y, Color = x.Color, W = x.W, FontSize = x.FontSize, Inputs = x.Inputs.Select(p => new CvPort { Id = p.Id, Name = p.Name }).ToList(), Outputs = x.Outputs.Select(p => new CvPort { Id = p.Id, Name = p.Name }).ToList() }).ToList(), Links = d.Links.Select(x => new CvLink { Id = x.Id, FromPort = x.FromPort, ToPort = x.ToPort, W = x.W }).ToList() };
     private void Undo() { if (_undo.Count == 0) return; _redo.Push(CloneDoc(_doc)); _doc = _undo.Pop(); _dirty = true; Rebuild(); }
     private void Redo() { if (_redo.Count == 0) return; _undo.Push(CloneDoc(_doc)); _doc = _redo.Pop(); _dirty = true; Rebuild(); }
     private void OnUndo(object s, RoutedEventArgs e) => Undo();
@@ -435,7 +435,24 @@ public partial class MindmapWindow : Window
 
     private void OnToolNode(object s, RoutedEventArgs e) => AddNodeAt(CanvasCenterCanvas());
     private void OnArrowChanged(object s, RoutedEventArgs e) { }
-    private void OnThicknessChanged(object s, RoutedPropertyChangedEventArgs<double> e) { }
+    private void OnThicknessChanged(object s, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_suppressProp || _selLinkId == null) return;
+        var l = _doc.Links.FirstOrDefault(x => x.Id == _selLinkId); if (l == null) return;
+        BeforeChange(); l.W = e.NewValue; RedrawLinks(); _dirty = true;
+    }
+    private void OnFontSizeChanged(object s, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_suppressProp || _selNodeId == null) return;
+        var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return;
+        BeforeChange(); n.FontSize = e.NewValue; _dirty = true;
+        if (_nodeCards.TryGetValue(n.Id, out var card) && card.Child is Grid g)
+        {
+            var host = g.Children.OfType<StackPanel>().SelectMany(x => x.Children.OfType<Border>())
+                .FirstOrDefault(b => b.Child is TextBlock);
+            if (host?.Child is TextBlock tb) tb.FontSize = e.NewValue;
+        }
+    }
 
     private void OnWindowKeyDown(object s, KeyEventArgs e)
     {
