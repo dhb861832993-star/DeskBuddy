@@ -307,12 +307,11 @@ public partial class MindmapWindow : Window
         card.Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Colors.Black, Opacity = 0.18, BlurRadius = 16, ShadowDepth = 1.5, Direction = 270 };
         Canvas.SetLeft(card, n.X); Canvas.SetTop(card, n.Y); Canvas.SetZIndex(card, 10);
         card.Measure(new Size(340, 240)); n.W = Math.Max(170, card.DesiredSize.Width + 8); card.Width = n.W;
-        // 按节点形状裁剪卡片可视区域
-        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
-        {
-            if (card.ActualWidth > 0 && card.ActualHeight > 0) ApplyShape(card, n);
-        }));
-        // 复位形状裁剪（尺寸变化时由 SetShape 触发）
+        // 形状裁剪（box 默认圆角矩形不裁剪；其它形状同步裁剪避免影响连线时序）
+        card.Arrange(new Rect(0, 0, card.Width, card.DesiredSize.Height));
+        ApplyShape(card, n);
+        card.Clip = null;
+        if (n.Shape != "box") ApplyShape(card, n);
         // 重新登记端口 owner（AddNodeCard 提前 RegisterPort 传 null，这里统一补 owner）
         foreach (var portId in _portDots.Keys.Where(k => _portOwners[k] == null).ToList()) _portOwners[portId] = card;
 
