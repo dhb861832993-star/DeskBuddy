@@ -17,6 +17,8 @@ public sealed class CvNode
     public string Color { get; set; } = "#224A90FF";
     /// <summary>节点标题字号。</summary>
     public double FontSize { get; set; } = 19;
+    /// <summary>节点形状：box | diamond | circle | star | parallelogram</summary>
+    public string Shape { get; set; } = "box";
     /// <summary>节点宽度。</summary>
     public double W { get; set; } = 180;
     /// <summary>输入端口。</summary>

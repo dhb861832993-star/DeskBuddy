@@ -116,7 +116,7 @@
                         <RadioButton x:Name="ToolLink" GroupName="tool" Style="{StaticResource ToolBtn}" ToolTip="连线 (L)" Content="—"/>
                         <RadioButton x:Name="ToolErase" GroupName="tool" Style="{StaticResource ToolBtn}" ToolTip="删除 (E)" Content="🗑"/>
                         <Rectangle Height="1" Fill="{DynamicResource CardBorder}" Margin="4,4"/>
-                        <Button x:Name="BtnAddColor" Content="🎨" ToolTip="改选中节点颜色" Style="{StaticResource Btn}" Click="OnCycleColor" FontSize="16"/>
+                        <Button x:Name="BtnResetView" Content="⭯" ToolTip="一键复位视图(缩放+居中)" Style="{StaticResource Btn}" Click="OnResetView" FontSize="16"/>
                     </StackPanel>
                 </Border>
 
@@ -163,8 +163,6 @@
                         <TextBlock x:Name="PropTitle" Text="属性" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,10"/>
                         <!-- 节点属性 -->
                         <TextBlock x:Name="LblNode" Text="节点" FontSize="10.5" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4"/>
-                        <TextBox x:Name="PropText" FontSize="12.5" Foreground="{DynamicResource TextPrimary}" Background="{DynamicResource BtnBg}"
-                                 BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="7,5" TextChanged="OnPropTextChanged"/>
                         <TextBlock Text="颜色" FontSize="10.5" Foreground="{DynamicResource TextSecondary}" Margin="0,12,0,4"/>
                         <StackPanel Orientation="Horizontal">
                             <Button x:Name="Swatch1" Click="OnPickColor" Tag="#FF3A3A3C" Style="{StaticResource Swatch}"/>
@@ -173,6 +171,14 @@
                             <Button x:Name="Swatch4" Click="OnPickColor" Tag="#FFFF9F0A" Style="{StaticResource Swatch}" Margin="6,0,0,0"/>
                             <Button x:Name="Swatch5" Click="OnPickColor" Tag="#FFBF5AF2" Style="{StaticResource Swatch}" Margin="6,0,0,0"/>
                         </StackPanel>
+                        <TextBlock Text="形状" FontSize="10.5" Foreground="{DynamicResource TextSecondary}" Margin="0,12,0,4"/>
+                        <WrapPanel>
+                            <Button x:Name="ShapeBox" Content="矩形" Click="OnPickShape" Tag="box" Style="{StaticResource Btn}" FontSize="12"/>
+                            <Button x:Name="ShapeDiamond" Content="◇菱形" Click="OnPickShape" Tag="diamond" Style="{StaticResource Btn}" FontSize="12"/>
+                            <Button x:Name="ShapeCircle" Content="◯圆" Click="OnPickShape" Tag="circle" Style="{StaticResource Btn}" FontSize="12"/>
+                            <Button x:Name="ShapeStar" Content="★" Click="OnPickShape" Tag="star" Style="{StaticResource Btn}" FontSize="12"/>
+                            <Button x:Name="ShapePgram" Content="▱平行" Click="OnPickShape" Tag="parallelogram" Style="{StaticResource Btn}" FontSize="12"/>
+                        </WrapPanel>
                         <TextBlock Text="字体大小" FontSize="10.5" Foreground="{DynamicResource TextSecondary}" Margin="0,12,0,4"/>
                         <Slider x:Name="PropFontSize" Minimum="12" Maximum="30" Value="19" TickFrequency="1" Width="200" ValueChanged="OnFontSizeChanged"/>
                         <Rectangle Height="1" Fill="{DynamicResource CardBorder}" Margin="0,14"/>

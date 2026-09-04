@@ -135,6 +135,7 @@ public partial class MindmapWindow : Window
     private void OnPreviewMouseWheel(object s, MouseWheelEventArgs e) { SetZoom(_zoom * (e.Delta > 0 ? 1.15 : 1 / 1.15), e.GetPosition(CanvasHost)); e.Handled = true; }
     private void OnZoomIn(object s, RoutedEventArgs e) => SetZoom(_zoom * 1.2, Center());
     private void OnZoomOut(object s, RoutedEventArgs e) => SetZoom(_zoom / 1.2, Center());
+    private void OnResetView(object s, RoutedEventArgs e) { _zoom = 1.0; ZoomTf.ScaleX = ZoomTf.ScaleY = 1; CenterView(); ZoomText.Text = "100%"; }
     private Point Center() => new Point(CanvasHost.ActualWidth / 2, CanvasHost.ActualHeight / 2);
 
     // ==================== 文档 ====================
@@ -178,6 +179,78 @@ public partial class MindmapWindow : Window
         foreach (var n in _doc.Nodes) AddNodeCard(n);
         RedrawLinks(); RefreshProps();
     }
+    private static void ApplyShape(Border card, CvNode n)
+    {
+        double w = card.ActualWidth, h = card.ActualHeight;
+        if (w <= 0) w = n.W; if (h <= 0) h = 80;
+        Geometry geo;
+        switch (n.Shape)
+        {
+            case "circle":
+            {
+                var r = Math.Min(w, h) / 2;
+                var cc = new EllipseGeometry(new Point(w / 2, h / 2), r - 1, r - 1);
+                // 圆里放文字空间小，clip 用椭圆
+                geo = cc;
+                break;
+            }
+            case "diamond":
+            {
+                var g = new StreamGeometry();
+                using (var ctx = g.Open())
+                {
+                    ctx.BeginFigure(new Point(w / 2, 0), true, true);
+                    ctx.LineTo(new Point(w, h / 2), true, false);
+                    ctx.LineTo(new Point(w / 2, h), true, false);
+                    ctx.LineTo(new Point(0, h / 2), true, false);
+                }
+                geo = g;
+                break;
+            }
+            case "star":
+            {
+                var g = GlyphStar(w / 2, h / 2, Math.Min(w, h) / 2 - 2, Math.Min(w, h) / 2 * 0.55);
+                geo = g;
+                break;
+            }
+            case "parallelogram":
+            {
+                double s = Math.Min(w, h) * 0.35;
+                var g = new StreamGeometry();
+                using (var ctx = g.Open())
+                {
+                    ctx.BeginFigure(new Point(s, 0), true, true);
+                    ctx.LineTo(new Point(w, 0), true, false);
+                    ctx.LineTo(new Point(w - s, h), true, false);
+                    ctx.LineTo(new Point(0, h), true, false);
+                }
+                geo = g;
+                break;
+            }
+            default: geo = new RectangleGeometry(new Rect(0, 0, w, h), 11, 11); break;
+        }
+        geo.Freeze();
+        card.Clip = geo;
+    }
+
+    private static StreamGeometry GlyphStar(double cx, double cy, double rOuter, double rInner)
+    {
+        var pts = new List<Point>();
+        for (int i = 0; i < 10; i++)
+        {
+            double ang = -Math.PI / 2 + i * Math.PI / 5;
+            double r = (i % 2 == 0) ? rOuter : rInner;
+            pts.Add(new Point(cx + r * Math.Cos(ang), cy + r * Math.Sin(ang)));
+        }
+        var g = new StreamGeometry();
+        using (var ctx = g.Open())
+        {
+            ctx.BeginFigure(pts[0], true, true);
+            for (int i = 1; i < pts.Count; i++) ctx.LineTo(pts[i], true, false);
+        }
+        return g;
+    }
+
     private void AddNodeCard(CvNode n)
     {
         // 节点用节点色（卡片 + 边框同色），默认暗灰；文字暗灰不凸显
@@ -234,6 +307,12 @@ public partial class MindmapWindow : Window
         card.Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Colors.Black, Opacity = 0.18, BlurRadius = 16, ShadowDepth = 1.5, Direction = 270 };
         Canvas.SetLeft(card, n.X); Canvas.SetTop(card, n.Y); Canvas.SetZIndex(card, 10);
         card.Measure(new Size(340, 240)); n.W = Math.Max(170, card.DesiredSize.Width + 8); card.Width = n.W;
+        // 按节点形状裁剪卡片可视区域
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
+        {
+            if (card.ActualWidth > 0 && card.ActualHeight > 0) ApplyShape(card, n);
+        }));
+        // 复位形状裁剪（尺寸变化时由 SetShape 触发）
         // 重新登记端口 owner（AddNodeCard 提前 RegisterPort 传 null，这里统一补 owner）
         foreach (var portId in _portDots.Keys.Where(k => _portOwners[k] == null).ToList()) _portOwners[portId] = card;
 
@@ -328,8 +407,22 @@ public partial class MindmapWindow : Window
         }
         if (e.ChangedButton != MouseButton.Left) return;
         SelectNode(null); SelectLink(null);
+        // 空白双击 → 在此处新建节点
+        var now = DateTime.UtcNow;
+        if ((now - _lastBlankDown).TotalMilliseconds < 350 && (e.GetPosition(this) - _lastBlankPt).Length < 8)
+        {
+            _lastBlankDown = DateTime.MinValue;
+            var cv = HostToCanvas(e.GetPosition(CanvasHost));
+            var nn = new CvNode { Title = "节点", X = cv.X - 90, Y = cv.Y - 20, Color = "#FF3A3A3C" };
+            nn.Inputs.Add(new CvPort()); nn.Outputs.Add(new CvPort());
+            BeforeChange(); _doc.Nodes.Add(nn); Rebuild(); _dirty = true; SelectNode(nn.Id);
+            e.Handled = true; return;
+        }
+        _lastBlankDown = now; _lastBlankPt = e.GetPosition(this);
         _panning = true; _panStart = e.GetPosition(this); CanvasHost.CaptureMouse(); e.Handled = true;
     }
+    private DateTime _lastBlankDown = DateTime.MinValue;
+    private Point _lastBlankPt;
     private void OnCanvasMouseMove(object s, MouseEventArgs e)
     {
         if (_linking && _dragPort != null) { _linkCur = e.GetPosition(NodeCanvas); RedrawLinkPreview(); }
@@ -393,20 +486,20 @@ public partial class MindmapWindow : Window
         _suppressProp = true;
         try
         {
-            if (_selNodeId != null) { var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n != null) { PropTitle.Text = "节点属性"; PropText.Text = n.Title; PropFontSize.Value = n.FontSize; PropThickness.Value = 1.6; } }
-            else if (_selLinkId != null) { var l = _doc.Links.FirstOrDefault(x => x.Id == _selLinkId); PropTitle.Text = "连线属性"; PropText.Text = ""; PropThickness.Value = l != null ? l.W : 2; }
-            else { PropTitle.Text = "属性"; PropText.Text = ""; }
+            if (_selNodeId != null) { var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n != null) { PropTitle.Text = "节点属性"; PropFontSize.Value = n.FontSize; PropThickness.Value = 1.6; } }
+            else if (_selLinkId != null) { var l = _doc.Links.FirstOrDefault(x => x.Id == _selLinkId); PropTitle.Text = "连线属性"; PropThickness.Value = l != null ? l.W : 2; }
+            else { PropTitle.Text = "属性"; }
         }
         finally { _suppressProp = false; }
     }
-    private void OnPropTextChanged(object s, TextChangedEventArgs e)
-    {
-        if (_suppressProp || _selNodeId == null) return;
-        var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return;
-        if (n.Title != PropText.Text) { BeforeChange(); n.Title = PropText.Text; _dirty = true; var card = _findCard(n.Id); if (card?.Child is Grid gg) { var host = gg.Children.OfType<StackPanel>().SelectMany(x => x.Children.OfType<Border>()).FirstOrDefault(b => b.Child is TextBlock); if (host?.Child is TextBlock tbx) tbx.Text = n.Title; } }
-    }
     private Border? _findCard(string id) => _nodeCards.TryGetValue(id, out var c) ? c : null;
     private void OnPickColor(object s, RoutedEventArgs e) { if (_selNodeId == null) return; var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return; BeforeChange(); n.Color = (string)((Button)s).Tag; ApplyAccentColor(n); _dirty = true; }
+    private void OnPickShape(object s, RoutedEventArgs e)
+    {
+        if (_selNodeId == null) return;
+        var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return;
+        BeforeChange(); n.Shape = (string)((Button)s).Tag; Rebuild(); _dirty = true;
+    }
     private void OnCycleColor(object s, RoutedEventArgs e) { if (_selNodeId == null) return; var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return; var cols = new[] { "#FF0A84FF", "#FFFF453A", "#FF30D158", "#FFFF9F0A", "#FFBF5AF2", "#FFA7AEB8" }; var i = Array.IndexOf(cols, n.Color); var idx = i < 0 ? 0 : (i + 1) % cols.Length; BeforeChange(); n.Color = cols[idx]; ApplyAccentColor(n); _dirty = true; }
     private void ApplyAccentColor(CvNode n)
     {
