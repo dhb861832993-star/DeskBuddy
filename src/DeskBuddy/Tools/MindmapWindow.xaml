@@ -7,7 +7,7 @@
         ResizeMode="CanResizeWithGrip" ShowInTaskbar="True" Topmost="False"
         WindowStartupLocation="CenterScreen"
         PreviewMouseWheel="OnPreviewMouseWheel"
-        KeyDown="OnWindowKeyDown">
+        PreviewKeyDown="OnWindowKeyDown">
     <Window.Resources>
         <SolidColorBrush x:Key="TextPrimary" Color="#F2F2F7"/>
         <SolidColorBrush x:Key="TextSecondary" Color="#A8A8B0"/>
