@@ -187,68 +187,70 @@ public partial class MindmapWindow : Window
     private void AddNodeCard(CvNode n)
     {
         var baseSolid = ColorFromHex(n.Color);
-        // 高级中性卡片：半透明灰面 + 顶部高光，颜色只做左侧细条点缀
-        var bg = new LinearGradientBrush(new GradientStopCollection
+        // 分区式深色玻璃节点：标题栏(略深,带节点色微染) + 半透明 body
+        var body = new Border
         {
-            new GradientStop(Color.FromArgb(0x2A, 0xFF, 0xFF, 0xFF), 0),
-            new GradientStop(Color.FromArgb(0x12, 0xFF, 0xFF, 0xFF), 0.5)
-        }, new Point(0, 0), new Point(0, 1));
-        var card = new Border
-        {
-            Tag = n, Background = bg, CornerRadius = new CornerRadius(12),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)), BorderThickness = new Thickness(1),
-            Padding = new Thickness(0), MinWidth = 84
+            Background = new SolidColorBrush(Color.FromArgb(0xD9, 0x24, 0x24, 0x27)),
+            CornerRadius = new CornerRadius(0, 0, 10, 10),
+            Padding = new Thickness(0)
         };
-        card.Effect = new System.Windows.Media.Effects.DropShadowEffect
-        { Color = Colors.Black, Opacity = 0.24, BlurRadius = 12, ShadowDepth = 1.5, Direction = 270 };
-        // 左侧细色条作为节点颜色点缀
-        var accent = new Border { Width = 4, CornerRadius = new CornerRadius(2, 0, 0, 2),
-            Background = new SolidColorBrush(Color.FromArgb(0xFF, baseSolid.R, baseSolid.G, baseSolid.B)),
-            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Stretch };
-        Canvas.SetLeft(card, n.X); Canvas.SetTop(card, n.Y); Canvas.SetZIndex(card, 10);
-        var root = new StackPanel();
-        // 标题
-        var title = new TextBlock { Text = n.Title, FontSize = 14.5, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, Margin = new Thickness(14, 10, 14, 6), TextWrapping = TextWrapping.Wrap, MaxWidth = 220 };
+        var titleBg = new LinearGradientBrush(new GradientStopCollection
+        {
+            new GradientStop(Color.FromArgb(0xFF, (byte)Math.Min(255, baseSolid.R + 18), (byte)Math.Min(255, baseSolid.G + 18), (byte)Math.Min(255, baseSolid.B + 18)), 0),
+            new GradientStop(Color.FromArgb(0xE6, (byte)(baseSolid.R * 0.5), (byte)(baseSolid.G * 0.5), (byte)(baseSolid.B * 0.5)), 1)
+        }, new Point(0, 0), new Point(0, 1));
+        var titleBar = new Border { Background = titleBg, CornerRadius = new CornerRadius(10, 10, 0, 0), Padding = new Thickness(12, 7, 12, 7) };
+        var title = new TextBlock { Text = n.Title, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, MaxWidth = 210, HorizontalAlignment = HorizontalAlignment.Center };
         title.MouseLeftButtonDown += (s, e) => { if (IsDoubleClick()) { EditNodeTitle(n); e.Handled = true; } };
-        root.Children.Add(title);
-        // 端口行：左输入，右输出
+        titleBar.Child = title;
+
+        // 端口区
+        var portArea = new StackPanel { Margin = new Thickness(0, 6, 0, 8) };
         var rows = Math.Max(Math.Max(n.Inputs.Count, n.Outputs.Count), 1);
         for (int i = 0; i < rows; i++)
         {
-            var row = new Grid(); row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.ColumnDefinitions.Add(new ColumnDefinition()); row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var row = new Grid();
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 左输入点
+            row.ColumnDefinitions.Add(new ColumnDefinition());                          // 输入名
+            row.ColumnDefinitions.Add(new ColumnDefinition());                          // 输出名
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 右输出点
             if (i < n.Inputs.Count)
             {
                 var p = n.Inputs[i];
-                var dot = MakeDot(Brushes.White, i == 0); // 输入端口（空心）
-                Grid.SetColumn(dot, 0);
-                var lbl = new TextBlock { Margin = new Thickness(2, 0, 0, 0) };
-                row.Children.Add(dot); var t1 = PortLabel(p, "进"); Grid.SetColumn(t1, 1); t1.Margin = new Thickness(6,0,0,0); row.Children.Add(t1);
-                RegisterPort(p.Id, dot, card);
+                var dot = MakeDot(Brushes.White, false);
+                Grid.SetColumn(dot, 0); row.Children.Add(dot);
+                var lbl = PortLabel(p, "入"); Grid.SetColumn(lbl, 1); lbl.VerticalAlignment = VerticalAlignment.Center; lbl.Margin = new Thickness(6, 0, 0, 0); row.Children.Add(lbl);
+                RegisterPort(p.Id, dot, null);
             }
             if (i < n.Outputs.Count)
             {
                 var p = n.Outputs[i];
-                var dot = MakeDot(new SolidColorBrush(Color.FromRgb(0x4A, 0x90, 0xFF)), true);
-                Grid.SetColumn(dot, 2);
-                row.Children.Insert(0, dot); // 放最左避免错列
-                var lbl = PortLabel(p, "出"); Grid.SetColumn(lbl, 1); lbl.HorizontalAlignment = HorizontalAlignment.Right; lbl.Margin = new Thickness(0,0,6,0);
-                RegisterPort(p.Id, dot, card);
+                var dot = MakeDot(new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF)), true);
+                Grid.SetColumn(dot, 3); row.Children.Add(dot);
+                var lbl = PortLabel(p, "出"); Grid.SetColumn(lbl, 2); lbl.HorizontalAlignment = HorizontalAlignment.Right; lbl.Margin = new Thickness(0, 0, 6, 0); lbl.VerticalAlignment = VerticalAlignment.Center; row.Children.Add(lbl);
+                RegisterPort(p.Id, dot, null);
             }
-            // 保证行有点占位
-            root.Children.Add(row);
-            // 用固定行高撑起
-            row.Height = 26;
+            row.Height = 24;
+            portArea.Children.Add(row);
         }
-        // 实际端口对齐：输入左、输出右 —— 简化：用一个边界 margin
-        // 组合：左侧色条 + 内容
-        var outer = new Grid();
-        outer.Children.Add(accent);
-        root.Margin = new Thickness(8, 0, 0, 0);
-        outer.Children.Add(root);
-        card.Child = outer;
-        // 调整宽度
+        body.Child = portArea;
+
+        var root = new StackPanel();
+        root.Children.Add(titleBar);
+        root.Children.Add(body);
+
+        var card = new Border
+        {
+            Tag = n, Background = Brushes.Transparent, CornerRadius = new CornerRadius(10),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x3A, 0xFF, 0xFF, 0xFF)), BorderThickness = new Thickness(1),
+            Padding = new Thickness(0), MinWidth = 120, Child = root
+        };
+        card.Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Colors.Black, Opacity = 0.35, BlurRadius = 14, ShadowDepth = 2, Direction = 270 };
+        Canvas.SetLeft(card, n.X); Canvas.SetTop(card, n.Y); Canvas.SetZIndex(card, 10);
         card.Measure(new Size(300, 200)); n.W = Math.Max(120, card.DesiredSize.Width + 8); card.Width = n.W;
+        // 重新登记端口 owner（AddNodeCard 提前 RegisterPort 传 null，这里统一补 owner）
+        foreach (var portId in _portDots.Keys.Where(k => _portOwners[k] == null).ToList()) _portOwners[portId] = card;
+
         card.MouseLeftButtonDown += (s, e) => { SelectNode(n.Id); DragCardStart(card, e); };
         card.MouseMove += (s, e) => DragCardMove(card, e);
         card.MouseLeftButtonUp += (s, e) => DragCardEnd(card, e);
