@@ -141,9 +141,9 @@ public partial class MindmapWindow : Window
     public void NewDocument()
     {
         BeforeChange(); _doc = new CvDoc(); _path = null; _dirty = false;
-        var a = new CvNode { Title = "开始", X = 0, Y = 0, Color = "#FF7FC8A9" };
-        var b = new CvNode { Title = "处理", X = 320, Y = 120, Color = "#FF6B8AB5" };
-        var c = new CvNode { Title = "输出", X = 640, Y = 0, Color = "#FFF0B578" };
+        var a = new CvNode { Title = "开始", X = 0, Y = 0, Color = "#FF30D158" };
+        var b = new CvNode { Title = "处理", X = 320, Y = 120, Color = "#FF0A84FF" };
+        var c = new CvNode { Title = "输出", X = 640, Y = 0, Color = "#FFFF9F0A" };
         a.Outputs.Add(new CvPort()); b.Inputs.Add(new CvPort()); b.Outputs.Add(new CvPort()); c.Inputs.Add(new CvPort());
         _doc.Nodes.AddRange(new[] { a, b, c });
         _doc.Links.Add(new CvLink { FromPort = a.Outputs[0].Id, ToPort = b.Inputs[0].Id });
@@ -181,17 +181,36 @@ public partial class MindmapWindow : Window
     private void AddNodeCard(CvNode n)
     {
         var baseSolid = ColorFromHex(n.Color);
-        // 「现代 App」风格：低饱和柔和纯色卡片，大留白，端口小而安静
-        var nodeBg = new SolidColorBrush(Color.FromArgb(0xF0, baseSolid.R, baseSolid.G, baseSolid.B));
-        var root = new StackPanel();
-        // 标题：居中、大留白
-        var title = new TextBlock { Text = n.Title, FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, MaxWidth = 240, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(18, 14, 18, 10) };
+        // 「鲜艳但精致」：鲜艳色 + 细腻高光渐变 + 顶部高光层，层次分明不土
+        var nodeBg = new LinearGradientBrush(new GradientStopCollection
+        {
+            new GradientStop(Color.FromArgb(0xFF, (byte)Math.Min(255, baseSolid.R + 26), (byte)Math.Min(255, baseSolid.G + 26), (byte)Math.Min(255, baseSolid.B + 26)), 0),
+            new GradientStop(Color.FromArgb(0xFF, baseSolid.R, baseSolid.G, baseSolid.B), 0.5),
+            new GradientStop(Color.FromArgb(0xFF, (byte)(baseSolid.R * 0.72), (byte)(baseSolid.G * 0.72), (byte)(baseSolid.B * 0.72)), 1)
+        }, new Point(0, 0), new Point(0, 1));
+        var root = new Grid();
+        // 顶部高光层（透明内上缘白）
+        var glow = new Border
+        {
+            Background = new LinearGradientBrush(new GradientStopCollection
+            {
+                new GradientStop(Color.FromArgb(0x2E, 0xFF, 0xFF, 0xFF), 0),
+                new GradientStop(Color.FromArgb(0x00, 0xFF, 0xFF, 0xFF), 0.45)
+            }, new Point(0, 0), new Point(0, 1)),
+            CornerRadius = new CornerRadius(11), VerticalAlignment = VerticalAlignment.Top, Height = 30, IsHitTestVisible = false
+        };
+        var content = new StackPanel();
+        root.Children.Add(glow);
+        root.Children.Add(content);
+        // 标题：居中、大留白、白字带轻微文字阴影
+        var title = new TextBlock { Text = n.Title, FontSize = 16, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, MaxWidth = 240, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(18, 15, 18, 10) };
+        title.Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Colors.Black, Opacity = 0.25, BlurRadius = 3, ShadowDepth = 1, Direction = 270 };
         title.MouseLeftButtonDown += (s, e) => { if (IsDoubleClick()) { EditNodeTitle(n); e.Handled = true; } };
-        root.Children.Add(title);
+        content.Children.Add(title);
 
-        // 端口区：小灰点，左入右出，安静
-        var div = new Rectangle { Height = 1, Fill = new SolidColorBrush(Color.FromArgb(0x28, 0xFF, 0xFF, 0xFF)), Margin = new Thickness(12, 0, 12, 0) };
-        root.Children.Add(div);
+        // 端口区：小圆点，左入右出
+        var div = new Rectangle { Height = 1, Fill = new SolidColorBrush(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)), Margin = new Thickness(12, 0, 12, 0) };
+        content.Children.Add(div);
         var portArea = new StackPanel { Margin = new Thickness(8, 8, 8, 10) };
         var rows = Math.Max(Math.Max(n.Inputs.Count, n.Outputs.Count), 1);
         for (int i = 0; i < rows; i++)
@@ -217,7 +236,7 @@ public partial class MindmapWindow : Window
             row.Height = 24;
             portArea.Children.Add(row);
         }
-        root.Children.Add(portArea);
+        content.Children.Add(portArea);
 
         var card = new Border
         {
@@ -401,7 +420,7 @@ public partial class MindmapWindow : Window
     }
     private Border? _findCard(string id) => _nodeCards.TryGetValue(id, out var c) ? c : null;
     private void OnPickColor(object s, RoutedEventArgs e) { if (_selNodeId == null) return; var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return; BeforeChange(); n.Color = (string)((Button)s).Tag; if (_nodeCards.TryGetValue(n.Id, out var c)) c.Background = new SolidColorBrush(ColorFromHex(n.Color)); _dirty = true; }
-    private void OnCycleColor(object s, RoutedEventArgs e) { if (_selNodeId == null) return; var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return; var cols = new[] { "#FF6B8AB5", "#FFE07870", "#FF7FC8A9", "#FFF0B578", "#FFB48AD1" }; var i = Array.IndexOf(cols, n.Color); var idx = i < 0 ? 0 : (i + 1) % cols.Length; BeforeChange(); n.Color = cols[idx]; if (_nodeCards.TryGetValue(n.Id, out var c)) c.Background = new SolidColorBrush(ColorFromHex(n.Color)); _dirty = true; }
+    private void OnCycleColor(object s, RoutedEventArgs e) { if (_selNodeId == null) return; var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return; var cols = new[] { "#FF0A84FF", "#FFFF453A", "#FF30D158", "#FFFF9F0A", "#FFBF5AF2" }; var i = Array.IndexOf(cols, n.Color); var idx = i < 0 ? 0 : (i + 1) % cols.Length; BeforeChange(); n.Color = cols[idx]; if (_nodeCards.TryGetValue(n.Id, out var c)) c.Background = new SolidColorBrush(ColorFromHex(n.Color)); _dirty = true; }
 
     // ==================== 撤销 / 快捷键 / 导出 ====================
     private void BeforeChange() { _undo.Push(CloneDoc(_doc)); if (_undo.Count > 60) { var a = _undo.ToArray(); Array.Reverse(a); _undo.Clear(); foreach (var x in a.Take(59)) _undo.Push(x); } _redo.Clear(); }
@@ -425,7 +444,7 @@ public partial class MindmapWindow : Window
         if (e.Key == Key.Delete) { if (_selNodeId != null) DeleteNode(_selNodeId); if (_selLinkId != null) DeleteLink(_selLinkId); e.Handled = true; }
     }
     private Point CanvasCenterCanvas() => HostToCanvas(Center());
-    private void AddNodeAt(Point c) { BeforeChange(); var n = new CvNode { Title = "节点", X = c.X - 90, Y = c.Y - 15, Color = "#FF6B8AB5" }; n.Inputs.Add(new CvPort()); n.Outputs.Add(new CvPort()); _doc.Nodes.Add(n); Rebuild(); _dirty = true; SelectNode(n.Id); }
+    private void AddNodeAt(Point c) { BeforeChange(); var n = new CvNode { Title = "节点", X = c.X - 90, Y = c.Y - 15, Color = "#FF0A84FF" }; n.Inputs.Add(new CvPort()); n.Outputs.Add(new CvPort()); _doc.Nodes.Add(n); Rebuild(); _dirty = true; SelectNode(n.Id); }
     private void DeleteNode(string id) { var n = _doc.Nodes.FirstOrDefault(x => x.Id == id); if (n == null) return; BeforeChange(); var ps = n.Inputs.Select(p => p.Id).Concat(n.Outputs.Select(p => p.Id)).ToHashSet(); _doc.Nodes.Remove(n); _doc.Links.RemoveAll(x => ps.Contains(x.FromPort) || ps.Contains(x.ToPort)); _selNodeId = null; Rebuild(); _dirty = true; }
     private void DeleteLink(string id) { BeforeChange(); _doc.Links.RemoveAll(x => x.Id == id); _selLinkId = null; RedrawLinks(); _dirty = true; }
 
