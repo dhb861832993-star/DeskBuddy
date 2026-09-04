@@ -1747,7 +1747,7 @@ public partial class MainWindow : Window
                 MemoDropIndicator.Visibility = Visibility.Visible;
             }
         }
-        if (_memoDragging) { MemoHoverPopup.IsOpen = false; UpdateMemoDropIndicator(sender as DependencyObject); return; } // 拖拽中不弹悬浮，只更新插入指示线
+        if (_memoDragging) { MemoHoverPopup.IsOpen = false; UpdateMemoDropIndicator(e.OriginalSource as DependencyObject); return; } // 拖拽中不弹悬浮，只更新插入指示线
 
         var lbi = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
         var item = lbi?.DataContext as MemoItem;
