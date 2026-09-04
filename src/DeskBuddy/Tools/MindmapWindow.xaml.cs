@@ -442,7 +442,8 @@ public partial class MindmapWindow : Window
         if ((now - _lastBlankDown).TotalMilliseconds < 350 && (e.GetPosition(this) - _lastBlankPt).Length < 8)
         {
             _lastBlankDown = DateTime.MinValue;
-            var cv = HostToCanvas(e.GetPosition(CanvasHost));
+            // 用 NodeCanvas 坐标：WPF 自动反算缩放/平移，节点精确落在鼠标下不漂移
+            var cv = e.GetPosition(NodeCanvas);
             var nn = new CvNode { Title = "节点", X = cv.X - 85, Y = cv.Y - 30, Color = "#FF3A3A3C" };
             nn.Inputs.Add(new CvPort()); nn.Outputs.Add(new CvPort());
             BeforeChange(); _doc.Nodes.Add(nn); Rebuild(); _dirty = true; SelectNode(nn.Id);
