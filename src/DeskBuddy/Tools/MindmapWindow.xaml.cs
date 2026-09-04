@@ -204,12 +204,12 @@ public partial class MindmapWindow : Window
         for (int i = 0; i < rows; i++)
         {
             var row = new Grid();
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Star }); // 整行拉伸
             if (i < n.Inputs.Count)
             {
                 var p = n.Inputs[i];
                 var dot = MakeDot(Brushes.White, false);
+                dot.HorizontalAlignment = HorizontalAlignment.Left; // 输入贴左
                 Grid.SetColumn(dot, 0); row.Children.Add(dot);
                 RegisterPort(p.Id, dot, null);
             }
@@ -217,7 +217,8 @@ public partial class MindmapWindow : Window
             {
                 var p = n.Outputs[i];
                 var dot = MakeDot(new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF)), true);
-                Grid.SetColumn(dot, 1); row.Children.Add(dot);
+                dot.HorizontalAlignment = HorizontalAlignment.Right; // 输出贴右
+                Grid.SetColumn(dot, 0); row.Children.Add(dot);
                 RegisterPort(p.Id, dot, null);
             }
             row.Height = 26;
