@@ -41,8 +41,8 @@ public partial class MindmapWindow : Window
 
     public MindmapWindow()
     {
-        ApplyTheme(); // 与主界面同一套主题
         InitializeComponent();
+        ApplyTheme(); // 与主界面同一套主题（须在 InitializeComponent 之后，否则被 XAML placeholder 覆盖）
     }
 
     /// <summary>注入主程序主题资源，保证 UI 风格统一、随系统深浅色。</summary>
