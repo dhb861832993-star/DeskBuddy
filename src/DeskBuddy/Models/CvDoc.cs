@@ -40,7 +40,7 @@ public sealed class CvLink
     public string FromPort { get; set; } = ""; // 输出端口
     public string ToPort { get; set; } = "";   // 输入端口
     /// <summary>线宽。</summary>
-    public double W { get; set; } = 2;
+    public double W { get; set; } = 4;
 }
 
 /// <summary>连连看文档（.llk）。</summary>

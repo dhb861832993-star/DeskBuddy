@@ -396,10 +396,19 @@ public partial class MindmapWindow : Window
             if (dir.Length < 1e-4) dir = p2 - p1;
             dir.Normalize();
             var angle = Math.Atan2(dir.Y, dir.X) * 180 / Math.PI;
+            double asz = 6 + l.W * 3.2; // 箭头大小随线宽放大
+            var ag = new StreamGeometry();
+            using (var actx = ag.Open())
+            {
+                actx.BeginFigure(new Point(0, 0), true, true);
+                actx.LineTo(new Point(-asz, -asz * 0.5), true, false);
+                actx.LineTo(new Point(-asz, asz * 0.5), true, false);
+            }
+            ag.Freeze();
             var arrow = new System.Windows.Shapes.Path
             {
                 Fill = stroke,
-                Data = Geometry.Parse("M 0,0 L -11,-5 L -11,5 Z"),
+                Data = ag,
                 RenderTransform = new RotateTransform(angle),
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Top

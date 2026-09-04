@@ -178,7 +178,7 @@
                         <TextBlock x:Name="LblLink" Text="连线" FontSize="10.5" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4"/>
                         <CheckBox x:Name="PropArrow" Content="箭头" FontSize="12" Foreground="{DynamicResource TextPrimary}" Checked="OnArrowChanged" Unchecked="OnArrowChanged"/>
                         <TextBlock Text="线宽" FontSize="10.5" Foreground="{DynamicResource TextSecondary}" Margin="0,8,0,4"/>
-                        <Slider x:Name="PropThickness" Minimum="1" Maximum="6" Value="1.6" TickFrequency="0.5" Width="200" ValueChanged="OnThicknessChanged"/>
+                        <Slider x:Name="PropThickness" Minimum="1" Maximum="12" Value="4" TickFrequency="1" Width="200" ValueChanged="OnThicknessChanged"/>
                     </StackPanel>
                 </Border>
             </Grid>
