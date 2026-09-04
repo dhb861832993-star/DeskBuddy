@@ -99,17 +99,30 @@ public partial class MindmapWindow : Window
     private void EditNodeTitle(CvNode n)
     {
         if (!_nodeCards.TryGetValue(n.Id, out var card)) return;
-        if (card.Child is not StackPanel sp || sp.Children.Count == 0) return;
+        var sp = GetContentStack(card); if (sp == null || sp.Children.Count == 0) return;
         var title = sp.Children[0] as TextBlock; if (title == null) return;
         var box = new TextBox { Text = n.Title, FontSize = 14.5, Foreground = Brushes.White, Background = new SolidColorBrush(Color.FromArgb(0x40, 0, 0, 0)), BorderThickness = new Thickness(0), Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(8, 8, 8, 4) };
         sp.Children[0] = box;
         box.Focus(); box.SelectAll();
         box.KeyDown += (_, e) =>
         {
-            if (e.Key == Key.Enter) { BeforeChange(); n.Title = box.Text.Trim(); if (n.Title.Length == 0) n.Title = "节点"; sp.Children[0] = new TextBlock { Text = n.Title, FontSize = 14.5, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, Margin = new Thickness(14, 10, 14, 6), TextWrapping = TextWrapping.Wrap, MaxWidth = 220 }; _dirty = true; e.Handled = true; }
-            else if (e.Key == Key.Escape) { sp.Children[0] = new TextBlock { Text = n.Title, FontSize = 14.5, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, Margin = new Thickness(14, 10, 14, 6), TextWrapping = TextWrapping.Wrap, MaxWidth = 220 }; e.Handled = true; }
+            if (e.Key == Key.Enter) { BeforeChange(); n.Title = box.Text.Trim(); if (n.Title.Length == 0) n.Title = "节点"; ReplaceTitle(sp, n); _dirty = true; e.Handled = true; }
+            else if (e.Key == Key.Escape) { ReplaceTitle(sp, n); e.Handled = true; }
         };
-        box.LostKeyboardFocus += (_, _) => { if (box.Text != n.Title && !string.IsNullOrWhiteSpace(box.Text)) { BeforeChange(); n.Title = box.Text.Trim(); _dirty = true; } sp.Children[0] = new TextBlock { Text = n.Title, FontSize = 14.5, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, Margin = new Thickness(14, 10, 14, 6), TextWrapping = TextWrapping.Wrap, MaxWidth = 220 }; };
+        box.LostKeyboardFocus += (_, _) => { if (box.Text != n.Title && !string.IsNullOrWhiteSpace(box.Text)) { BeforeChange(); n.Title = box.Text.Trim(); _dirty = true; } ReplaceTitle(sp, n); };
+    }
+
+    private static StackPanel? GetContentStack(Border card)
+    {
+        if (card.Child is StackPanel sp) return sp;
+        if (card.Child is Grid g) return g.Children.OfType<StackPanel>().FirstOrDefault();
+        return null;
+    }
+
+    private static void ReplaceTitle(StackPanel sp, CvNode n)
+    {
+        var tb = new TextBlock { Text = n.Title, FontSize = 14.5, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, Margin = new Thickness(14, 10, 14, 6), TextWrapping = TextWrapping.Wrap, MaxWidth = 220 };
+        if (sp.Children.Count > 0) sp.Children[0] = tb; else sp.Children.Add(tb);
     }
 
     // ==================== 变换核心（已验证数学） ====================
@@ -171,26 +184,25 @@ public partial class MindmapWindow : Window
     }
     private void AddNodeCard(CvNode n)
     {
-        // macOS 质感卡片：半透明底色 + 顶部细腻高光渐变 + 极柔和投影
-        var grad = new LinearGradientBrush(new GradientStopCollection
-        {
-            new GradientStop(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF), 0),   // 顶部高光
-            new GradientStop(Color.FromArgb(0x00, 0xFF, 0xFF, 0xFF), 0.4)
-        }, new Point(0, 0), new Point(0, 1));
-        var baseSolid = ColorFromHex(n.Color); // 基色（半透明）
+        var baseSolid = ColorFromHex(n.Color);
+        // 高级中性卡片：半透明灰面 + 顶部高光，颜色只做左侧细条点缀
         var bg = new LinearGradientBrush(new GradientStopCollection
         {
-            new GradientStop(Color.FromArgb(0xEE, baseSolid.R, baseSolid.G, baseSolid.B), 0),
-            new GradientStop(Color.FromArgb(0xD9, (byte)(baseSolid.R * 0.8), (byte)(baseSolid.G * 0.8), (byte)(baseSolid.B * 0.8)), 1)
+            new GradientStop(Color.FromArgb(0x2A, 0xFF, 0xFF, 0xFF), 0),
+            new GradientStop(Color.FromArgb(0x12, 0xFF, 0xFF, 0xFF), 0.5)
         }, new Point(0, 0), new Point(0, 1));
         var card = new Border
         {
             Tag = n, Background = bg, CornerRadius = new CornerRadius(12),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)), BorderThickness = new Thickness(1),
-            Padding = new Thickness(0), MinWidth = 80
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)), BorderThickness = new Thickness(1),
+            Padding = new Thickness(0), MinWidth = 84
         };
         card.Effect = new System.Windows.Media.Effects.DropShadowEffect
-        { Color = Colors.Black, Opacity = 0.28, BlurRadius = 10, ShadowDepth = 1.5, Direction = 270 };
+        { Color = Colors.Black, Opacity = 0.24, BlurRadius = 12, ShadowDepth = 1.5, Direction = 270 };
+        // 左侧细色条作为节点颜色点缀
+        var accent = new Border { Width = 4, CornerRadius = new CornerRadius(2, 0, 0, 2),
+            Background = new SolidColorBrush(Color.FromArgb(0xFF, baseSolid.R, baseSolid.G, baseSolid.B)),
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Stretch };
         Canvas.SetLeft(card, n.X); Canvas.SetTop(card, n.Y); Canvas.SetZIndex(card, 10);
         var root = new StackPanel();
         // 标题
@@ -227,7 +239,12 @@ public partial class MindmapWindow : Window
             row.Height = 26;
         }
         // 实际端口对齐：输入左、输出右 —— 简化：用一个边界 margin
-        card.Child = root;
+        // 组合：左侧色条 + 内容
+        var outer = new Grid();
+        outer.Children.Add(accent);
+        root.Margin = new Thickness(8, 0, 0, 0);
+        outer.Children.Add(root);
+        card.Child = outer;
         // 调整宽度
         card.Measure(new Size(300, 200)); n.W = Math.Max(120, card.DesiredSize.Width + 8); card.Width = n.W;
         card.MouseLeftButtonDown += (s, e) => { SelectNode(n.Id); DragCardStart(card, e); };
@@ -236,7 +253,12 @@ public partial class MindmapWindow : Window
         _nodeCards[n.Id] = card;
         NodeCanvas.Children.Add(card);
     }
-    private Ellipse MakeDot(Brush fill, bool solid) => new Ellipse { Width = 14, Height = 14, Fill = fill, Stroke = Brushes.Black, StrokeThickness = 1, StrokeDashArray = solid ? null : new DoubleCollection { 2, 1 }, Cursor = Cursors.Cross };
+    private Ellipse MakeDot(Brush fill, bool solid)
+    {
+        var dot = new Ellipse { Width = 13, Height = 13, Fill = fill, Stroke = new SolidColorBrush(Color.FromArgb(0xE0, 0x0A, 0x84, 0xFF)), StrokeThickness = 1.5, Cursor = Cursors.Cross };
+        dot.Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Color.FromRgb(0x0A, 0x84, 0xFF), Opacity = solid ? 0.5 : 0.25, BlurRadius = 6, ShadowDepth = 0 };
+        return dot;
+    }
     private TextBlock PortLabel(CvPort p, string def) => new TextBlock { Text = string.IsNullOrEmpty(p.Name) ? def : p.Name, FontSize = 12, Foreground = Brushes.White };
     private void RegisterPort(string pid, Ellipse dot, Border card)
     {
@@ -377,7 +399,7 @@ public partial class MindmapWindow : Window
     {
         if (_suppressProp || _selNodeId == null) return;
         var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return;
-        if (n.Title != PropText.Text) { BeforeChange(); n.Title = PropText.Text; _dirty = true; var card = _findCard(n.Id); if (card != null && card.Child is StackPanel sp && sp.Children.Count > 0 && sp.Children[0] is TextBlock tb) tb.Text = n.Title; }
+        if (n.Title != PropText.Text) { BeforeChange(); n.Title = PropText.Text; _dirty = true; var card = _findCard(n.Id); var sp = card == null ? null : GetContentStack(card); if (sp != null && sp.Children.Count > 0 && sp.Children[0] is TextBlock tb) tb.Text = n.Title; }
     }
     private Border? _findCard(string id) => _nodeCards.TryGetValue(id, out var c) ? c : null;
     private void OnPickColor(object s, RoutedEventArgs e) { if (_selNodeId == null) return; var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return; BeforeChange(); n.Color = (string)((Button)s).Tag; if (_nodeCards.TryGetValue(n.Id, out var c)) c.Background = new SolidColorBrush(ColorFromHex(n.Color)); _dirty = true; }
