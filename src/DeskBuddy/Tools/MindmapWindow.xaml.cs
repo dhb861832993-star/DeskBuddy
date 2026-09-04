@@ -245,7 +245,7 @@ public partial class MindmapWindow : Window
     private void OnCanvasMouseMove(object s, MouseEventArgs e)
     {
         if (_linking && _dragPort != null) { _linkCur = e.GetPosition(NodeCanvas); RedrawLinkPreview(); }
-        else if (_panning) { var h = e.GetPosition(CanvasHost); PanTf.X += h.X - _panStart.X; PanTf.Y += h.Y - _panStart.Y; _panStart = h; }
+        else if (_panning) { var h = e.GetPosition(CanvasHost); PanTf.X += (h.X - _panStart.X) / _zoom; PanTf.Y += (h.Y - _panStart.Y) / _zoom; _panStart = h; }
     }
     private void OnCanvasMouseUp(object s, MouseButtonEventArgs e)
     {
