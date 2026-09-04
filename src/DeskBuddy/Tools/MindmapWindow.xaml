@@ -150,11 +150,11 @@
                                  BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="7,5" TextChanged="OnPropTextChanged"/>
                         <TextBlock Text="颜色" FontSize="10.5" Foreground="{DynamicResource TextSecondary}" Margin="0,12,0,4"/>
                         <StackPanel Orientation="Horizontal">
-                            <Button x:Name="Swatch1" Click="OnPickColor" Tag="#224A90FF" Style="{StaticResource Swatch}"/>
-                            <Button x:Name="Swatch2" Click="OnPickColor" Tag="#22FF453A" Style="{StaticResource Swatch}" Margin="6,0,0,0"/>
-                            <Button x:Name="Swatch3" Click="OnPickColor" Tag="#2232D583" Style="{StaticResource Swatch}" Margin="6,0,0,0"/>
-                            <Button x:Name="Swatch4" Click="OnPickColor" Tag="#22FF9F0A" Style="{StaticResource Swatch}" Margin="6,0,0,0"/>
-                            <Button x:Name="Swatch5" Click="OnPickColor" Tag="#22BF5AF2" Style="{StaticResource Swatch}" Margin="6,0,0,0"/>
+                            <Button x:Name="Swatch1" Click="OnPickColor" Tag="#EE0A84FF" Style="{StaticResource Swatch}"/>
+                            <Button x:Name="Swatch2" Click="OnPickColor" Tag="#EEFF453A" Style="{StaticResource Swatch}" Margin="6,0,0,0"/>
+                            <Button x:Name="Swatch3" Click="OnPickColor" Tag="#EE30D158" Style="{StaticResource Swatch}" Margin="6,0,0,0"/>
+                            <Button x:Name="Swatch4" Click="OnPickColor" Tag="#EEFF9F0A" Style="{StaticResource Swatch}" Margin="6,0,0,0"/>
+                            <Button x:Name="Swatch5" Click="OnPickColor" Tag="#EEBF5AF2" Style="{StaticResource Swatch}" Margin="6,0,0,0"/>
                         </StackPanel>
                         <Rectangle Height="1" Fill="{DynamicResource CardBorder}" Margin="0,14"/>
                         <!-- 连线属性 -->
