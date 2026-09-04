@@ -127,10 +127,12 @@ public partial class MindmapWindow : Window
     {
         var card = new Border
         {
-            Tag = n, Background = new SolidColorBrush(ColorFromHex(n.Color)), CornerRadius = new CornerRadius(10),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)), BorderThickness = new Thickness(2),
+            Tag = n, Background = new SolidColorBrush(ColorFromHex(n.Color)), CornerRadius = new CornerRadius(14),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)), BorderThickness = new Thickness(1),
             Padding = new Thickness(0), MinWidth = 80
         };
+        card.Effect = new System.Windows.Media.Effects.DropShadowEffect
+        { Color = Colors.Black, Opacity = 0.35, BlurRadius = 12, ShadowDepth = 2, Direction = 270 };
         Canvas.SetLeft(card, n.X); Canvas.SetTop(card, n.Y); Canvas.SetZIndex(card, 10);
         var root = new StackPanel();
         // 标题
@@ -231,6 +233,11 @@ public partial class MindmapWindow : Window
     // ==================== 画布事件 ====================
     private void OnCanvasMouseDown(object s, MouseButtonEventArgs e)
     {
+        if (e.ChangedButton == MouseButton.Middle)
+        {
+            // 中键拖拽平移画布
+            _panning = true; _panStart = e.GetPosition(CanvasHost); CanvasHost.CaptureMouse(); e.Handled = true; return;
+        }
         if (e.ChangedButton != MouseButton.Left) return;
         SelectNode(null); SelectLink(null);
         _panning = true; _panStart = e.GetPosition(CanvasHost); CanvasHost.CaptureMouse(); e.Handled = true;
