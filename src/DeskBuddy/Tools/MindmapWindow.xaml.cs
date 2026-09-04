@@ -119,7 +119,7 @@ public partial class MindmapWindow : Window
     {
         if (e.ChangedButton != MouseButton.Left) return;
         _resizing = true;
-        _resizeStartOffset = e.GetPosition(this); // 相对窗口
+        _resizeStartOffset = (Vector)e.GetPosition(this); // 相对窗口
         _resizeStartW = Width; _resizeStartH = Height;
         ResizeGrip.CaptureMouse();
         e.Handled = true;
