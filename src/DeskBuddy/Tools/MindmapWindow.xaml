@@ -16,6 +16,7 @@
         <SolidColorBrush x:Key="BtnBgHover" Color="#32FFFFFF"/>
         <SolidColorBrush x:Key="CardBg" Color="#1C1C1E"/>
         <SolidColorBrush x:Key="CanvasBg" Color="#17181A"/>
+        <SolidColorBrush x:Key="DotBrush" Color="#223F3F46"/>
         <SolidColorBrush x:Key="Accent" Color="#4A90FF"/>
         <Style x:Key="Btn" TargetType="Button">
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
@@ -78,7 +79,7 @@
             <!-- ===== 顶部工具条 ===== -->
             <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource CardBorder}" BorderThickness="0,0,0,1" Padding="8,6">
                 <DockPanel>
-                    <TextBlock Text="🌳 连连看" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="6,0,10,0"/>
+                    <TextBlock Text="连连看" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="6,0,10,0"/>
                     <TextBlock x:Name="DocNameText" FontSize="11" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="200"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <Button Content="新建" Click="OnNew" Style="{StaticResource Btn}"/>
@@ -119,7 +120,22 @@
                 </Border>
 
                 <!-- 画布 -->
-                <Grid Grid.Column="1" Background="{DynamicResource CanvasBg}" ClipToBounds="True">
+                <Grid Grid.Column="1" ClipToBounds="True">
+                    <!-- 深色玻璃底 + 点阵网格（单一 DrawingBrush 含底+点） -->
+                    <Grid.Background>
+                        <DrawingBrush TileMode="Tile" Viewport="0,0,24,24" ViewportUnits="Absolute">
+                            <DrawingBrush.Drawing>
+                                <DrawingGroup>
+                                    <GeometryDrawing Brush="{DynamicResource CanvasBg}">
+                                        <GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,24,24"/></GeometryDrawing.Geometry>
+                                    </GeometryDrawing>
+                                    <GeometryDrawing Brush="{DynamicResource DotBrush}">
+                                        <GeometryDrawing.Geometry><EllipseGeometry Center="1,1" RadiusX="1" RadiusY="1"/></GeometryDrawing.Geometry>
+                                    </GeometryDrawing>
+                                </DrawingGroup>
+                            </DrawingBrush.Drawing>
+                        </DrawingBrush>
+                    </Grid.Background>
                     <Canvas x:Name="CanvasHost" Background="Transparent"
                             MouseDown="OnCanvasMouseDown" MouseMove="OnCanvasMouseMove" MouseUp="OnCanvasMouseUp" MouseLeave="OnCanvasMouseLeave">
                         <Canvas.RenderTransform>
