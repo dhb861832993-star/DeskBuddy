@@ -141,9 +141,9 @@ public partial class MindmapWindow : Window
     public void NewDocument()
     {
         BeforeChange(); _doc = new CvDoc(); _path = null; _dirty = false;
-        var a = new CvNode { Title = "开始", X = 0, Y = 0, Color = "#FF30D158" };
-        var b = new CvNode { Title = "处理", X = 320, Y = 120, Color = "#FF0A84FF" };
-        var c = new CvNode { Title = "输出", X = 640, Y = 0, Color = "#FFFF9F0A" };
+        var a = new CvNode { Title = "开始", X = 0, Y = 0, Color = "#FF3A3A3C" };
+        var b = new CvNode { Title = "处理", X = 320, Y = 120, Color = "#FF3A3A3C" };
+        var c = new CvNode { Title = "输出", X = 640, Y = 0, Color = "#FF3A3A3C" };
         a.Outputs.Add(new CvPort()); b.Inputs.Add(new CvPort()); b.Outputs.Add(new CvPort()); c.Inputs.Add(new CvPort());
         _doc.Nodes.AddRange(new[] { a, b, c });
         _doc.Links.Add(new CvLink { FromPort = a.Outputs[0].Id, ToPort = b.Inputs[0].Id });
@@ -437,21 +437,27 @@ public partial class MindmapWindow : Window
     private void OnArrowChanged(object s, RoutedEventArgs e) { }
     private void OnThicknessChanged(object s, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (_suppressProp || _selLinkId == null) return;
-        var l = _doc.Links.FirstOrDefault(x => x.Id == _selLinkId); if (l == null) return;
-        BeforeChange(); l.W = e.NewValue; RedrawLinks(); _dirty = true;
+        if (_suppressProp) return;
+        BeforeChange();
+        foreach (var l in _doc.Links) l.W = e.NewValue;
+        RedrawLinks(); _dirty = true;
     }
     private void OnFontSizeChanged(object s, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (_suppressProp || _selNodeId == null) return;
-        var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return;
-        BeforeChange(); n.FontSize = e.NewValue; _dirty = true;
-        if (_nodeCards.TryGetValue(n.Id, out var card) && card.Child is Grid g)
+        if (_suppressProp) return;
+        BeforeChange();
+        foreach (var n in _doc.Nodes) n.FontSize = e.NewValue;
+        // 刷新所有节点标题字号
+        foreach (var card in _nodeCards.Values)
         {
-            var host = g.Children.OfType<StackPanel>().SelectMany(x => x.Children.OfType<Border>())
-                .FirstOrDefault(b => b.Child is TextBlock);
-            if (host?.Child is TextBlock tb) tb.FontSize = e.NewValue;
+            if (card.Child is Grid g)
+            {
+                var host = g.Children.OfType<StackPanel>().SelectMany(x => x.Children.OfType<Border>())
+                    .FirstOrDefault(b => b.Child is TextBlock);
+                if (host?.Child is TextBlock tb) tb.FontSize = e.NewValue;
+            }
         }
+        _dirty = true;
     }
 
     private void OnWindowKeyDown(object s, KeyEventArgs e)
