@@ -13,7 +13,7 @@ using PathIO = System.IO.Path;
 
 namespace DeskBuddy.Tools;
 
-/// <summary>连连看：Xmind 风格的自由连线思维导图编辑器（暗黑）。</summary>
+/// <summary>连连看：Xmind 风格的自由连线思维导图编辑器（跟随主程序主题）。</summary>
 public partial class MindmapWindow : Window
 {
     private MindmapDoc _doc = new();
@@ -41,8 +41,32 @@ public partial class MindmapWindow : Window
 
     public MindmapWindow()
     {
+        ApplyTheme(); // 与主界面同一套主题
         InitializeComponent();
     }
+
+    /// <summary>注入主程序主题资源，保证 UI 风格统一、随系统深浅色。</summary>
+    private static Brush Frozen(Color c) { var b = new SolidColorBrush(c); b.Freeze(); return b; }
+
+    private void ApplyTheme()
+    {
+        var theme = Theme.From(Services.ConfigManager.Load().Theme);
+        Resources["TextPrimary"] = Frozen(theme.TextPrimary);
+        Resources["TextSecondary"] = Frozen(theme.TextSecondary);
+        Resources["HoverBg"] = Frozen(theme.HoverBg);
+        Resources["CardBorder"] = Frozen(theme.BorderColor);
+        Resources["BtnBg"] = Frozen(theme.HoverBg);
+        Resources["BtnBgHover"] = Frozen(Color.FromArgb(0x3D, theme.HoverBg.R, theme.HoverBg.G, theme.HoverBg.B));
+        Resources["CardBg"] = new SolidColorBrush(theme.CardTint) { Opacity = theme.CardAlpha };
+        // 画布比卡片卡片略深（深色）或略浅（浅色），形成层次
+        int delta = theme.IsDark ? -16 : 12;
+        var cv = theme.CardTint;
+        var canvas = Color.FromRgb(
+            ClampByte(cv.R + delta), ClampByte(cv.G + delta), ClampByte(cv.B + delta));
+        Resources["CanvasBg"] = new SolidColorBrush(canvas);
+    }
+
+    private static byte ClampByte(int v) => (byte)Math.Clamp(v, 0, 255);
 
     // ==================== 文档生命周期 ====================
 
