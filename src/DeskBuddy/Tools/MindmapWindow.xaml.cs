@@ -306,7 +306,7 @@ public partial class MindmapWindow : Window
             var ph = new System.Windows.Shapes.Path { Stroke = stroke, StrokeThickness = 2, Data = g, Tag = l.Id, Cursor = Cursors.Hand };
             ph.MouseLeftButtonDown += (s, e) => { _selLinkId = l.Id; _selNodeId = null; RefreshProps(); RedrawLinks(); e.Handled = true; };
             LinkCanvas.Children.Add(ph);
-            // 终点箭头：沿 控制点→终点 方向
+            // 终点箭头：几何 tip 在原点(0,0)指向+X，Canvas 定位到 p2，仅旋转 → tip 始终对准 p2(落点/终点)
             var dir = p2 - new Point(mx, p2.Y);
             if (dir.Length < 1e-4) dir = p2 - p1;
             dir.Normalize();
@@ -314,14 +314,14 @@ public partial class MindmapWindow : Window
             var arrow = new System.Windows.Shapes.Path
             {
                 Fill = stroke,
-                Data = Geometry.Parse("M 0,0 L -10,-5 L -10,5 Z"),
-                RenderTransform = new RotateTransform(angle, p2.X, p2.Y),
-                Margin = new Thickness(0)
+                Data = Geometry.Parse("M 0,0 L -11,-5 L -11,5 Z"),
+                RenderTransform = new RotateTransform(angle),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top
             };
-            Canvas.SetLeft(arrow, p2.X - 6);
-            Canvas.SetTop(arrow, p2.Y - 6);
+            Canvas.SetLeft(arrow, p2.X);
+            Canvas.SetTop(arrow, p2.Y);
             Canvas.SetZIndex(arrow, 5);
-            arrow.RenderTransformOrigin = new Point(0.6, 0.5);
             LinkCanvas.Children.Add(arrow);
         }
     }
