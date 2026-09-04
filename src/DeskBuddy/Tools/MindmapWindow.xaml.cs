@@ -445,5 +445,24 @@ public partial class MindmapWindow : Window
     private void OnWindowResizeMove(object s, MouseEventArgs e) { if (!_resizing || e.LeftButton != MouseButtonState.Pressed) return; var d = (Vector)e.GetPosition(this) - _rs; var wa = SystemParameters.WorkArea; Width = Math.Clamp(_rw + d.X, 900, wa.Width); Height = Math.Clamp(_rh + d.Y, 540, wa.Height); e.Handled = true; }
     private void OnResizeGripUp(object s, MouseButtonEventArgs e) { _resizing = false; ResizeGrip.ReleaseMouseCapture(); e.Handled = true; }
 
+    // ==================== 窗口拖动（按住顶部工具栏移动窗口） ====================
+    private bool _winDrag; private Point _winDragStart;
+    private void OnTitlebarDown(object s, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+        _winDrag = true; _winDragStart = e.GetPosition(this); ((Border)s).CaptureMouse(); e.Handled = true;
+    }
+    private void OnTitlebarMove(object s, MouseEventArgs e)
+    {
+        if (!_winDrag || e.LeftButton != MouseButtonState.Pressed) return;
+        var cur = e.GetPosition(this);
+        var d = cur - _winDragStart;
+        var wa = SystemParameters.WorkArea;
+        Left = Math.Clamp(Left + d.X, wa.Left, wa.Right - Width);
+        Top = Math.Clamp(Top + d.Y, wa.Top, wa.Bottom - Height);
+        e.Handled = true;
+    }
+    private void OnTitlebarUp(object s, MouseButtonEventArgs e) { _winDrag = false; ((Border)s).ReleaseMouseCapture(); e.Handled = true; }
+
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e) { if (_dirty) { var r = MessageBox.Show(this, "有未保存的修改，是否保存？", "连连看", MessageBoxButton.YesNoCancel, MessageBoxImage.Question); if (r == MessageBoxResult.Yes) Save(); else if (r == MessageBoxResult.Cancel) { e.Cancel = true; return; } } base.OnClosing(e); }
 }

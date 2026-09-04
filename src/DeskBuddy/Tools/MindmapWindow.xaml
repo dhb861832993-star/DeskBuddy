@@ -77,7 +77,8 @@
             Background="{DynamicResource CardBg}" ClipToBounds="True">
         <DockPanel>
             <!-- ===== 顶部工具条 ===== -->
-            <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource CardBorder}" BorderThickness="0,0,0,1" Padding="8,6">
+            <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource CardBorder}" BorderThickness="0,0,0,1" Padding="8,6"
+                MouseLeftButtonDown="OnTitlebarDown" MouseMove="OnTitlebarMove" MouseLeftButtonUp="OnTitlebarUp" Background="Transparent">
                 <DockPanel>
                     <TextBlock Text="连连看" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="6,0,10,0"/>
                     <TextBlock x:Name="DocNameText" FontSize="11" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="200"/>
