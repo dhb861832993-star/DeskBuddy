@@ -9,15 +9,13 @@
         PreviewMouseWheel="OnPreviewMouseWheel"
         KeyDown="OnWindowKeyDown">
     <Window.Resources>
-        <!-- 占位默认（运行时由 ApplyTheme 注入真实主题色） -->
         <SolidColorBrush x:Key="TextPrimary" Color="#F2F2F7"/>
         <SolidColorBrush x:Key="TextSecondary" Color="#A8A8B0"/>
         <SolidColorBrush x:Key="CardBorder" Color="#33FFFFFF"/>
         <SolidColorBrush x:Key="BtnBg" Color="#1FFFFFFF"/>
-        <SolidColorBrush x:Key="CardBg" Color="#1E1E1E"/>
         <SolidColorBrush x:Key="BtnBgHover" Color="#3DFFFFFF"/>
+        <SolidColorBrush x:Key="CardBg" Color="#1E1E1E"/>
         <SolidColorBrush x:Key="CanvasBg" Color="#141414"/>
-        <SolidColorBrush x:Key="Accent" Color="#4A90FF"/>
         <Style x:Key="ToolBtn" TargetType="Button">
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
             <Setter Property="FontSize" Value="12"/>
@@ -63,20 +61,23 @@
                     </StackPanel>
                 </DockPanel>
             </Border>
-            <!-- 画布视口：支持缩放 + 平移 -->
-            <Grid Background="{DynamicResource CanvasBg}" ClipToBounds="True">
-                <Grid x:Name="Viewport" Background="Transparent" MouseDown="OnViewportMouseDown" MouseMove="OnViewportMouseMove" MouseUp="OnViewportMouseUp">
-                    <Grid.RenderTransform>
+
+            <!-- 画布容器：ClipToBounds，背景可命中 -->
+            <Grid x:Name="CanvasHost" Background="{DynamicResource CanvasBg}" ClipToBounds="True"
+                  MouseDown="OnCanvasMouseDown" MouseMove="OnCanvasMouseMove" MouseUp="OnCanvasMouseUp" MouseLeave="OnCanvasMouseLeave">
+                <!-- CanvasGroup 统一承载节点与连线，缩放+平移都在这一层 -->
+                <Canvas x:Name="CanvasGroup">
+                    <Canvas.RenderTransform>
                         <TransformGroup>
-                            <ScaleTransform x:Name="ZoomTransform" CenterX="0" CenterY="0" ScaleX="1" ScaleY="1"/>
-                            <TranslateTransform x:Name="PanTransform" X="0" Y="0"/>
+                            <ScaleTransform x:Name="ZoomTf" CenterX="0" CenterY="0"/>
+                            <TranslateTransform x:Name="PanTf"/>
                         </TransformGroup>
-                    </Grid.RenderTransform>
-                    <!-- 连线在下、节点在上，共享同一坐标与缩放平移 -->
-                    <Canvas x:Name="LinkCanvas" IsHitTestVisible="False"/>
+                    </Canvas.RenderTransform>
+                    <Canvas x:Name="LinkCanvas"/>
                     <Canvas x:Name="NodeCanvas"/>
-                </Grid>
-                <!-- 缩放控制器 -->
+                </Canvas>
+
+                <!-- 缩放控件 -->
                 <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Right" Orientation="Horizontal" Margin="0,0,16,12">
                     <Button Content="−" Click="OnZoomOut" Width="30" Height="30" Style="{StaticResource ToolBtn}"/>
                     <TextBlock x:Name="ZoomText" Text="100%" FontSize="11" Foreground="{DynamicResource TextSecondary}"
