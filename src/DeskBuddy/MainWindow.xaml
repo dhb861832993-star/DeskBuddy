@@ -678,6 +678,10 @@
                     <TextBlock x:Name="MemoEmptyHint" Text="暂无待办，在下方记点什么吧"
                                FontSize="12" Foreground="{DynamicResource TextSecondary}"
                                HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                    <!-- 拖拽插入位置指示线 -->
+                    <Rectangle x:Name="MemoDropIndicator" Height="3" RadiusX="1.5" RadiusY="1.5"
+                               Fill="#32D583" HorizontalAlignment="Stretch" VerticalAlignment="Top"
+                               Visibility="Collapsed" IsHitTestVisible="False" Margin="6,0,6,0"/>
                 </Grid>
 
                 <!-- 待办：编辑视图（主题 + 细节） -->

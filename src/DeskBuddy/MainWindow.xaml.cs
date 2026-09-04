@@ -1744,9 +1744,10 @@ public partial class MainWindow : Window
                 _memoDragging = true;
                 if (_memoDragContainer != null) _memoDragContainer.Opacity = 0.45;
                 MemoHoverPopup.IsOpen = false;
+                MemoDropIndicator.Visibility = Visibility.Visible;
             }
         }
-        if (_memoDragging) { MemoHoverPopup.IsOpen = false; return; } // 拖拽中不弹悬浮
+        if (_memoDragging) { MemoHoverPopup.IsOpen = false; UpdateMemoDropIndicator(sender as DependencyObject); return; } // 拖拽中不弹悬浮，只更新插入指示线
 
         var lbi = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
         var item = lbi?.DataContext as MemoItem;
@@ -1800,14 +1801,36 @@ public partial class MainWindow : Window
             _memoDragContainer = null;
             _memoDragItem = null;
             _memoDragging = false;
+            MemoDropIndicator.Visibility = Visibility.Collapsed;
             e.Handled = true;
             return;
         }
         _memoDragItem = null;
     }
 
+    /// <summary>拖拽中：把插入指示线放到当前鼠标对应的插入位置（条目上半→插前，下半→插后）。</summary>
+    private void UpdateMemoDropIndicator(DependencyObject? originalSource)
+    {
+        if (_memoDragItem == null) return;
+        var lbi = FindAncestor<ListBoxItem>(originalSource);
+        double top;
+        if (lbi?.DataContext is MemoItem tgt && !ReferenceEquals(tgt, _memoDragItem))
+        {
+            // 条目中点：鼠标在其上半 → 插前（线上缘=条目顶）；下半 → 插后（线上缘=条目底）
+            var rel = lbi.TranslatePoint(new Point(0, 0), MemoListGrid);
+            var mouseInRel = Mouse.GetPosition(MemoListGrid).Y;
+            top = (mouseInRel > rel.Y + lbi.ActualHeight / 2) ? rel.Y + lbi.ActualHeight : rel.Y;
+        }
+        else
+        {
+            top = Math.Max(0, MemoListGrid.ActualHeight - 4);
+        }
+        MemoDropIndicator.Margin = new Thickness(MemoDropIndicator.Margin.Left, top, MemoDropIndicator.Margin.Right, 0);
+    }
+
     private void OnMemoListMouseLeave(object sender, MouseEventArgs e)
     {
         MemoHoverPopup.IsOpen = false;
+        if (_memoDragging || _memoDragItem != null) MemoDropIndicator.Visibility = Visibility.Collapsed;
     }
 }
