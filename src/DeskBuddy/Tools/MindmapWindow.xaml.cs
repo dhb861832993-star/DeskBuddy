@@ -493,7 +493,15 @@ public partial class MindmapWindow : Window
     }
 
     // ==================== 节点拖拽 ====================
-    private void DragCardStart(Border card, MouseButtonEventArgs e) { _dragCard = card; _moved = false; card.CaptureMouse(); e.Handled = true; }
+    private void DragCardStart(Border card, MouseButtonEventArgs e)
+    {
+        _dragCard = card; _moved = false; card.CaptureMouse();
+        // 记录抓取点相对节点左上角的偏移，保证拖动时不跳
+        var c = e.GetPosition(NodeCanvas);
+        _grabOffX = c.X - Canvas.GetLeft(card);
+        _grabOffY = c.Y - Canvas.GetTop(card);
+        e.Handled = true;
+    }
     private void DragCardMove(Border card, MouseEventArgs e)
     {
         if (_dragCard == card && e.LeftButton == MouseButtonState.Pressed)
@@ -501,11 +509,13 @@ public partial class MindmapWindow : Window
             var c = e.GetPosition(NodeCanvas);
             var n = (CvNode)card.Tag;
             if ((c - CanvasGetAt(card)).Length > 3) _moved = true;
-            Canvas.SetLeft(card, c.X - card.ActualWidth / 2); Canvas.SetTop(card, c.Y - 20);
+            // 用抓取偏移定位，抓哪里就保持哪里跟着鼠标
+            Canvas.SetLeft(card, c.X - _grabOffX); Canvas.SetTop(card, c.Y - _grabOffY);
             n.X = Canvas.GetLeft(card); n.Y = Canvas.GetTop(card);
             RedrawLinks(); _dirty = true;
         }
     }
+    private double _grabOffX, _grabOffY;
     private Point CanvasGetAt(Border card) { var p = card.TranslatePoint(new Point(0, 0), NodeCanvas); return p; }
     private void DragCardEnd(Border card, MouseButtonEventArgs e) { if (_dragCard == card) _dragCard = null; card.ReleaseMouseCapture(); _moved = false; }
 
