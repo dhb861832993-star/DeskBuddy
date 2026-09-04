@@ -101,30 +101,24 @@ public partial class MindmapWindow : Window
     private void EditNodeTitle(CvNode n)
     {
         if (!_nodeCards.TryGetValue(n.Id, out var card)) return;
-        var sp = GetContentStack(card); if (sp == null || sp.Children.Count == 0) return;
-        var title = sp.Children[0] as TextBlock; if (title == null) return;
-        var box = new TextBox { Text = n.Title, FontSize = 14.5, Foreground = Brushes.White, Background = new SolidColorBrush(Color.FromArgb(0x40, 0, 0, 0)), BorderThickness = new Thickness(0), Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(8, 8, 8, 4) };
-        sp.Children[0] = box;
+        if (card.Child is not StackPanel root || root.Children.Count == 0) return;
+        if (root.Children[0] is not Border titleBar) return;
+        if (titleBar.Child is not TextBlock title) return;
+        var box = new TextBox { Text = n.Title, FontSize = 16, Foreground = Brushes.White, Background = new SolidColorBrush(Color.FromArgb(0x50, 0, 0, 0)), BorderThickness = new Thickness(0), Padding = new Thickness(8, 5, 8, 5), TextAlignment = TextAlignment.Center };
+        titleBar.Child = box;
         box.Focus(); box.SelectAll();
         box.KeyDown += (_, e) =>
         {
-            if (e.Key == Key.Enter) { BeforeChange(); n.Title = box.Text.Trim(); if (n.Title.Length == 0) n.Title = "节点"; ReplaceTitle(sp, n); _dirty = true; e.Handled = true; }
-            else if (e.Key == Key.Escape) { ReplaceTitle(sp, n); e.Handled = true; }
+            if (e.Key == Key.Enter) { BeforeChange(); n.Title = box.Text.Trim(); if (n.Title.Length == 0) n.Title = "节点"; ReplaceTitle(titleBar, n); _dirty = true; e.Handled = true; }
+            else if (e.Key == Key.Escape) { ReplaceTitle(titleBar, n); e.Handled = true; }
         };
-        box.LostKeyboardFocus += (_, _) => { if (box.Text != n.Title && !string.IsNullOrWhiteSpace(box.Text)) { BeforeChange(); n.Title = box.Text.Trim(); _dirty = true; } ReplaceTitle(sp, n); };
+        box.LostKeyboardFocus += (_, _) => { if (box.Text != n.Title && !string.IsNullOrWhiteSpace(box.Text)) { BeforeChange(); n.Title = box.Text.Trim(); _dirty = true; } ReplaceTitle(titleBar, n); };
     }
 
-    private static StackPanel? GetContentStack(Border card)
+    private static void ReplaceTitle(Border titleBar, CvNode n)
     {
-        if (card.Child is StackPanel sp) return sp;
-        if (card.Child is Grid g) return g.Children.OfType<StackPanel>().FirstOrDefault();
-        return null;
-    }
-
-    private static void ReplaceTitle(StackPanel sp, CvNode n)
-    {
-        var tb = new TextBlock { Text = n.Title, FontSize = 14.5, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, Margin = new Thickness(14, 10, 14, 6), TextWrapping = TextWrapping.Wrap, MaxWidth = 220 };
-        if (sp.Children.Count > 0) sp.Children[0] = tb; else sp.Children.Add(tb);
+        var tb = new TextBlock { Text = n.Title, FontSize = 16, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, MaxWidth = 220, HorizontalAlignment = HorizontalAlignment.Center };
+        titleBar.Child = tb;
     }
 
     // ==================== 变换核心（已验证数学） ====================
@@ -199,38 +193,34 @@ public partial class MindmapWindow : Window
             new GradientStop(Color.FromArgb(0xFF, (byte)Math.Min(255, baseSolid.R + 18), (byte)Math.Min(255, baseSolid.G + 18), (byte)Math.Min(255, baseSolid.B + 18)), 0),
             new GradientStop(Color.FromArgb(0xE6, (byte)(baseSolid.R * 0.5), (byte)(baseSolid.G * 0.5), (byte)(baseSolid.B * 0.5)), 1)
         }, new Point(0, 0), new Point(0, 1));
-        var titleBar = new Border { Background = titleBg, CornerRadius = new CornerRadius(10, 10, 0, 0), Padding = new Thickness(12, 7, 12, 7) };
-        var title = new TextBlock { Text = n.Title, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, MaxWidth = 210, HorizontalAlignment = HorizontalAlignment.Center };
+        var titleBar = new Border { Background = titleBg, CornerRadius = new CornerRadius(10, 10, 0, 0), Padding = new Thickness(14, 10, 14, 10) };
+        var title = new TextBlock { Text = n.Title, FontSize = 16, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, MaxWidth = 220, HorizontalAlignment = HorizontalAlignment.Center };
         title.MouseLeftButtonDown += (s, e) => { if (IsDoubleClick()) { EditNodeTitle(n); e.Handled = true; } };
         titleBar.Child = title;
 
         // 端口区
-        var portArea = new StackPanel { Margin = new Thickness(0, 6, 0, 8) };
+        var portArea = new StackPanel { Margin = new Thickness(0, 7, 0, 9) };
         var rows = Math.Max(Math.Max(n.Inputs.Count, n.Outputs.Count), 1);
         for (int i = 0; i < rows; i++)
         {
             var row = new Grid();
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 左输入点
-            row.ColumnDefinitions.Add(new ColumnDefinition());                          // 输入名
-            row.ColumnDefinitions.Add(new ColumnDefinition());                          // 输出名
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // 右输出点
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             if (i < n.Inputs.Count)
             {
                 var p = n.Inputs[i];
                 var dot = MakeDot(Brushes.White, false);
                 Grid.SetColumn(dot, 0); row.Children.Add(dot);
-                var lbl = PortLabel(p, "入"); Grid.SetColumn(lbl, 1); lbl.VerticalAlignment = VerticalAlignment.Center; lbl.Margin = new Thickness(6, 0, 0, 0); row.Children.Add(lbl);
                 RegisterPort(p.Id, dot, null);
             }
             if (i < n.Outputs.Count)
             {
                 var p = n.Outputs[i];
                 var dot = MakeDot(new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF)), true);
-                Grid.SetColumn(dot, 3); row.Children.Add(dot);
-                var lbl = PortLabel(p, "出"); Grid.SetColumn(lbl, 2); lbl.HorizontalAlignment = HorizontalAlignment.Right; lbl.Margin = new Thickness(0, 0, 6, 0); lbl.VerticalAlignment = VerticalAlignment.Center; row.Children.Add(lbl);
+                Grid.SetColumn(dot, 1); row.Children.Add(dot);
                 RegisterPort(p.Id, dot, null);
             }
-            row.Height = 24;
+            row.Height = 26;
             portArea.Children.Add(row);
         }
         body.Child = portArea;
@@ -418,7 +408,7 @@ public partial class MindmapWindow : Window
     {
         if (_suppressProp || _selNodeId == null) return;
         var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return;
-        if (n.Title != PropText.Text) { BeforeChange(); n.Title = PropText.Text; _dirty = true; var card = _findCard(n.Id); var sp = card == null ? null : GetContentStack(card); if (sp != null && sp.Children.Count > 0 && sp.Children[0] is TextBlock tb) tb.Text = n.Title; }
+        if (n.Title != PropText.Text) { BeforeChange(); n.Title = PropText.Text; _dirty = true; var card = _findCard(n.Id); if (card?.Child is StackPanel r && r.Children.Count > 0 && r.Children[0] is Border tb2 && tb2.Child is TextBlock tbx) tbx.Text = n.Title; }
     }
     private Border? _findCard(string id) => _nodeCards.TryGetValue(id, out var c) ? c : null;
     private void OnPickColor(object s, RoutedEventArgs e) { if (_selNodeId == null) return; var n = _doc.Nodes.FirstOrDefault(x => x.Id == _selNodeId); if (n == null) return; BeforeChange(); n.Color = (string)((Button)s).Tag; if (_nodeCards.TryGetValue(n.Id, out var c)) c.Background = new SolidColorBrush(ColorFromHex(n.Color)); _dirty = true; }
