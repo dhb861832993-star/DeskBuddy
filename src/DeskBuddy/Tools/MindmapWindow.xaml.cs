@@ -104,7 +104,7 @@ public partial class MindmapWindow : Window
         if (card.Child is not StackPanel root || root.Children.Count == 0) return;
         if (root.Children[0] is not Border titleBar) return;
         if (titleBar.Child is not TextBlock title) return;
-        var box = new TextBox { Text = n.Title, FontSize = n.FontSize >= 12 ? n.FontSize : 19, Foreground = Brushes.White, Background = new SolidColorBrush(Color.FromArgb(0x50, 0, 0, 0)), BorderThickness = new Thickness(0), Padding = new Thickness(8, 5, 8, 5), TextAlignment = TextAlignment.Center };
+        var box = new TextBox { Text = n.Title, FontSize = n.FontSize >= 12 ? n.FontSize : 24, Foreground = Brushes.White, Background = new SolidColorBrush(Color.FromArgb(0x50, 0, 0, 0)), BorderThickness = new Thickness(0), Padding = new Thickness(8, 5, 8, 5), TextAlignment = TextAlignment.Center };
         titleBar.Child = box;
         box.Focus(); box.SelectAll();
         box.KeyDown += (_, e) =>
@@ -117,7 +117,7 @@ public partial class MindmapWindow : Window
 
     private static void ReplaceTitle(Border titleBar, CvNode n)
     {
-        var tb = new TextBlock { Text = n.Title, FontSize = n.FontSize >= 12 ? n.FontSize : 19, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromRgb(0xC2, 0xC2, 0xC8)), TextWrapping = TextWrapping.Wrap, MaxWidth = 240, TextAlignment = TextAlignment.Center };
+        var tb = new TextBlock { Text = n.Title, FontSize = n.FontSize >= 12 ? n.FontSize : 24, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromRgb(0xC2, 0xC2, 0xC8)), TextWrapping = TextWrapping.Wrap, MaxWidth = 240, TextAlignment = TextAlignment.Center };
         titleBar.Child = tb;
     }
 
@@ -288,7 +288,7 @@ public partial class MindmapWindow : Window
         root.Children.Add(content);
         // 标题：上下左右居中，暗灰字
         var titleHost = new Border { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, Padding = new Thickness(20, 12, 20, 8) };
-        var title = new TextBlock { Text = n.Title, FontSize = n.FontSize >= 12 ? n.FontSize : 19, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromRgb(0xC2, 0xC2, 0xC8)), TextWrapping = TextWrapping.Wrap, MaxWidth = 240, TextAlignment = TextAlignment.Center };
+        var title = new TextBlock { Text = n.Title, FontSize = n.FontSize >= 12 ? n.FontSize : 24, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromRgb(0xC2, 0xC2, 0xC8)), TextWrapping = TextWrapping.Wrap, MaxWidth = 240, TextAlignment = TextAlignment.Center };
         title.MouseLeftButtonDown += (s, e) => { if (IsDoubleClick()) { EditNodeTitle(n); e.Handled = true; } };
         titleHost.Child = title;
         content.Children.Add(titleHost);

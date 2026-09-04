@@ -172,7 +172,7 @@
                             <Button x:Name="Swatch5" Click="OnPickColor" Tag="#FFBF5AF2" Style="{StaticResource Swatch}" Margin="6,0,0,0"/>
                         </StackPanel>
                         <TextBlock Text="字体大小" FontSize="10.5" Foreground="{DynamicResource TextSecondary}" Margin="0,12,0,4"/>
-                        <Slider x:Name="PropFontSize" Minimum="12" Maximum="30" Value="19" TickFrequency="1" Width="200" ValueChanged="OnFontSizeChanged"/>
+                        <Slider x:Name="PropFontSize" Minimum="12" Maximum="40" Value="24" TickFrequency="1" Width="200" ValueChanged="OnFontSizeChanged"/>
                         <Rectangle Height="1" Fill="{DynamicResource CardBorder}" Margin="0,14"/>
                         <!-- 连线属性 -->
                         <TextBlock x:Name="LblLink" Text="连线" FontSize="10.5" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4"/>
