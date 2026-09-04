@@ -26,6 +26,8 @@ public sealed class MindLink
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string From { get; set; } = "";
     public string To { get; set; } = "";
+    /// <summary>线宽。</summary>
+    public double W { get; set; } = 1.6;
 }
 
 /// <summary>连连看文档（对应一个 .llk 文件）。</summary>
