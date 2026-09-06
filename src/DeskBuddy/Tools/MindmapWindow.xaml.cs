@@ -415,10 +415,37 @@ public partial class MindmapWindow : Window
         }
     }
     private static string LabelOf(WfNode n, string key) { var def = NodeLibrary.FirstOrDefault(x => x.Title == n.Title); if (def != null) { var p = def.Params.FirstOrDefault(x => x.Key == key); if (p.Label != null) return p.Label; } return key; }
+    private string ControlTypeOf(WfNode n, string key)
+    {
+        var def = NodeLibrary.FirstOrDefault(x => x.Title == n.Title);
+        if (def != null) { var p = def.Params.FirstOrDefault(x => x.Key == key); if (p.Control != null) return p.Control; }
+        return "text";
+    }
+
     private Control ControlOf(WfNode n, KeyValuePair<string, string> kv)
     {
+        string kind = ControlTypeOf(n, kv.Key);
+        if (kind == "slider")
+        {
+            var slider = new Slider { Minimum = 0, Maximum = 100, Value = double.TryParse(kv.Value, out var sv) ? sv : 0, Width = 210 };
+            slider.ValueChanged += (_, _) => { if (!_suppressProp) { n.Params[kv.Key] = ((int)slider.Value).ToString(); _dirty = true; } };
+            return slider;
+        }
+        if (kind == "toggle")
+        {
+            var check = new CheckBox { IsChecked = string.Equals(kv.Value, "true", StringComparison.OrdinalIgnoreCase), Content = "开启", Foreground = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF5)) };
+            check.Checked += (_, _) => { if (!_suppressProp) { n.Params[kv.Key] = "true"; _dirty = true; } };
+            check.Unchecked += (_, _) => { if (!_suppressProp) { n.Params[kv.Key] = "false"; _dirty = true; } };
+            return check;
+        }
+        if (kind == "dropdown")
+        {
+            var combo = new ComboBox { Width = 210, Foreground = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF5)), Background = new SolidColorBrush(Color.FromRgb(0x2E, 0x2E, 0x2E)), ItemsSource = new[] { "大写", "小写", "加", "减", "裁剪", "缩放", "选项A", "选项B" }, SelectedValue = kv.Value };
+            combo.SelectionChanged += (_, _) => { if (!_suppressProp && combo.SelectedItem is string value) { n.Params[kv.Key] = value; _dirty = true; } };
+            return combo;
+        }
         var box = new TextBox { Text = kv.Value, FontSize = 12, Foreground = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF5)), Background = new SolidColorBrush(Color.FromRgb(0x2E, 0x2E, 0x2E)), BorderBrush = new SolidColorBrush(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF)), BorderThickness = new Thickness(1), Padding = new Thickness(6, 4, 6, 4) };
-        box.TextChanged += (s, e) => { if (_suppressProp || _selNodeId == null) return; n.Params[kv.Key] = box.Text; _dirty = true; };
+        box.TextChanged += (_, _) => { if (!_suppressProp) { n.Params[kv.Key] = box.Text; _dirty = true; } };
         return box;
     }
 
