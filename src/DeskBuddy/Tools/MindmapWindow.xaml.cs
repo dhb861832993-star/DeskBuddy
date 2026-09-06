@@ -525,9 +525,16 @@ public partial class MindmapWindow : Window
     {
         if (_running) return;
         _running = true; _execCts = new CancellationTokenSource();
+        foreach (var n in _doc.Nodes) { n.Status = ExecStatus.Idle; UpdateNodeStatusVisual(n); }
         try
         {
-            var order = TopoSort();
+            var order = TopoSort(out bool cycle);
+            if (cycle)
+            {
+                foreach (var n in _doc.Nodes.Where(n => n.Status == ExecStatus.Idle)) { n.Status = ExecStatus.Failed; UpdateNodeStatusVisual(n); }
+                MessageBox.Show(this, "工作流存在循环连接，无法按拓扑顺序执行。", "执行失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
             foreach (var id in order)
             {
                 if (_execCts!.IsCancellationRequested) break;
@@ -541,7 +548,7 @@ public partial class MindmapWindow : Window
         finally { _running = false; }
     }
 
-    private List<string> TopoSort()
+    private List<string> TopoSort(out bool cycle)
     {
         var indegree = new Dictionary<string, int>();
         var adj = new Dictionary<string, List<string>>();
@@ -549,13 +556,13 @@ public partial class MindmapWindow : Window
         foreach (var e in _doc.Edges)
         {
             var src = NodeOfPort(e.FromPort); var dst = NodeOfPort(e.ToPort);
-            if (src != null && dst != null && src != dst && !adj[src].Contains(dst))
-            { adj[src].Add(dst); indegree[dst]++; }
+            if (src != null && dst != null && src != dst && !adj[src].Contains(dst)) { adj[src].Add(dst); indegree[dst]++; }
         }
         var q = new Queue<string>(_doc.Nodes.Where(n => indegree[n.Id] == 0).Select(n => n.Id));
         var res = new List<string>();
         while (q.Count > 0) { var id = q.Dequeue(); res.Add(id); foreach (var nb in adj[id]) { indegree[nb]--; if (indegree[nb] == 0) q.Enqueue(nb); } }
-        foreach (var n in _doc.Nodes) if (!res.Contains(n.Id)) res.Add(n.Id);
+        cycle = res.Count != _doc.Nodes.Count;
+        if (cycle) foreach (var n in _doc.Nodes) if (!res.Contains(n.Id)) res.Add(n.Id);
         return res;
     }
     private string? NodeOfPort(string portId)
