@@ -46,7 +46,7 @@ public partial class MindmapWindow : Window
     // ==================== 节点类型库 ====================
     private sealed class NodeDef
     {
-        public string Title = ""; public string Kind = NodeKind.Process; public string Color = "#FF3A3A3C";
+        public string Title = ""; public string Kind = NodeKind.Process; public string Base = PortType.Any; public string Color = "#FF3A3A3C";
         public (string Name, string Type)[] Inputs = Array.Empty<(string, string)>();
         public (string Name, string Type)[] Outputs = Array.Empty<(string, string)>();
         public (string Key, string Label, string Control, string Default)[] Params = Array.Empty<(string, string, string, string)>();
@@ -54,20 +54,33 @@ public partial class MindmapWindow : Window
 
     private static readonly NodeDef[] NodeLibrary =
     {
-        new NodeDef { Title = "文本输入", Kind = NodeKind.Input, Inputs = Array.Empty<(string,string)>(), Outputs = new[] { ("文本", PortType.Text) }, Params = new[] { ("value", "内容", "text", "你好") } },
-        new NodeDef { Title = "数值输入", Kind = NodeKind.Input, Outputs = new[] { ("数值", PortType.Number) }, Params = new[] { ("value", "数值", "number", "0") } },
-        new NodeDef { Title = "图片输入", Kind = NodeKind.Input, Outputs = new[] { ("图片", PortType.Image) }, Params = new[] { ("url", "图片路径", "text", "") } },
-        new NodeDef { Title = "文本参数", Kind = NodeKind.Parameter, Outputs = new[] { ("文本", PortType.Text) }, Params = new[] { ("value", "文本", "text", "默认文本") } },
-        new NodeDef { Title = "数值参数", Kind = NodeKind.Parameter, Outputs = new[] { ("数值", PortType.Number) }, Params = new[] { ("value", "数值", "number", "0") } },
-        new NodeDef { Title = "滑杆参数", Kind = NodeKind.Parameter, Outputs = new[] { ("数值", PortType.Number) }, Params = new[] { ("value", "数值", "slider", "50") } },
-        new NodeDef { Title = "开关", Kind = NodeKind.Parameter, Outputs = new[] { ("布尔", PortType.Number) }, Params = new[] { ("value", "开启", "toggle", "false") } },
-        new NodeDef { Title = "下拉选择", Kind = NodeKind.Parameter, Outputs = new[] { ("文本", PortType.Text) }, Params = new[] { ("value", "选项", "dropdown", "选项A") } },
-        new NodeDef { Title = "文本处理", Kind = NodeKind.Process, Inputs = new[] { ("文本", PortType.Text) }, Outputs = new[] { ("结果", PortType.Text) }, Params = new[] { ("op", "操作", "dropdown", "大写") } },
-        new NodeDef { Title = "数值计算", Kind = NodeKind.Process, Inputs = new[] { ("A", PortType.Number), ("B", PortType.Number) }, Outputs = new[] { ("结果", PortType.Number) }, Params = new[] { ("op", "运算", "dropdown", "加") } },
-        new NodeDef { Title = "图片处理", Kind = NodeKind.Process, Inputs = new[] { ("图片", PortType.Image) }, Outputs = new[] { ("图片", PortType.Image) }, Params = new[] { ("op", "处理", "dropdown", "裁剪") } },
-        new NodeDef { Title = "文本输出", Kind = NodeKind.Output, Inputs = new[] { ("文本", PortType.Text) } },
-        new NodeDef { Title = "图片输出", Kind = NodeKind.Output, Inputs = new[] { ("图片", PortType.Image) } },
-        new NodeDef { Title = "分支", Kind = NodeKind.Process, Inputs = new[] { ("输入", PortType.Any) }, Outputs = new[] { ("真", PortType.Any), ("假", PortType.Any) }, Params = new[] { ("cond", "条件", "text", "true") } },
+        // 输入节点
+        new NodeDef { Title = "图片输入", Kind = NodeKind.Input, Base = PortType.Image, Outputs = new[] { ("图片", PortType.Image) }, Params = new[] { ("url", "图片路径", "text", "") } },
+        new NodeDef { Title = "视频输入", Kind = NodeKind.Input, Base = "video", Outputs = new[] { ("视频", "video") }, Params = new[] { ("url", "视频路径", "text", "") } },
+        new NodeDef { Title = "音频输入", Kind = NodeKind.Input, Base = "audio", Outputs = new[] { ("音频", "audio") }, Params = new[] { ("url", "音频路径", "text", "") } },
+        new NodeDef { Title = "3D输入", Kind = NodeKind.Input, Base = "3d", Outputs = new[] { ("模型", "3d") }, Params = new[] { ("url", "模型路径", "text", "") } },
+        new NodeDef { Title = "文本输入", Kind = NodeKind.Input, Base = PortType.Text, Outputs = new[] { ("文本", PortType.Text) }, Params = new[] { ("value", "内容", "text", "你好") } },
+        // Gen family（模拟）
+        new NodeDef { Title = "图片生成", Kind = "gen", Base = PortType.Image, Inputs = new[] { ("提示词", PortType.Text), ("参考图", PortType.Image) }, Outputs = new[] { ("图片", PortType.Image) }, Params = new[] { ("prompt", "提示词", "text", ""), ("resolution", "分辨率", "dropdown", "1024x1024"), ("steps", "步数", "slider", "20"), ("seed", "Seed", "number", "-1") } },
+        new NodeDef { Title = "视频生成", Kind = "gen", Base = "video", Inputs = new[] { ("提示词", PortType.Text), ("首帧", PortType.Image) }, Outputs = new[] { ("视频", "video") }, Params = new[] { ("prompt", "提示词", "text", ""), ("duration", "时长", "slider", "5") } },
+        new NodeDef { Title = "3D生成", Kind = "gen", Base = "3d", Inputs = new[] { ("图片", PortType.Image) }, Outputs = new[] { ("模型", "3d") }, Params = new[] { ("quality", "质量", "dropdown", "标准"), ("texture", "生成贴图", "toggle", "true") } },
+        // Post family
+        new NodeDef { Title = "图片裁剪", Kind = "post", Base = PortType.Image, Inputs = new[] { ("图片", PortType.Image) }, Outputs = new[] { ("图片", PortType.Image) }, Params = new[] { ("ratio", "比例", "dropdown", "原图") } },
+        new NodeDef { Title = "图片精修", Kind = "post", Base = PortType.Image, Inputs = new[] { ("图片", PortType.Image) }, Outputs = new[] { ("图片", PortType.Image) }, Params = new[] { ("strength", "强度", "slider", "50") } },
+        new NodeDef { Title = "图片重光照", Kind = "post", Base = PortType.Image, Inputs = new[] { ("图片", PortType.Image) }, Outputs = new[] { ("图片", PortType.Image) }, Params = new[] { ("direction", "光照方向", "dropdown", "正面") } },
+        new NodeDef { Title = "图片多视图", Kind = "post", Base = PortType.Image, Inputs = new[] { ("图片", PortType.Image) }, Outputs = new[] { ("图片", PortType.Image) }, Params = new[] { ("views", "视图数", "slider", "4") } },
+        new NodeDef { Title = "图片故事板", Kind = "post", Base = PortType.Image, Inputs = new[] { ("图片", PortType.Image) }, Outputs = new[] { ("图片", PortType.Image) }, Params = new[] { ("layout", "布局", "dropdown", "横向") } },
+        new NodeDef { Title = "3D转换", Kind = "post", Base = "3d", Inputs = new[] { ("图片", PortType.Image) }, Outputs = new[] { ("模型", "3d") }, Params = new[] { ("quality", "质量", "dropdown", "标准") } },
+        new NodeDef { Title = "3D重拓扑", Kind = "post", Base = "3d", Inputs = new[] { ("模型", "3d") }, Outputs = new[] { ("模型", "3d") }, Params = new[] { ("faces", "面数", "number", "10000") } },
+        new NodeDef { Title = "3D贴图", Kind = "post", Base = "3d", Inputs = new[] { ("模型", "3d"), ("参考图", PortType.Image) }, Outputs = new[] { ("模型", "3d") }, Params = new[] { ("resolution", "分辨率", "dropdown", "2K") } },
+        new NodeDef { Title = "3D绑定", Kind = "post", Base = "3d", Inputs = new[] { ("模型", "3d") }, Outputs = new[] { ("模型", "3d") }, Params = new[] { ("rig", "骨骼", "dropdown", "人形") } },
+        new NodeDef { Title = "文本处理", Kind = NodeKind.Process, Base = PortType.Text, Inputs = new[] { ("文本", PortType.Text) }, Outputs = new[] { ("结果", PortType.Text) }, Params = new[] { ("op", "操作", "dropdown", "大写") } },
+        new NodeDef { Title = "数值计算", Kind = NodeKind.Process, Base = PortType.Number, Inputs = new[] { ("A", PortType.Number), ("B", PortType.Number) }, Outputs = new[] { ("结果", PortType.Number) }, Params = new[] { ("op", "运算", "dropdown", "加") } },
+        // Output family
+        new NodeDef { Title = "图片输出", Kind = NodeKind.Output, Base = PortType.Image, Inputs = new[] { ("图片", PortType.Image) } },
+        new NodeDef { Title = "视频输出", Kind = NodeKind.Output, Base = "video", Inputs = new[] { ("视频", "video") } },
+        new NodeDef { Title = "3D输出", Kind = NodeKind.Output, Base = "3d", Inputs = new[] { ("模型", "3d") } },
+        new NodeDef { Title = "文本输出", Kind = NodeKind.Output, Base = PortType.Text, Inputs = new[] { ("文本", PortType.Text) } },
     };
 
     public MindmapWindow()
@@ -86,9 +99,16 @@ public partial class MindmapWindow : Window
     private void InitNodeLibrary()
     {
         NodeLibPanel.Children.Clear();
+        string? group = null;
         foreach (var def in NodeLibrary)
         {
-            var btn = new Button { Content = def.Title, Tag = def, Style = (Style)FindResource("LibItem"), Margin = new Thickness(0, 0, 0, 6) };
+            string newGroup = def.Kind switch { NodeKind.Input => "输入节点", "gen" => "AI 节点", "post" => "后处理", NodeKind.Output => "输出节点", _ => "工具节点" };
+            if (newGroup != group)
+            {
+                group = newGroup;
+                NodeLibPanel.Children.Add(new TextBlock { Text = group, FontSize = 10, Foreground = new SolidColorBrush(Color.FromRgb(0x9C, 0xA3, 0xAF)), Margin = new Thickness(3, 8, 0, 5) });
+            }
+            var btn = new Button { Content = def.Title, Tag = def, Style = (Style)FindResource("LibItem"), Margin = new Thickness(0, 0, 0, 5) };
             btn.Click += (s, e) => AddNodeFromDef((NodeDef)((Button)s).Tag!);
             NodeLibPanel.Children.Add(btn);
         }
