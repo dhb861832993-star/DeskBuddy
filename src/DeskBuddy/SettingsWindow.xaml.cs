@@ -468,6 +468,24 @@ public partial class SettingsWindow : Window
 
     private void OnCancel(object sender, RoutedEventArgs e) => Close();
 
+    private void OnClearMemoArchive(object sender, RoutedEventArgs e)
+    {
+        var r = MessageBox.Show(this, "确定清空所有已完成备忘录吗？此操作不可撤销。", "清空已完成备忘录", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (r != MessageBoxResult.Yes) return;
+        var memoPath = System.IO.Path.Combine(AppContext.BaseDirectory, "DeskBuddy.memo.json");
+        try
+        {
+            if (!System.IO.File.Exists(memoPath)) return;
+            var json = System.IO.File.ReadAllText(memoPath);
+            var list = System.Text.Json.JsonSerializer.Deserialize<List<MemoItem>>(json) ?? new();
+            var pending = list.Where(x => !x.Done).ToList();
+            System.IO.File.Copy(memoPath, memoPath + ".bak", true);
+            System.IO.File.WriteAllText(memoPath, System.Text.Json.JsonSerializer.Serialize(pending));
+            MessageBox.Show(this, "已清空已完成备忘录。", "完成", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { MessageBox.Show(this, "清空失败：" + ex.Message, "错误", MessageBoxButton.OK, MessageBoxImage.Error); }
+    }
+
     private void OnSave(object sender, RoutedEventArgs e)
     {
         var cfg = new AppConfig

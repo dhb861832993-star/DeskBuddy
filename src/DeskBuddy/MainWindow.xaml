@@ -585,14 +585,9 @@
                              VerticalContentAlignment="Center"/>
                 </DockPanel>
 
-                <!-- 已完成（可折叠，含清空） -->
+                <!-- 已完成（可折叠） -->
                 <StackPanel DockPanel.Dock="Bottom" Margin="12,0,12,6">
                     <DockPanel>
-                        <Button x:Name="MemoArchiveClear" DockPanel.Dock="Right" ToolTip="清空已完成"
-                                Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="5,2" Click="OnMemoClearDone"
-                                Foreground="{DynamicResource TextSecondary}" FontSize="11">
-                            <TextBlock Text="清空" FontSize="11" Foreground="#FF453A"/>
-                        </Button>
                         <Button x:Name="MemoArchiveToggleArrow" DockPanel.Dock="Right" VerticalAlignment="Center"
                                 Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="5,2"
                                 Click="OnMemoArchiveToggle" ToolTip="展开/收起已完成">
