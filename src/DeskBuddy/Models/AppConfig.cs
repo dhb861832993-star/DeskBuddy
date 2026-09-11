@@ -86,4 +86,9 @@ public class AppConfig
 
     /// <summary>最近打开的思维导图历史（路径）。</summary>
     public List<string> RecentMindmaps { get; set; } = new();
+
+    // ===== 截图 =====
+
+    /// <summary>截图热键：F1 | F2 | F3 | F4 | PrintScreen（默认 F1）。</summary>
+    public string SnipHotkey { get; set; } = "F1";
 }

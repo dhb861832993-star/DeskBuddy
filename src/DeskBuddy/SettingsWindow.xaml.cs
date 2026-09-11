@@ -82,6 +82,12 @@ public partial class SettingsWindow : Window
         MemoEnabledBox.IsChecked = config.MemoEnabled;
         ToolsEnabledBox.IsChecked = config.ToolsEnabled;
 
+        // 截图热键
+        var snipKey = string.IsNullOrWhiteSpace(config.SnipHotkey) ? "F1" : config.SnipHotkey;
+        foreach (System.Windows.Controls.ComboBoxItem it in SnipHotkeyBox.Items)
+            if ((string?)it.Tag == snipKey) { SnipHotkeyBox.SelectedItem = it; break; }
+        if (SnipHotkeyBox.SelectedItem == null) SnipHotkeyBox.SelectedIndex = 0;
+
         SelectCategory("general"); // 默认显示「通用」
 
         Loaded += (_, _) => ApplyTheme();
@@ -508,6 +514,7 @@ public partial class SettingsWindow : Window
             McpEnabled = McpEnabledBox.IsChecked == true,
             MemoEnabled = MemoEnabledBox.IsChecked == true,
             ToolsEnabled = ToolsEnabledBox.IsChecked == true,
+            SnipHotkey = (SnipHotkeyBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString() ?? "F1",
             EnableFileSearch = EnableFileSearchBox.IsChecked == true,
             SearchRoots = SearchRootsBox.Text
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

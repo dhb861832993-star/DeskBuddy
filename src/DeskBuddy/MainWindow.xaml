@@ -352,6 +352,42 @@
                             </StackPanel>
                         </DockPanel>
                     </Button>
+
+                    <Button x:Name="SnipToolBtn" Click="OnStartSnip" Cursor="Hand" Margin="0,8,0,0"
+                            HorizontalContentAlignment="Stretch">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="bd2" CornerRadius="12" Background="{TemplateBinding Background}"
+                                                    BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="12,10">
+                                                <ContentPresenter/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="bd2" Property="Background" Value="{DynamicResource BtnBgHover}"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </Button.Style>
+                        <DockPanel>
+                            <Border Width="36" Height="36" CornerRadius="10" Background="#22FF9F0A"
+                                    VerticalAlignment="Center">
+                                <TextBlock Text="✂" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="截图" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimary}"/>
+                                <TextBlock Text="Snipaste 式截取 / 贴图（F1）" FontSize="10.5"
+                                           Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </DockPanel>
+                    </Button>
                 </StackPanel>
             </DockPanel>
         </Border>

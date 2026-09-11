@@ -153,6 +153,7 @@ public partial class App : Application
         _config = cfg;
         ConfigManager.Save(cfg);
         var vk = VkFromHotkey(cfg.Hotkey);
+        SnipVk = VkFromSnipHotkey(cfg.SnipHotkey);
         if (_detector != null)
         {
             var (curVk, curInterval) = _detector.Current;
@@ -256,11 +257,44 @@ public partial class App : Application
 
     private void OnConfigChanged(AppConfig cfg) => ApplyConfig(cfg);
 
-    /// <summary>全局按键处理：双击检测 + 全局 Esc 退出（不依赖窗口焦点）。</summary>
+    /// <summary>全局按键处理：双击检测 + 截图热键 + 全局 Esc 退出（不依赖窗口焦点）。</summary>
     private void OnGlobalKeyDown(int vkCode)
     {
         _detector.OnKeyDown(vkCode);
         if (vkCode == 0x1B) HandleGlobalEscape();
+        if (vkCode == SnipVk && !_snipActive) StartSnip();
+    }
+
+    // ==================== 截图 ====================
+
+    private static int SnipVk = 0x70;   // F1
+
+    /// <summary>从配置读取截图热键虚拟码（F1-F4 / PrintScreen）。</summary>
+    public static int VkFromSnipHotkey(string name) => name switch
+    {
+        "F2" => 0x71,
+        "F3" => 0x72,
+        "F4" => 0x73,
+        "PrintScreen" => 0x2C,
+        _ => 0x70, // F1
+    };
+
+    private bool _snipActive;
+
+    /// <summary>启动截图覆盖层（冻结屏幕 → 选区 → 复制/保存/贴图）。</summary>
+    public void StartSnip()
+    {
+        if (_snipActive) return;
+        _snipActive = true;
+        try
+        {
+            _mainWindow?.HideMenu();
+            var win = new Tools.SnipOverlayWindow();
+            win.Closed += (_, _) => _snipActive = false;
+            win.Show();
+            win.Activate();
+        }
+        catch { _snipActive = false; }
     }
 
     /// <summary>按 Esc 必须退出：优先关图标右键菜单 → AI 对话 → 编辑器 → 设置 → 菜单。</summary>

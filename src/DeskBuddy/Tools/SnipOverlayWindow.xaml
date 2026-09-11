@@ -1,0 +1,12 @@
+<Window x:Class="DeskBuddy.Tools.SnipOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="截图" WindowStyle="None" AllowsTransparency="False"
+        Background="Black" Topmost="True" ShowInTaskbar="False"
+        ShowActivated="True" ResizeMode="NoResize" Cursor="Cross"
+        PreviewKeyDown="OnWindowKeyDown">
+    <Grid>
+        <Image x:Name="FrozenImage" Stretch="None"/>
+        <Canvas x:Name="OverlayCanvas" IsHitTestVisible="True"/>
+    </Grid>
+</Window>

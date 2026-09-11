@@ -394,6 +394,16 @@
                                 <Button x:Name="ClearMemoArchiveBtn" Content="清空已完成备忘录"
                                         Margin="0,14,0,0" HorizontalAlignment="Left"
                                         Click="OnClearMemoArchive" Style="{StaticResource MacButton}"/>
+
+                                <TextBlock Text="截图热键" Style="{StaticResource FieldLabel}" Margin="0,14,0,4"/>
+                                <ComboBox x:Name="SnipHotkeyBox" Height="30" FontSize="12" Width="220" HorizontalAlignment="Left"
+                                          Style="{StaticResource MacComboBox}">
+                                    <ComboBoxItem Tag="F1" Content="F1"/>
+                                    <ComboBoxItem Tag="F2" Content="F2"/>
+                                    <ComboBoxItem Tag="F3" Content="F3"/>
+                                    <ComboBoxItem Tag="F4" Content="F4"/>
+                                    <ComboBoxItem Tag="PrintScreen" Content="PrintScreen（PrtSc）"/>
+                                </ComboBox>
                             </StackPanel>
 
                             <!-- ========== 搜索 ========== -->

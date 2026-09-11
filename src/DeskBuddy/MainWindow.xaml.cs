@@ -1592,6 +1592,12 @@ public partial class MainWindow : Window
         win.NewDocument(); // 新建空白图（保存时才选路径/目录）
     }
 
+    /// <summary>工具箱「截图」→ 启动 Snipaste 式截图。</summary>
+    private void OnStartSnip(object sender, RoutedEventArgs e)
+    {
+        ((App)Application.Current).StartSnip();
+    }
+
     /// <summary>取消所有条目的编辑态并回到列表视图（打开面板或切换时调用）。</summary>
     private void ClearMemoEditing()
     {
