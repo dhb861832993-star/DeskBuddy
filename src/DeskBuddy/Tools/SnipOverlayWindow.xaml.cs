@@ -7,308 +7,316 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
 using System.Windows.Interop;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using SD = System.Drawing;
 
 namespace DeskBuddy.Tools;
 
-/// <summary>Snipaste 式截图覆盖层：冻结全屏 → 拖选 + 控制点调整 + 放大镜取色 → 复制/保存/贴图。</summary>
+/// <summary>
+/// Snipaste 式截图覆盖层（多屏混合 DPI 正确版）。
+/// 方案：每个显示器一个独立覆盖窗口（各自 DPI 各自 1:1 物理像素显示），
+/// 所有选区逻辑用「虚拟屏 DIP」坐标，窗口只负责各自屏内的显示与命中。
+/// </summary>
 public partial class SnipOverlayWindow : Window
 {
-    // ===== 冻结层 =====
-    private SD.Bitmap? _bmp;              // 全屏截图（像素坐标）
-    private byte[]? _px;                  // 像素缓存（BGRA）
-    private int _bw, _bh, _stride;
-    private double _dpi = 1.0;            // DIP → 像素比例
-    private double _winW, _winH;
+    // ===== 每屏一窗 =====
+    private sealed class MonWindow
+    {
+        public required Window Win;
+        public required Image Img;          // 冻结层（该屏物理像素，1:1）
+        public required Canvas Canvas;     // 选区绘制
+        public Rect Dip;                   // 该屏在虚拟屏 DIP 中的矩形
+        public double Dpi;                 // 该屏 DPI
+        public SD.Rectangle Phys;          // 该屏物理像素矩形（DeskBuddy 进程 PerMonitorV2 → 真物理）
+    }
+    private readonly List<MonWindow> _mw = new();
 
-    // ===== 选区（DIP，窗口坐标） =====
+    // ===== 冻结层 =====
+    private SD.Bitmap? _bmp;              // 全虚拟屏 DIP 网格（供取色/输出）
+    private byte[]? _px; private int _bw, _bh, _stride;
+    private double _winW, _winH;           // 虚拟屏 DIP 尺寸
+    private double _vsX, _vsY;
+
+    // ===== 选区（虚拟屏 DIP） =====
     private Rect _sel = Rect.Empty;
     private bool _hasSel;
 
-    // ===== 交互状态 =====
-    private bool _drawing;                // 正在拖新选区
-    private Point _drawStart;
-    private int _dragKind;                // 0=无 1=移动 2..9=8个控制点
-    private Point _dragStartPt; private Rect _dragStartSel;
+    // ===== 交互 =====
+    private bool _drawing; private Point _drawStart;
+    private int _dragKind; private Point _dragStartPt; private Rect _dragStartSel;
 
-    // ===== 可视元素 =====
-    private readonly Rectangle[] _masks = new Rectangle[4];   // 遮罩（上下左右）
+    // ===== 可视元素（画在每屏 Canvas 上，跨屏各画各的） =====
+    private readonly Rectangle[] _masks = new Rectangle[4];
     private readonly Rectangle _border = new();
-    private readonly Rectangle[] _handles = new Rectangle[8];  // 8 控制点
+    private readonly Rectangle[] _handles = new Rectangle[8];
     private readonly TextBlock _sizeLabel = new();
-    private Border? _toolbar;                                     // 操作条
-    // 放大镜
+    private Border? _sizeBg;
+    private Border? _toolbar;
     private readonly Canvas _loupe = new();
     private readonly Rectangle[] _loupeCells = new Rectangle[LoupeN * LoupeN];
-    private readonly SolidColorBrush[] _loupeBrushes = new SolidColorBrush[LoupeN * LoupeN];  // 复用（防抖动）
+    private readonly SolidColorBrush[] _loupeBrushes = new SolidColorBrush[LoupeN * LoupeN];
     private readonly Rectangle _loupeCenter = new();
     private readonly TextBlock _loupeText = new();
     private string _lastLoupeText = "";
-    private const int LoupeN = 9;          // 9x9 网格
-    private const int CellPx = 12;         // 每格像素
+    private Border? _loupePanel;
+    private const int LoupeN = 9;
+    private const int CellPx = 12;
 
-    public byte[]? PixelCache => _px;
-    public int BmpWidth => _bw; public int BmpHeight => _bh;
-    public double Dpi => _dpi;
+    // 选区所有者（哪个屏的 Canvas 上有操作条/放大镜）
+    private MonWindow? _uiHost;
 
     public SnipOverlayWindow()
     {
-        InitializeComponent();
+        // 本窗口是主逻辑宿主（不可见），真实覆盖是每屏的子窗口
+        WindowStyle = WindowStyle.None;
+        ShowInTaskbar = false;
+        ShowActivated = false;
+        Width = 0; Height = 0;
+        Opacity = 0;
+        IsHitTestVisible = false;
         Loaded += OnLoaded;
     }
 
     private void OnLoaded(object s, RoutedEventArgs e)
     {
-        CaptureScreen();
+        CaptureScreens();
         InitVisuals();
-        MouseLeftButtonDown += OnMouseLeftDown;
-        MouseMove += OnMouseMove;
-        MouseLeftButtonUp += OnMouseLeftUp;
-        Focus();
+        Focusable = true; Focus();
     }
 
-    // ==================== 截屏（冻结，多屏混合 DPI 正确版） ====================
-    [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hwnd);
-    [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
-    [DllImport("gdi32.dll")] private static extern int GetDeviceCaps(IntPtr hdc, int index);
+    // ==================== Win32 ====================
     [DllImport("user32.dll")] private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr clipRect, MonitorEnumProc lpfnEnum, IntPtr dwData);
     private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
     [StructLayout(LayoutKind.Sequential)] private struct RECT { public int L, T, R, B; }
-    [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
-    [StructLayout(LayoutKind.Sequential)] private struct MONITORINFO { public int cbSize; public RECT rcMonitor; public RECT rcWork; public int dwFlags; }
+    [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr hObject);
 
-    /// <summary>每个显示器的映射：DIP(逻辑)矩形 ↔ 物理像素矩形 ↔ 每屏DPI。</summary>
-    private sealed class MonMap { public Rect Dip; public SD.Rectangle Phys; public double Dpi; }
-    private readonly List<MonMap> _mons = new();
-
-    // EnumDisplayMonitors 回调（字段防 GC）
     private static bool CollectPhys(IntPtr hMon, IntPtr hdcMon, ref RECT r, IntPtr data)
     {
         var act = (Action<RECT>)GCHandle.FromIntPtr(data).Target!;
         act(r);
         return true;
     }
-    private MonitorEnumProc? _physProc;
-    private Action<RECT>? _physCollector;
-    private GCHandle _gcHandle;
 
-    private void CaptureScreen()
+    // ==================== 截屏（每屏独立，物理 1:1） ====================
+    private void CaptureScreens()
     {
-        // 先完全隐藏自身再截屏，避免截到本窗口
-        Opacity = 0;
-        Show();
-        DoEvents();
+        _vsX = SystemParameters.VirtualScreenLeft;
+        _vsY = SystemParameters.VirtualScreenTop;
+        _winW = SystemParameters.VirtualScreenWidth;
+        _winH = SystemParameters.VirtualScreenHeight;
 
-        var vsX = SystemParameters.VirtualScreenLeft;
-        var vsY = SystemParameters.VirtualScreenTop;
-        var vsW = SystemParameters.VirtualScreenWidth;
-        var vsH = SystemParameters.VirtualScreenHeight;
-        _winW = vsW; _winH = vsH;
+        // DeskBuddy 是 PerMonitorV2 → EnumDisplayMonitors 返回真物理坐标
+        var physRects = new List<SD.Rectangle>();
+        var act = (Action<RECT>)(r => physRects.Add(new SD.Rectangle(r.L, r.T, r.R - r.L, r.B - r.T)));
+        var gc = GCHandle.Alloc(act);
+        try { EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, CollectPhys, GCHandle.ToIntPtr(gc)); }
+        finally { gc.Free(); }
 
-        // 逐显示器：物理像素 RECT（EnumDisplayMonitors 是物理坐标）
-        var physList = new List<SD.Rectangle>();
-        _physCollector = r2 => physList.Add(new SD.Rectangle(r2.L, r2.T, r2.R - r2.L, r2.B - r2.T));
-        _physProc = CollectPhys;
-        _gcHandle = GCHandle.Alloc(_physCollector);
-        try { EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, _physProc, GCHandle.ToIntPtr(_gcHandle)); }
-        finally { _gcHandle.Free(); }
-
-        // DIP 逻辑矩形：WinForms.Screen（虚拟化坐标）
+        // WPF 虚拟屏 DIP（SystemParameters 是物理→DIP 换算后的全局虚拟坐标）
+        // 每屏 DIP 矩形：从物理矩形反推 —— 找出哪个物理矩形包含哪个 DIP 屏幕
+        // 更可靠：用 WinForms.Screen（本进程 PerMonitorV2 下 Bounds 也是 DIP）
         var dipScreens = System.Windows.Forms.Screen.AllScreens;
 
-        // 建立 DIP↔物理 映射（按面积最近匹配）
-        _mons.Clear();
+        // 匹配：按 DIP 与物理的中心点距离（比原点匹配更稳）
+        var used = new HashSet<int>();
+        _mw.Clear();
         foreach (var scr in dipScreens)
         {
             var dip = new Rect(scr.Bounds.X, scr.Bounds.Y, scr.Bounds.Width, scr.Bounds.Height);
-            // 找物理矩形：DIP 原点在副屏(无缩放)物理=DIP；主屏物理=DIP×scale
-            SD.Rectangle best = default; double bestD = double.MaxValue;
-            foreach (var r in physList)
+            var c = new Point(dip.X + dip.Width / 2, dip.Y + dip.Height / 2);
+            int bestI = -1; double bestD = double.MaxValue;
+            for (int i = 0; i < physRects.Count; i++)
             {
-                double d = Math.Abs(r.X - dip.X) + Math.Abs(r.Y - dip.Y) + Math.Abs(r.Width - Math.Max(dip.Width, r.Width)) + Math.Abs(r.Height - Math.Max(dip.Height, r.Height));
-                if (d < bestD) { bestD = d; best = r; }
+                if (used.Contains(i)) continue;
+                var r = physRects[i];
+                var pc = new Point(r.X + r.Width / 2.0, r.Y + r.Height / 2.0);
+                // 物理中心换算成 DIP 需要 DPI，先粗匹配：比较宽高比 + 相对原点方向
+                var d = Math.Abs((double)r.Width / dip.Width - (double)r.Height / dip.Height) * 100
+                      + Math.Abs(Math.Sign(r.X) - Math.Sign(dip.X)) * 50
+                      + Math.Abs(Math.Sign(r.Y) - Math.Sign(dip.Y)) * 50;
+                if (d < bestD) { bestD = d; bestI = i; }
             }
-            var dpiX = dip.Width > 0 ? best.Width / dip.Width : 1.0;
-            var dpiY = dip.Height > 0 ? best.Height / dip.Height : 1.0;
-            var dpi = (dpiX + dpiY) / 2;
+            if (bestI < 0) continue;
+            used.Add(bestI);
+            var phys = physRects[bestI];
+            double dpi = dip.Width > 0 ? phys.Width / dip.Width : 1.0;
             if (dpi <= 0.01) dpi = 1.0;
-            _mons.Add(new MonMap { Dip = dip, Phys = best, Dpi = dpi });
+
+            // 该屏物理截图
+            var bmp = new SD.Bitmap(phys.Width, phys.Height);
+            using (var g = SD.Graphics.FromImage(bmp))
+                g.CopyFromScreen(phys.X, phys.Y, 0, 0, new SD.Size(phys.Width, phys.Height));
+
+            // 建独立覆盖窗口（该屏 DIP 矩形，WPF 自动按该屏 DPI 渲染）
+            var win = new Window
+            {
+                WindowStyle = WindowStyle.None,
+                ShowInTaskbar = false,
+                ShowActivated = false,
+                Topmost = true,
+                ResizeMode = ResizeMode.NoResize,
+                Cursor = Cursors.Cross,
+                Background = Brushes.Black,
+                Left = dip.X, Top = dip.Y, Width = dip.Width, Height = dip.Height,
+            };
+            var img = new Image { Source = ToSource(bmp), Stretch = Stretch.Uniform };
+            // 物理像素 1:1（该屏 DIP 尺寸 = 物理/DPI，Uniform 不缩放）
+            var canvas = new Canvas();
+            var grid = new Grid();
+            grid.Children.Add(img); grid.Children.Add(canvas);
+            win.Content = grid;
+            win.PreviewMouseLeftButtonDown += OnMouseLeftDown;
+            win.PreviewMouseMove += OnMouseMove;
+            win.PreviewMouseLeftButtonUp += OnMouseLeftUp;
+            win.PreviewKeyDown += OnWindowKeyDown;
+            win.Show();
+            _mw.Add(new MonWindow { Win = win, Img = img, Canvas = canvas, Dip = dip, Dpi = dpi, Phys = phys });
         }
 
-        // 全屏位图：DIP 网格尺寸（每屏按各自 DPI 采样物理像素）
-        _bw = Math.Max(1, (int)Math.Round(vsW));
-        _bh = Math.Max(1, (int)Math.Round(vsH));
+        // 全屏 DIP 网格位图（供取色/输出用）：把每屏物理图重采样到 DIP 网格
+        _bw = Math.Max(1, (int)Math.Round(_winW));
+        _bh = Math.Max(1, (int)Math.Round(_winH));
         _bmp = new SD.Bitmap(_bw, _bh);
         using (var bg = SD.Graphics.FromImage(_bmp))
         {
-            bg.PixelOffsetMode = SD.Drawing2D.PixelOffsetMode.Half;   // 物理像素 → DIP 网格半像素对齐
-            foreach (var m in _mons)
+            foreach (var m in _mw)
             {
-                using var monBmp = new SD.Bitmap(m.Phys.Width, m.Phys.Height);
-                using (var mg = SD.Graphics.FromImage(monBmp))
-                {
+                // 重新截一次物理（上面那个已被窗口占用显示）
+                using var mb = new SD.Bitmap(m.Phys.Width, m.Phys.Height);
+                using (var mg = SD.Graphics.FromImage(mb))
                     mg.CopyFromScreen(m.Phys.X, m.Phys.Y, 0, 0, new SD.Size(m.Phys.Width, m.Phys.Height));
-                }
-                // 画到 DIP 网格：位置 = 该屏 DIP 原点 - 虚拟屏原点；尺寸 = 该屏 DIP 尺寸
-                var dx = (float)(m.Dip.X - vsX);
-                var dy = (float)(m.Dip.Y - vsY);
-                bg.DrawImage(monBmp, dx, dy, (float)m.Dip.Width, (float)m.Dip.Height);
+                var dx = (float)(m.Dip.X - _vsX);
+                var dy = (float)(m.Dip.Y - _vsY);
+                bg.DrawImage(mb, dx, dy, (float)m.Dip.Width, (float)m.Dip.Height);
             }
         }
-        _dpi = 1.0;   // 位图与 DIP 1:1（取色直接用 DIP 坐标）
 
-        // 像素缓存（放大镜取色）
+        // 像素缓存
         var data = _bmp.LockBits(new SD.Rectangle(0, 0, _bw, _bh), SD.Imaging.ImageLockMode.ReadOnly, SD.Imaging.PixelFormat.Format32bppArgb);
         _stride = data.Stride;
         _px = new byte[Math.Abs(data.Stride) * _bh];
-        System.Runtime.InteropServices.Marshal.Copy(data.Scan0, _px, 0, _px.Length);
+        Marshal.Copy(data.Scan0, _px, 0, _px.Length);
         _bmp.UnlockBits(data);
+    }
 
-        // 显示冻结层（1:1，不缩放）
-        IntPtr hBmp = _bmp.GetHbitmap();
+    private static BitmapSource ToSource(SD.Bitmap bmp)
+    {
+        IntPtr h = bmp.GetHbitmap();
         try
         {
-            var src = Imaging.CreateBitmapSourceFromHBitmap(hBmp, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-            src.Freeze();
-            FrozenImage.Source = src;
-            FrozenImage.Stretch = Stretch.Fill;
-            FrozenImage.Width = vsW;
-            FrozenImage.Height = vsH;
+            var s = Imaging.CreateBitmapSourceFromHBitmap(h, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+            s.Freeze(); return s;
         }
-        finally { DeleteObject(hBmp); }
-
-        Left = vsX; Top = vsY;
-        Width = vsW; Height = vsH;
-        Opacity = 1;
+        finally { DeleteObject(h); }
     }
 
-    private static void DoEvents()
-    {
-        var frame = new DispatcherFrame();
-        System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => frame.Continue = false));
-        Dispatcher.PushFrame(frame);
-    }
+    // ==================== 坐标换算 ====================
+    /// <summary>屏幕窗口内坐标 → 虚拟屏 DIP。</summary>
+    private Point ToVirtual(MonWindow m, Point local) => new Point(local.X + m.Dip.X, local.Y + m.Dip.Y);
 
-    [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr hObject);
-
-    private Color GetPixelAt(double dipX, double dipY)
+    private Color GetPixelAt(double vx, double vy)
     {
         if (_px == null) return Colors.Transparent;
-        int x = (int)Math.Round(dipX), y = (int)Math.Round(dipY);
+        int x = (int)Math.Round(vx - _vsX), y = (int)Math.Round(vy - _vsY);
         x = Math.Clamp(x, 0, _bw - 1); y = Math.Clamp(y, 0, _bh - 1);
         int i = y * _stride + x * 4;
         return Color.FromArgb(_px[i + 3], _px[i + 2], _px[i + 1], _px[i]);
     }
 
-    // ==================== 初始化可视元素 ====================
+    // ==================== 初始化可视元素（画在鼠标所在屏） ====================
     private void InitVisuals()
     {
-        // 遮罩
         var maskBrush = new SolidColorBrush(Color.FromArgb(0x66, 0x00, 0x00, 0x00));
-        for (int i = 0; i < 4; i++)
-        {
-            _masks[i] = new Rectangle { Fill = maskBrush, IsHitTestVisible = false };
-            OverlayCanvas.Children.Add(_masks[i]);
-        }
-        // 边框
+        for (int i = 0; i < 4; i++) { _masks[i] = new Rectangle { Fill = maskBrush, IsHitTestVisible = false }; }
         _border.Stroke = new SolidColorBrush(Color.FromRgb(0x4A, 0x90, 0xFF)); _border.StrokeThickness = 1.4; _border.IsHitTestVisible = false;
-        OverlayCanvas.Children.Add(_border);
-        // 尺寸标签
         _sizeLabel.Foreground = Brushes.White; _sizeLabel.FontSize = 11.5; _sizeLabel.IsHitTestVisible = false;
-        var sizeBg = new Border { Background = new SolidColorBrush(Color.FromArgb(0xCC, 0x1C, 0x1C, 0x1E)), CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 2, 6, 2), Child = _sizeLabel };
-        OverlayCanvas.Children.Add(sizeBg);
-        _sizeLabel.Tag = sizeBg;
+        _sizeBg = new Border { Background = new SolidColorBrush(Color.FromArgb(0xCC, 0x1C, 0x1C, 0x1E)), CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 2, 6, 2), Child = _sizeLabel };
         for (int i = 0; i < 8; i++)
         {
             _handles[i] = new Rectangle { Width = 9, Height = 9, Fill = Brushes.White, Stroke = new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF)), StrokeThickness = 1.2, Cursor = Cursors.SizeAll };
             int idx = i;
-            _handles[i].MouseLeftButtonDown += (s, e) => { StartHandleDrag(idx + 2, e); };
-            OverlayCanvas.Children.Add(_handles[i]);
+            _handles[i].PreviewMouseLeftButtonDown += (s, e) => { _dragKind = idx + 2; _dragStartPt = e.GetPosition(_uiHost!.Win); _dragStartSel = _sel; _uiHost.Win.CaptureMouse(); e.Handled = true; };
         }
         // 放大镜
-        _loupe.IsHitTestVisible = false;
         for (int i = 0; i < LoupeN * LoupeN; i++)
         {
             _loupeBrushes[i] = new SolidColorBrush(Colors.Black);
-            var cell = new Rectangle { Width = CellPx, Height = CellPx, Fill = _loupeBrushes[i], Stroke = new SolidColorBrush(Color.FromArgb(0x33, 0x00, 0x00, 0x00)), StrokeThickness = 0.5 };
-            _loupeCells[i] = cell; _loupe.Children.Add(cell);
+            _loupeCells[i] = new Rectangle { Width = CellPx, Height = CellPx, Fill = _loupeBrushes[i], Stroke = new SolidColorBrush(Color.FromArgb(0x33, 0x00, 0x00, 0x00)), StrokeThickness = 0.5 };
+            _loupe.Children.Add(_loupeCells[i]);
         }
-        _loupeCenter.Width = CellPx; _loupeCenter.Height = CellPx; _loupeCenter.Stroke = new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF)); _loupeCenter.StrokeThickness = 1.6; _loupeCenter.Fill = Brushes.Transparent;
+        _loupeCenter.Width = CellPx; _loupeCenter.Height = CellPx;
+        _loupeCenter.Stroke = new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF)); _loupeCenter.StrokeThickness = 1.6; _loupeCenter.Fill = Brushes.Transparent;
         _loupe.Children.Add(_loupeCenter);
-        _loupeText.Foreground = Brushes.White; _loupeText.FontSize = 11;
-        _loupeText.TextAlignment = TextAlignment.Center;
         _loupe.Width = LoupeN * CellPx; _loupe.Height = LoupeN * CellPx;
-        var loupeBorder = new Border
+        _loupeText.Foreground = Brushes.White; _loupeText.FontSize = 11; _loupeText.TextAlignment = TextAlignment.Center;
+        _loupePanel = new Border
         {
             Background = new SolidColorBrush(Color.FromArgb(0xE6, 0x1C, 0x1C, 0x1E)),
             BorderBrush = new SolidColorBrush(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF)),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(8),
+            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Padding = new Thickness(8),
             Child = _loupeText
         };
-        OverlayCanvas.Children.Add(_loupe);
-        OverlayCanvas.Children.Add(loupeBorder);
-        _loupe.Tag = loupeBorder;
-        loupeBorder.Visibility = Visibility.Visible;
-        UpdateVisuals(mouse: null);
     }
 
-    // ==================== 鼠标交互 ====================
+    // ==================== 鼠标交互（任一屏窗口触发） ====================
+    private MonWindow? HostOf(object sender)
+    {
+        var w = Window.GetWindow((DependencyObject)sender);
+        return _mw.FirstOrDefault(m => ReferenceEquals(m.Win, w));
+    }
+
     private void OnMouseLeftDown(object s, MouseButtonEventArgs e)
     {
-        var p = e.GetPosition(this);
-        if (_hasSel && _sel.Contains(p))
+        var host = HostOf(s); if (host == null) return;
+        var vp = ToVirtual(host, e.GetPosition(host.Win));
+        _uiHost = host;
+        if (_hasSel && _sel.Contains(vp))
         {
-            StartHandleDrag(1, e);   // 移动选区
-            return;
+            _dragKind = 1; _dragStartPt = e.GetPosition(host.Win); _dragStartSel = _sel;
+            host.Win.CaptureMouse();
         }
-        // 新选区
-        _drawing = true; _drawStart = p;
-        _sel = new Rect(p, p); _hasSel = true;
-        if (_toolbar != null) _toolbar.Visibility = Visibility.Collapsed;
-        Mouse.Capture(this);
-        e.Handled = true;
-    }
-
-    private void StartHandleDrag(int kind, MouseButtonEventArgs e)
-    {
-        _dragKind = kind;
-        _dragStartPt = e.GetPosition(this);
-        _dragStartSel = _sel;
-        Mouse.Capture(this);
+        else
+        {
+            _drawing = true; _drawStart = vp;
+            _sel = new Rect(vp, vp); _hasSel = true;
+            if (_toolbar != null && host.Canvas.Children.Contains(_toolbar)) host.Canvas.Children.Remove(_toolbar);
+            host.Win.CaptureMouse();
+        }
+        RebuildUi(host);
         e.Handled = true;
     }
 
     private void OnMouseMove(object s, MouseEventArgs e)
     {
-        var p = e.GetPosition(this);
+        var host = HostOf(s); if (host == null) return;
+        var vp = ToVirtual(host, e.GetPosition(host.Win));
+        _uiHost = host;
         if (_drawing)
         {
-            _sel = new Rect(_drawStart, p);
-            UpdateVisuals(p);
+            _sel = new Rect(_drawStart, vp);
+            // 转成 host 局部坐标画
+            RebuildUi(host);
         }
         else if (_dragKind > 0)
         {
-            var dx = p.X - _dragStartPt.X; var dy = p.Y - _dragStartPt.Y;
+            var p = e.GetPosition(host.Win);
+            var dx = (p.X - _dragStartPt.X); var dy = (p.Y - _dragStartPt.Y);
             if (_dragKind == 1) _sel = new Rect(_dragStartSel.X + dx, _dragStartSel.Y + dy, _dragStartSel.Width, _dragStartSel.Height);
             else ApplyHandleDrag(dx, dy);
             _sel = ClampSel(_sel);
-            UpdateVisuals(p);
+            RebuildUi(host);
         }
         else
         {
-            UpdateVisuals(p);
+            UpdateLoupeOnly(host, vp);
         }
         e.Handled = true;
     }
 
     private void ApplyHandleDrag(double dx, double dy)
     {
-        // 控制点: 2=左上 3=上中 4=右上 5=右中 6=右下 7=下中 8=左下 9=左中
         double l = _dragStartSel.X, t = _dragStartSel.Y, r = _dragStartSel.Right, b = _dragStartSel.Bottom;
         switch (_dragKind)
         {
@@ -321,40 +329,34 @@ public partial class SnipOverlayWindow : Window
             case 8: l += dx; b += dy; break;
             case 9: l += dx; break;
         }
-        _sel = Rect.Intersect(new Rect(Math.Min(l, r), Math.Min(t, b), Math.Abs(r - l), Math.Abs(b - t)), new Rect(0, 0, _winW, _winH));
+        _sel = Rect.Intersect(new Rect(Math.Min(l, r), Math.Min(t, b), Math.Abs(r - l), Math.Abs(b - t)), new Rect(_vsX, _vsY, _winW, _winH));
     }
 
     private Rect ClampSel(Rect r)
     {
-        double x = Math.Clamp(r.X, 0, _winW), y = Math.Clamp(r.Y, 0, _winH);
-        double w = Math.Min(r.Width, _winW - x), h = Math.Min(r.Height, _winH - y);
+        double x = Math.Clamp(r.X, _vsX, _vsX + _winW), y = Math.Clamp(r.Y, _vsY, _vsY + _winH);
+        double w = Math.Min(r.Width, _vsX + _winW - x), h = Math.Min(r.Height, _vsY + _winH - y);
         return new Rect(x, y, Math.Max(0, w), Math.Max(0, h));
     }
 
     private void OnMouseLeftUp(object s, MouseButtonEventArgs e)
     {
-        var wasDrawing = _drawing || _dragKind > 0;
+        var host = HostOf(s); if (host == null) return;
+        bool was = _drawing || _dragKind > 0;
         _drawing = false; _dragKind = 0;
-        Mouse.Capture(null);
-        if (wasDrawing && _sel.Width > 6 && _sel.Height > 6)
-        {
-            ShowToolbar();
-            UpdateVisuals(e.GetPosition(this));
-        }
-        else if (_sel.Width <= 6 || _sel.Height <= 6)
-        {
-            _hasSel = false;
-            UpdateVisuals(e.GetPosition(this));
-        }
+        host.Win.ReleaseMouseCapture();
+        if (was && _sel.Width > 6 && _sel.Height > 6) ShowToolbar(host);
+        else if (_sel.Width <= 6 || _sel.Height <= 6) { _hasSel = false; }
+        RebuildUi(host);
         e.Handled = true;
     }
 
     private void OnWindowKeyDown(object s, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape) { Close(); e.Handled = true; return; }
+        var host = _uiHost ?? _mw.FirstOrDefault();
+        if (e.Key == Key.Escape) { CloseAll(); e.Handled = true; return; }
         if (e.Key == Key.Enter) { if (_hasSel && _sel.Width > 4) CopySelection(); e.Handled = true; return; }
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.S) { if (_hasSel && _sel.Width > 4) SaveSelection(); e.Handled = true; return; }
-        // 方向键微调选区
         if (_hasSel && (e.Key is Key.Left or Key.Right or Key.Up or Key.Down))
         {
             double d = Keyboard.Modifiers.HasFlag(ModifierKeys.Control) ? 10 : 1;
@@ -366,95 +368,110 @@ public partial class SnipOverlayWindow : Window
                 case Key.Down: _sel.Y += d; break;
             }
             _sel = ClampSel(_sel);
-            UpdateVisuals(Mouse.GetPosition(this));
+            if (host != null) RebuildUi(host);
             e.Handled = true;
         }
     }
 
-    // ==================== 可视更新 ====================
-    private void UpdateVisuals(Point? mouse)
+    // ==================== UI 重建（每次交互全量重画到当前屏） ====================
+    private void RebuildUi(MonWindow host)
     {
+        var c = host.Canvas;
+        c.Children.Clear();
+        // 虚拟 → 本屏局部
+        Func<Rect, Rect> L = r => new Rect(r.X - host.Dip.X, r.Y - host.Dip.Y, r.Width, r.Height);
         var sel = _hasSel ? _sel : Rect.Empty;
-        // 遮罩（上下左右）
         if (_hasSel)
         {
-            SetRect(_masks[0], 0, 0, _winW, Math.Max(0, sel.Y));
-            SetRect(_masks[1], 0, sel.Bottom, _winW, Math.Max(0, _winH - sel.Bottom));
-            SetRect(_masks[2], 0, sel.Y, Math.Max(0, sel.X), sel.Height);
-            SetRect(_masks[3], sel.Right, sel.Y, Math.Max(0, _winW - sel.Right), sel.Height);
-            foreach (var m in _masks) m.Visibility = Visibility.Visible;
-        }
-        else foreach (var m in _masks) m.Visibility = Visibility.Collapsed;
-
-        // 边框 + 控制点 + 尺寸
-        bool show = _hasSel && sel.Width > 2;
-        _border.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        _sizeLabel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        if (_sizeLabel.Tag is Border bg) bg.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var h in _handles) h.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        if (show)
-        {
-            SetRect(_border, sel.X, sel.Y, sel.Width, sel.Height);
-            // 控制点位置
-            var hx = new[] { sel.X, sel.X + sel.Width / 2, sel.Right, sel.Right, sel.Right, sel.X + sel.Width / 2, sel.X, sel.X };
-            var hy = new[] { sel.Y, sel.Y, sel.Y, sel.Y + sel.Height / 2, sel.Bottom, sel.Bottom, sel.Bottom, sel.Y + sel.Height / 2 };
-            for (int i = 0; i < 8; i++) { Canvas.SetLeft(_handles[i], hx[i] - 4.5); Canvas.SetTop(_handles[i], hy[i] - 4.5); }
-            _sizeLabel.Text = $"{(int)Math.Round(sel.Width)} × {(int)Math.Round(sel.Height)}";
-            if (_sizeLabel.Tag is Border sbg)
+            var l = L(sel);
+            // 遮罩 4 块
+            AddRect(c, 0, 0, host.Dip.Width, Math.Max(0, l.Y), maskBrush: true);
+            AddRect(c, 0, l.Bottom, host.Dip.Width, Math.Max(0, host.Dip.Height - l.Bottom), maskBrush: true);
+            AddRect(c, 0, l.Y, Math.Max(0, l.X), l.Height, maskBrush: true);
+            AddRect(c, l.Right, l.Y, Math.Max(0, host.Dip.Width - l.Right), l.Height, maskBrush: true);
+            // 边框
+            var b = new Rectangle { Stroke = new SolidColorBrush(Color.FromRgb(0x4A, 0x90, 0xFF)), StrokeThickness = 1.4 };
+            SetR(b, l); c.Children.Add(b);
+            // 控制点
+            if (sel.Width > 2 && sel.Height > 2)
             {
-                double lx = sel.X; double ly = sel.Y - 30;
-                if (ly < 4) ly = sel.Bottom + 6;
-                Canvas.SetLeft(sbg, lx); Canvas.SetTop(sbg, ly);
+                var hx = new[] { l.X, l.X + l.Width / 2, l.Right, l.Right, l.Right, l.X + l.Width / 2, l.X, l.X };
+                var hy = new[] { l.Y, l.Y, l.Y, l.Y + l.Height / 2, l.Bottom, l.Bottom, l.Bottom, l.Y + l.Height / 2 };
+                for (int i = 0; i < 8; i++)
+                {
+                    var h = _handles[i];
+                    Canvas.SetLeft(h, hx[i] - 4.5); Canvas.SetTop(h, hy[i] - 4.5);
+                    if (h.Parent is Panel p) p.Children.Remove(h);
+                    c.Children.Add(h);
+                }
+            }
+            // 尺寸
+            if (sel.Width > 4)
+            {
+                _sizeLabel.Text = $"{(int)Math.Round(sel.Width)} × {(int)Math.Round(sel.Height)}";
+                var bg = _sizeBg!;
+                var lbl = L(sel);
+                double lx = lbl.X, ly = lbl.Y - 30;
+                if (ly < 4) ly = lbl.Bottom + 6;
+                Canvas.SetLeft(bg, lx); Canvas.SetTop(bg, ly);
+                if (bg.Parent is Panel p) p.Children.Remove(bg);
+                c.Children.Add(bg);
             }
         }
-
         // 放大镜
-        if (mouse is { } mp)
-        {
-            UpdateLoupe(mp);
-        }
+        var mp = Mouse.GetPosition(host.Win);
+        var vpNow = ToVirtual(host, mp);
+        DrawLoupe(c, vpNow, L);
     }
 
-    private static void SetRect(Rectangle r, double x, double y, double w, double h)
+    private void UpdateLoupeOnly(MonWindow host, Point vp)
     {
-        Canvas.SetLeft(r, x); Canvas.SetTop(r, y);
-        r.Width = Math.Max(0, w); r.Height = Math.Max(0, h);
+        // 未拖拽时只动放大镜（性能：不重画整个选区）
+        var c = host.Canvas;
+        // 找到已有 loupe 元素位置更新即可；简单起见仍全量（元素少）
+        RebuildUi(host);
     }
 
-    private void UpdateLoupe(Point mp)
+    private void AddRect(Canvas c, double x, double y, double w, double h, bool maskBrush)
     {
-        var loupeBorder = (Border)_loupe.Tag!;
+        if (w <= 0.5 || h <= 0.5) return;
+        var r = new Rectangle { Fill = new SolidColorBrush(Color.FromArgb(0x66, 0x00, 0x00, 0x00)), IsHitTestVisible = false };
+        SetR(r, new Rect(x, y, w, h)); c.Children.Add(r);
+    }
+
+    private static void SetR(Rectangle r, Rect rc) { Canvas.SetLeft(r, rc.X); Canvas.SetTop(r, rc.Y); r.Width = rc.Width; r.Height = rc.Height; }
+
+    private void DrawLoupe(Canvas c, Point vp, Func<Rect, Rect> toLocal)
+    {
+        var host = _uiHost!; if (host == null) return;
+        var col = GetPixelAt(vp.X, vp.Y);
         int half = LoupeN / 2;
-        double px = mp.X, py = mp.Y;
-        // 中心颜色
-        var c = GetPixelAt(px, py);
-        // 网格填色（复用 brush，只改 Color，避免每帧重建→抖动）
         for (int gy = 0; gy < LoupeN; gy++)
         for (int gx = 0; gx < LoupeN; gx++)
         {
             int i = gy * LoupeN + gx;
-            var cellColor = GetPixelAt(px + (gx - half), py + (gy - half));
-            _loupeBrushes[i].Color = cellColor;
+            _loupeBrushes[i].Color = GetPixelAt(vp.X + (gx - half), vp.Y + (gy - half));
         }
         Canvas.SetLeft(_loupeCenter, half * CellPx); Canvas.SetTop(_loupeCenter, half * CellPx);
-        var panelSize = LoupeN * CellPx;
-        // 文本：仅变化时更新（减少布局抖动）
-        var txt = $"#{c.R:X2}{c.G:X2}{c.B:X2}  RGB({c.R},{c.G},{c.B})\n({(int)Math.Round(px)}, {(int)Math.Round(py)})";
+        var txt = $"#{col.R:X2}{col.G:X2}{col.B:X2}  RGB({col.R},{col.G},{col.B})\n({(int)Math.Round(vp.X)}, {(int)Math.Round(vp.Y)})";
         if (txt != _lastLoupeText) { _loupeText.Text = txt; _lastLoupeText = txt; }
-        // 定位：跟随鼠标但只按整像素吸附，减少亚像素抖动
-        loupeBorder.Measure(new Size(_winW, _winH));
-        double lw = Math.Max(120, loupeBorder.DesiredSize.Width), lh = Math.Max(40, loupeBorder.DesiredSize.Height);
-        double lx = Math.Round(mp.X + 24), ly = Math.Round(mp.Y + 24);
-        if (lx + lw > _winW - 8) lx = Math.Round(mp.X - lw - 24);
-        if (ly + lh + panelSize + 20 > _winH - 8) ly = Math.Round(mp.Y - lh - panelSize - 32);
+        _loupePanel!.Measure(new Size(host.Dip.Width, host.Dip.Height));
+        double lw = Math.Max(120, _loupePanel.DesiredSize.Width), lh = Math.Max(40, _loupePanel.DesiredSize.Height);
+        var local = toLocal(new Rect(vp.X, vp.Y, 0, 0));
+        double lx = Math.Round(local.X + 24), ly = Math.Round(local.Y + 24);
+        double panelSize = LoupeN * CellPx;
+        if (lx + lw > host.Dip.Width - 8) lx = Math.Round(local.X - lw - 24);
+        if (ly + lh + panelSize + 20 > host.Dip.Height - 8) ly = Math.Round(local.Y - lh - panelSize - 32);
         if (lx < 8) lx = 8; if (ly < 8) ly = 8;
-        // 网格在信息面板上方
         Canvas.SetLeft(_loupe, lx + 8); Canvas.SetTop(_loupe, ly + 8);
-        Canvas.SetLeft(loupeBorder, lx); Canvas.SetTop(loupeBorder, ly + panelSize + 12);
+        Canvas.SetLeft(_loupePanel, lx); Canvas.SetTop(_loupePanel, ly + panelSize + 12);
+        if (_loupe.Parent is Panel p) p.Children.Remove(_loupe);
+        if (_loupePanel.Parent is Panel p2) p2.Children.Remove(_loupePanel);
+        c.Children.Add(_loupe); c.Children.Add(_loupePanel);
     }
 
     // ==================== 操作条 ====================
-    private void ShowToolbar()
+    private void ShowToolbar(MonWindow host)
     {
         if (_toolbar == null)
         {
@@ -462,104 +479,78 @@ public partial class SnipOverlayWindow : Window
             {
                 Background = new SolidColorBrush(Color.FromArgb(0xF0, 0x1C, 0x1C, 0x1E)),
                 BorderBrush = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(9),
-                Padding = new Thickness(6, 4, 6, 4)
+                BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(9), Padding = new Thickness(6, 4, 6, 4)
             };
             var sp = new StackPanel { Orientation = Orientation.Horizontal };
-            sp.Children.Add(MakeToolBtn("复制", () => CopySelection()));
-            sp.Children.Add(MakeToolBtn("保存", () => SaveSelection()));
-            sp.Children.Add(MakeToolBtn("贴图", () => PinSelection()));
+            sp.Children.Add(MkBtn("复制", CopySelection));
+            sp.Children.Add(MkBtn("保存", SaveSelection));
+            sp.Children.Add(MkBtn("贴图", PinSelection));
             _toolbar.Child = sp;
-            OverlayCanvas.Children.Add(_toolbar);
         }
-        _toolbar.Visibility = Visibility.Visible;
-        _toolbar.Measure(new Size(_winW, _winH));
+        if (_toolbar.Parent is Panel p) p.Children.Remove(_toolbar);
+        host.Canvas.Children.Add(_toolbar);
+        _toolbar.Measure(new Size(host.Dip.Width, host.Dip.Height));
         double tw = _toolbar.DesiredSize.Width, th = _toolbar.DesiredSize.Height;
-        double x = _sel.Right - tw, y = _sel.Bottom + 8;
-        if (y + th > _winH - 8) y = _sel.Bottom - th - 8;      // 下方放不下则放选区内
+        double x = _sel.Right - host.Dip.X - tw, y = _sel.Bottom - host.Dip.Y + 8;
+        if (y + th > host.Dip.Height - 8) y = _sel.Bottom - host.Dip.Y - th - 8;
         if (x < 8) x = 8;
         Canvas.SetLeft(_toolbar, x); Canvas.SetTop(_toolbar, y);
     }
 
-    private Button MakeToolBtn(string text, Action act)
+    private Button MkBtn(string text, Action act)
     {
-        var b = new Button
-        {
-            Content = text,
-            Foreground = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF5)),
-            Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            FontSize = 12,
-            Padding = new Thickness(10, 5, 10, 5),
-            Cursor = Cursors.Hand
-        };
+        var b = new Button { Content = text, Foreground = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF5)), Background = Brushes.Transparent, BorderThickness = new Thickness(0), FontSize = 12, Padding = new Thickness(10, 5, 10, 5), Cursor = Cursors.Hand };
         b.Click += (s, e) => { act(); e.Handled = true; };
         return b;
     }
 
     // ==================== 输出 ====================
-    /// <summary>从全屏截图中截取选区（像素精确）。</summary>
-    /// <summary>从冻结层截取选区（位图与 DIP 1:1）。</summary>
     private BitmapSource? RenderSelection()
     {
         if (_bmp == null || !_hasSel) return null;
-        int x = (int)Math.Round(_sel.X), y = (int)Math.Round(_sel.Y);
+        int x = (int)Math.Round(_sel.X - _vsX), y = (int)Math.Round(_sel.Y - _vsY);
         int w = (int)Math.Round(_sel.Width), h = (int)Math.Round(_sel.Height);
         x = Math.Clamp(x, 0, _bw - 1); y = Math.Clamp(y, 0, _bh - 1);
         w = Math.Clamp(w, 1, _bw - x); h = Math.Clamp(h, 1, _bh - y);
         using var part = _bmp.Clone(new SD.Rectangle(x, y, w, h), _bmp.PixelFormat);
-        IntPtr hBmp = part.GetHbitmap();
-        try
-        {
-            var src = Imaging.CreateBitmapSourceFromHBitmap(hBmp, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-            src.Freeze();
-            return src;
-        }
-        finally { DeleteObject(hBmp); }
+        return ToSource(part);
     }
 
     private void CopySelection()
     {
-        var src = RenderSelection();
-        if (src == null) return;
-        try
-        {
-            Clipboard.SetImage(src);
-            Close();
-        }
-        catch { }
+        var src = RenderSelection(); if (src == null) return;
+        try { Clipboard.SetImage(src); CloseAll(); } catch { }
     }
 
     private void SaveSelection()
     {
-        var src = RenderSelection();
-        if (src == null) return;
+        var src = RenderSelection(); if (src == null) return;
         var dlg = new Microsoft.Win32.SaveFileDialog { Filter = "PNG 图片 (*.png)|*.png", Title = "保存截图", FileName = "截图_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") };
         if (dlg.ShowDialog(this) != true) return;
-        try
-        {
-            var enc = new PngBitmapEncoder(); enc.Frames.Add(BitmapFrame.Create(src));
-            using var fs = File.Create(dlg.FileName); enc.Save(fs);
-            Close();
-        }
+        try { var enc = new PngBitmapEncoder(); enc.Frames.Add(BitmapFrame.Create(src)); using var fs = File.Create(dlg.FileName); enc.Save(fs); CloseAll(); }
         catch (Exception ex) { MessageBox.Show(this, "保存失败：" + ex.Message, "错误"); }
     }
 
     private void PinSelection()
     {
-        var src = RenderSelection();
-        if (src == null) return;
-        // 贴图初始显示尺寸 = 选区 DIP 尺寸（与屏幕上看到的一模一样大）
-        double dipX = _sel.X + Left, dipY = _sel.Y + Top;
-        var savedSel = _sel;
-        Close();
-        var pin = new PinWindow(src, dipX, dipY, savedSel.Width, savedSel.Height);
+        var src = RenderSelection(); if (src == null) return;
+        double x = _sel.X, y = _sel.Y;
+        var sel = _sel;
+        CloseAll();
+        var pin = new PinWindow(src, x, y, sel.Width, sel.Height);
         pin.Show();
+    }
+
+    private void CloseAll()
+    {
+        foreach (var m in _mw) { try { m.Win.Close(); } catch { } }
+        _bmp?.Dispose(); _bmp = null; _px = null;
+        Close();
     }
 
     protected override void OnClosed(EventArgs e)
     {
+        foreach (var m in _mw) { try { if (m.Win.IsLoaded) m.Win.Close(); } catch { } }
         _bmp?.Dispose(); _bmp = null; _px = null;
         base.OnClosed(e);
     }
