@@ -70,12 +70,15 @@ public partial class SnipOverlayWindow : Window
     }
 
     // ==================== 截屏（冻结） ====================
+    [DllImport("gdi32.dll")] private static extern int GetDeviceCaps(IntPtr hdc, int index);
+    [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
+
     private void CaptureScreen()
     {
         // 先完全隐藏自身再截屏，避免截到本窗口（否则全屏是黑的）
         Opacity = 0;
         Show();
-        // 等窗口真正完成一次渲染（此时透明，桌面无遮挡）
         DoEvents();
 
         var vsX = SystemParameters.VirtualScreenLeft;
@@ -83,25 +86,24 @@ public partial class SnipOverlayWindow : Window
         var vsW = SystemParameters.VirtualScreenWidth;
         var vsH = SystemParameters.VirtualScreenHeight;
 
-        using var g = SD.Graphics.FromHwnd(IntPtr.Zero);
-        _dpi = g.DpiX / 96.0;
-        if (_dpi <= 0) _dpi = 1.0;
+        // 实际 DPI 缩放（主屏真实像素 / 逻辑 DIP）
+        IntPtr hdc = GetDC(IntPtr.Zero);
+        double physW = GetDeviceCaps(hdc, 118);   // DESKTOPHORZRES 真实像素宽
+        int gdiDpi = GetDeviceCaps(hdc, 88);      // LOGPIXELSX
+        ReleaseDC(IntPtr.Zero, hdc);
+        _dpi = (physW > 0 && vsW > 0) ? physW / vsW : (gdiDpi > 0 ? gdiDpi / 96.0 : 1.0);
+        if (_dpi <= 0.01) _dpi = 1.0;
 
         _winW = vsW; _winH = vsH;
+        _bw = Math.Max(1, (int)Math.Round(vsW * _dpi));
+        _bh = Math.Max(1, (int)Math.Round(vsH * _dpi));
 
-        // 每个显示器单独截图（正确处理各自 DPI），拼到虚拟屏幕位图上
-        _bmp = new SD.Bitmap(Math.Max(1, (int)Math.Round(vsW)), Math.Max(1, (int)Math.Round(vsH)));
+        // 全虚拟屏物理像素截图（一次截取，坐标 = 虚拟屏原点的物理像素）
+        _bmp = new SD.Bitmap(_bw, _bh);
         using (var bg = SD.Graphics.FromImage(_bmp))
         {
-            foreach (var screen in System.Windows.Forms.Screen.AllScreens)
-            {
-                // screen.Bounds 是像素；换算成 DIP 再除以该屏 DPI 后直接 CopyFromScreen 用像素坐标
-                var sb = screen.Bounds;
-                bg.CopyFromScreen(sb.X, sb.Y, sb.X - (int)Math.Round(vsX), sb.Y - (int)Math.Round(vsY), sb.Size);
-            }
+            bg.CopyFromScreen((int)Math.Round(vsX * _dpi), (int)Math.Round(vsY * _dpi), 0, 0, new SD.Size(_bw, _bh));
         }
-        _bw = _bmp.Width; _bh = _bmp.Height;
-        _dpi = 1.0; // 位图与虚拟屏幕 DIP 1:1（各屏已按像素铺到 DIP 网格）
 
         // 像素缓存（放大镜取色）
         var data = _bmp.LockBits(new SD.Rectangle(0, 0, _bw, _bh), SD.Imaging.ImageLockMode.ReadOnly, SD.Imaging.PixelFormat.Format32bppArgb);
@@ -110,15 +112,16 @@ public partial class SnipOverlayWindow : Window
         System.Runtime.InteropServices.Marshal.Copy(data.Scan0, _px, 0, _px.Length);
         _bmp.UnlockBits(data);
 
-        // 显示冻结层
+        // 显示冻结层：位图按 _dpi 拉伸到 DIP 尺寸，与屏幕 1:1 对齐（不偏移）
         IntPtr hBmp = _bmp.GetHbitmap();
         try
         {
             var src = Imaging.CreateBitmapSourceFromHBitmap(hBmp, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
             src.Freeze();
             FrozenImage.Source = src;
-            FrozenImage.Width = _bw;   // DIP=像素（_dpi=1）
-            FrozenImage.Height = _bh;
+            FrozenImage.Stretch = Stretch.Fill;
+            FrozenImage.Width = vsW;   // DIP 显示尺寸 = 虚拟屏逻辑尺寸
+            FrozenImage.Height = vsH;
         }
         finally { DeleteObject(hBmp); }
 
@@ -375,7 +378,7 @@ public partial class SnipOverlayWindow : Window
         for (int gx = 0; gx < LoupeN; gx++)
         {
             int i = gy * LoupeN + gx;
-            var cellColor = GetPixelAt(px + (gx - half), py + (gy - half));
+            var cellColor = GetPixelAt(px + (gx - half) / _dpi, py + (gy - half) / _dpi);
             _loupeBrushes[i].Color = cellColor;
         }
         Canvas.SetLeft(_loupeCenter, half * CellPx); Canvas.SetTop(_loupeCenter, half * CellPx);
@@ -491,9 +494,11 @@ public partial class SnipOverlayWindow : Window
     {
         var src = RenderSelection();
         if (src == null) return;
+        // 贴图初始显示尺寸 = 选区 DIP 尺寸（与屏幕上看到的一模一样大）
         double dipX = _sel.X + Left, dipY = _sel.Y + Top;
+        var savedSel = _sel;
         Close();
-        var pin = new PinWindow(src, dipX, dipY, _sel.Width, _sel.Height);
+        var pin = new PinWindow(src, dipX, dipY, savedSel.Width, savedSel.Height);
         pin.Show();
     }
 
