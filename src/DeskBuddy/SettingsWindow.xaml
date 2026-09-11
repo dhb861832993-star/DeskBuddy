@@ -154,6 +154,79 @@
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="FontSize" Value="12"/>
         </Style>
+
+        <!-- 深色 ComboBox：与主题一致的完整模板（默认模板是白色） -->
+        <Style x:Key="MacComboBox" TargetType="ComboBox">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="Background" Value="{DynamicResource BtnBg}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton x:Name="Toggle" Focusable="False" ClickMode="Press"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                          Background="{TemplateBinding Background}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="bd" CornerRadius="8" Background="{Binding Background, RelativeSource={RelativeSource TemplatedParent}}"
+                                                BorderBrush="{DynamicResource CardBorder}" BorderThickness="1">
+                                            <Path Data="M 0 0 L 4 4 L 8 0 Z" Fill="{DynamicResource TextSecondary}"
+                                                  HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource BtnBgHover}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <ContentPresenter x:Name="SelectedText" Margin="10,0,26,0" VerticalAlignment="Center"
+                                              Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              TextElement.Foreground="{DynamicResource TextPrimary}"/>
+                            <Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom"
+                                   AllowsTransparency="True" StaysOpen="False" Margin="0,4,0,0">
+                                <Border CornerRadius="10" Background="{DynamicResource CardBg}"
+                                        BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="4" MinWidth="{TemplateBinding ActualWidth}">
+                                    <ScrollViewer MaxHeight="220">
+                                        <ItemsPresenter/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ComboBoxItem 深色样式 -->
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="bd" CornerRadius="7" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource BtnBgHover}"/>
+                            </Trigger>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource BtnBgHover}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Border x:Name="RootCard" CornerRadius="24" BorderThickness="1"
@@ -342,10 +415,7 @@
 
                                 <TextBlock Text="搜索后端" Style="{StaticResource FieldLabel}" Margin="0,12,0,4"/>
                                 <ComboBox x:Name="SearchBackendBox" Height="30" FontSize="12"
-                                          Foreground="{DynamicResource TextPrimary}"
-                                          Background="{DynamicResource BtnBg}"
-                                          BorderBrush="{DynamicResource CardBorder}"
-                                          VerticalContentAlignment="Center">
+                                          Style="{StaticResource MacComboBox}">
                                     <ComboBoxItem Tag="auto" Content="自动（优先自有 USN 引擎，其次 Windows Search，最后内置索引）"/>
                                     <ComboBoxItem Tag="usn" Content="自有索引引擎（USN，不依赖 Windows Search，秒级全盘）"/>
                                     <ComboBoxItem Tag="wsearch" Content="Windows Search 系统索引"/>
