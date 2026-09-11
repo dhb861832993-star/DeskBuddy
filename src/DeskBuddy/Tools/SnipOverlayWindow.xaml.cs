@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -69,14 +70,34 @@ public partial class SnipOverlayWindow : Window
         Focus();
     }
 
-    // ==================== 截屏（冻结） ====================
-    [DllImport("gdi32.dll")] private static extern int GetDeviceCaps(IntPtr hdc, int index);
+    // ==================== 截屏（冻结，多屏混合 DPI 正确版） ====================
     [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hwnd);
     [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
+    [DllImport("gdi32.dll")] private static extern int GetDeviceCaps(IntPtr hdc, int index);
+    [DllImport("user32.dll")] private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr clipRect, MonitorEnumProc lpfnEnum, IntPtr dwData);
+    private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
+    [StructLayout(LayoutKind.Sequential)] private struct RECT { public int L, T, R, B; }
+    [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+    [StructLayout(LayoutKind.Sequential)] private struct MONITORINFO { public int cbSize; public RECT rcMonitor; public RECT rcWork; public int dwFlags; }
+
+    /// <summary>每个显示器的映射：DIP(逻辑)矩形 ↔ 物理像素矩形 ↔ 每屏DPI。</summary>
+    private sealed class MonMap { public Rect Dip; public SD.Rectangle Phys; public double Dpi; }
+    private readonly List<MonMap> _mons = new();
+
+    // EnumDisplayMonitors 回调（字段防 GC）
+    private static bool CollectPhys(IntPtr hMon, IntPtr hdcMon, ref RECT r, IntPtr data)
+    {
+        var act = (Action<RECT>)GCHandle.FromIntPtr(data).Target!;
+        act(r);
+        return true;
+    }
+    private MonitorEnumProc? _physProc;
+    private Action<RECT>? _physCollector;
+    private GCHandle _gcHandle;
 
     private void CaptureScreen()
     {
-        // 先完全隐藏自身再截屏，避免截到本窗口（否则全屏是黑的）
+        // 先完全隐藏自身再截屏，避免截到本窗口
         Opacity = 0;
         Show();
         DoEvents();
@@ -85,25 +106,59 @@ public partial class SnipOverlayWindow : Window
         var vsY = SystemParameters.VirtualScreenTop;
         var vsW = SystemParameters.VirtualScreenWidth;
         var vsH = SystemParameters.VirtualScreenHeight;
-
-        // 实际 DPI 缩放（主屏真实像素 / 逻辑 DIP）
-        IntPtr hdc = GetDC(IntPtr.Zero);
-        double physW = GetDeviceCaps(hdc, 118);   // DESKTOPHORZRES 真实像素宽
-        int gdiDpi = GetDeviceCaps(hdc, 88);      // LOGPIXELSX
-        ReleaseDC(IntPtr.Zero, hdc);
-        _dpi = (physW > 0 && vsW > 0) ? physW / vsW : (gdiDpi > 0 ? gdiDpi / 96.0 : 1.0);
-        if (_dpi <= 0.01) _dpi = 1.0;
-
         _winW = vsW; _winH = vsH;
-        _bw = Math.Max(1, (int)Math.Round(vsW * _dpi));
-        _bh = Math.Max(1, (int)Math.Round(vsH * _dpi));
 
-        // 全虚拟屏物理像素截图（一次截取，坐标 = 虚拟屏原点的物理像素）
+        // 逐显示器：物理像素 RECT（EnumDisplayMonitors 是物理坐标）
+        var physList = new List<SD.Rectangle>();
+        _physCollector = r2 => physList.Add(new SD.Rectangle(r2.L, r2.T, r2.R - r2.L, r2.B - r2.T));
+        _physProc = CollectPhys;
+        _gcHandle = GCHandle.Alloc(_physCollector);
+        try { EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, _physProc, GCHandle.ToIntPtr(_gcHandle)); }
+        finally { _gcHandle.Free(); }
+
+        // DIP 逻辑矩形：WinForms.Screen（虚拟化坐标）
+        var dipScreens = System.Windows.Forms.Screen.AllScreens;
+
+        // 建立 DIP↔物理 映射（按面积最近匹配）
+        _mons.Clear();
+        foreach (var scr in dipScreens)
+        {
+            var dip = new Rect(scr.Bounds.X, scr.Bounds.Y, scr.Bounds.Width, scr.Bounds.Height);
+            // 找物理矩形：DIP 原点在副屏(无缩放)物理=DIP；主屏物理=DIP×scale
+            SD.Rectangle best = default; double bestD = double.MaxValue;
+            foreach (var r in physList)
+            {
+                double d = Math.Abs(r.X - dip.X) + Math.Abs(r.Y - dip.Y) + Math.Abs(r.Width - Math.Max(dip.Width, r.Width)) + Math.Abs(r.Height - Math.Max(dip.Height, r.Height));
+                if (d < bestD) { bestD = d; best = r; }
+            }
+            var dpiX = dip.Width > 0 ? best.Width / dip.Width : 1.0;
+            var dpiY = dip.Height > 0 ? best.Height / dip.Height : 1.0;
+            var dpi = (dpiX + dpiY) / 2;
+            if (dpi <= 0.01) dpi = 1.0;
+            _mons.Add(new MonMap { Dip = dip, Phys = best, Dpi = dpi });
+        }
+
+        // 全屏位图：DIP 网格尺寸（每屏按各自 DPI 采样物理像素）
+        _bw = Math.Max(1, (int)Math.Round(vsW));
+        _bh = Math.Max(1, (int)Math.Round(vsH));
         _bmp = new SD.Bitmap(_bw, _bh);
         using (var bg = SD.Graphics.FromImage(_bmp))
         {
-            bg.CopyFromScreen((int)Math.Round(vsX * _dpi), (int)Math.Round(vsY * _dpi), 0, 0, new SD.Size(_bw, _bh));
+            bg.PixelOffsetMode = SD.Drawing2D.PixelOffsetMode.Half;   // 物理像素 → DIP 网格半像素对齐
+            foreach (var m in _mons)
+            {
+                using var monBmp = new SD.Bitmap(m.Phys.Width, m.Phys.Height);
+                using (var mg = SD.Graphics.FromImage(monBmp))
+                {
+                    mg.CopyFromScreen(m.Phys.X, m.Phys.Y, 0, 0, new SD.Size(m.Phys.Width, m.Phys.Height));
+                }
+                // 画到 DIP 网格：位置 = 该屏 DIP 原点 - 虚拟屏原点；尺寸 = 该屏 DIP 尺寸
+                var dx = (float)(m.Dip.X - vsX);
+                var dy = (float)(m.Dip.Y - vsY);
+                bg.DrawImage(monBmp, dx, dy, (float)m.Dip.Width, (float)m.Dip.Height);
+            }
         }
+        _dpi = 1.0;   // 位图与 DIP 1:1（取色直接用 DIP 坐标）
 
         // 像素缓存（放大镜取色）
         var data = _bmp.LockBits(new SD.Rectangle(0, 0, _bw, _bh), SD.Imaging.ImageLockMode.ReadOnly, SD.Imaging.PixelFormat.Format32bppArgb);
@@ -112,7 +167,7 @@ public partial class SnipOverlayWindow : Window
         System.Runtime.InteropServices.Marshal.Copy(data.Scan0, _px, 0, _px.Length);
         _bmp.UnlockBits(data);
 
-        // 显示冻结层：位图按 _dpi 拉伸到 DIP 尺寸，与屏幕 1:1 对齐（不偏移）
+        // 显示冻结层（1:1，不缩放）
         IntPtr hBmp = _bmp.GetHbitmap();
         try
         {
@@ -120,7 +175,7 @@ public partial class SnipOverlayWindow : Window
             src.Freeze();
             FrozenImage.Source = src;
             FrozenImage.Stretch = Stretch.Fill;
-            FrozenImage.Width = vsW;   // DIP 显示尺寸 = 虚拟屏逻辑尺寸
+            FrozenImage.Width = vsW;
             FrozenImage.Height = vsH;
         }
         finally { DeleteObject(hBmp); }
@@ -142,7 +197,7 @@ public partial class SnipOverlayWindow : Window
     private Color GetPixelAt(double dipX, double dipY)
     {
         if (_px == null) return Colors.Transparent;
-        int x = (int)Math.Round(dipX * _dpi), y = (int)Math.Round(dipY * _dpi);
+        int x = (int)Math.Round(dipX), y = (int)Math.Round(dipY);
         x = Math.Clamp(x, 0, _bw - 1); y = Math.Clamp(y, 0, _bh - 1);
         int i = y * _stride + x * 4;
         return Color.FromArgb(_px[i + 3], _px[i + 2], _px[i + 1], _px[i]);
@@ -344,7 +399,7 @@ public partial class SnipOverlayWindow : Window
             var hx = new[] { sel.X, sel.X + sel.Width / 2, sel.Right, sel.Right, sel.Right, sel.X + sel.Width / 2, sel.X, sel.X };
             var hy = new[] { sel.Y, sel.Y, sel.Y, sel.Y + sel.Height / 2, sel.Bottom, sel.Bottom, sel.Bottom, sel.Y + sel.Height / 2 };
             for (int i = 0; i < 8; i++) { Canvas.SetLeft(_handles[i], hx[i] - 4.5); Canvas.SetTop(_handles[i], hy[i] - 4.5); }
-            _sizeLabel.Text = $"{(int)Math.Round(sel.Width * _dpi)} × {(int)Math.Round(sel.Height * _dpi)}";
+            _sizeLabel.Text = $"{(int)Math.Round(sel.Width)} × {(int)Math.Round(sel.Height)}";
             if (_sizeLabel.Tag is Border sbg)
             {
                 double lx = sel.X; double ly = sel.Y - 30;
@@ -378,7 +433,7 @@ public partial class SnipOverlayWindow : Window
         for (int gx = 0; gx < LoupeN; gx++)
         {
             int i = gy * LoupeN + gx;
-            var cellColor = GetPixelAt(px + (gx - half) / _dpi, py + (gy - half) / _dpi);
+            var cellColor = GetPixelAt(px + (gx - half), py + (gy - half));
             _loupeBrushes[i].Color = cellColor;
         }
         Canvas.SetLeft(_loupeCenter, half * CellPx); Canvas.SetTop(_loupeCenter, half * CellPx);
@@ -445,11 +500,12 @@ public partial class SnipOverlayWindow : Window
 
     // ==================== 输出 ====================
     /// <summary>从全屏截图中截取选区（像素精确）。</summary>
+    /// <summary>从冻结层截取选区（位图与 DIP 1:1）。</summary>
     private BitmapSource? RenderSelection()
     {
         if (_bmp == null || !_hasSel) return null;
-        int x = (int)Math.Round(_sel.X * _dpi), y = (int)Math.Round(_sel.Y * _dpi);
-        int w = (int)Math.Round(_sel.Width * _dpi), h = (int)Math.Round(_sel.Height * _dpi);
+        int x = (int)Math.Round(_sel.X), y = (int)Math.Round(_sel.Y);
+        int w = (int)Math.Round(_sel.Width), h = (int)Math.Round(_sel.Height);
         x = Math.Clamp(x, 0, _bw - 1); y = Math.Clamp(y, 0, _bh - 1);
         w = Math.Clamp(w, 1, _bw - x); h = Math.Clamp(h, 1, _bh - y);
         using var part = _bmp.Clone(new SD.Rectangle(x, y, w, h), _bmp.PixelFormat);
