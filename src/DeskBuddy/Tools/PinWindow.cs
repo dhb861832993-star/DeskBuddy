@@ -13,6 +13,7 @@ public sealed class PinWindow : Window
 {
     private readonly Image _image;
     private readonly BitmapSource _src;
+    private readonly double _baseW, _baseH;   // 初始显示尺寸（缩放基准）
     private double _scale = 1.0;
     private bool _dragging; private Point _dragStart; private Point _winStart;
 
@@ -28,6 +29,7 @@ public sealed class PinWindow : Window
         ShowActivated = false;
         Left = x; Top = y;
         Width = Math.Max(24, w); Height = Math.Max(24, h);
+        _baseW = Width; _baseH = Height;
 
         var host = new Border
         {
@@ -96,23 +98,19 @@ public sealed class PinWindow : Window
 
     private void OnWheel(object s, MouseWheelEventArgs e)
     {
-        double f = e.Delta > 0 ? 1.15 : 1 / 1.15;
+        double f = e.Delta > 0 ? 1.18 : 1 / 1.18;
         SetScale(_scale * f);
         e.Handled = true;
     }
 
     private void SetScale(double s)
     {
-        _scale = Math.Clamp(s, 0.15, 8.0);
-        // 以图片显示尺寸缩放（保持拉伸比例）
-        double baseW = _src.PixelWidth, baseH = _src.PixelHeight;
-        var ratio = Math.Min(Width / baseW, Height / baseH);
-        double newW = baseW * _scale * (ratio > 0 ? ratio / _scale * _scale : 1);
-        // 简化：直接按当前尺寸乘缩放增量，围绕中心
-        newW = Width * _scale;
-        double newH = Height * _scale;
-        if (newW < 30 || newH < 30 || newW > 4000 || newH > 4000) return;
-        double cx = Left + Width / 2, cy = Top + Height / 2;
+        // 修复：缩放必须基于「初始尺寸 × 倍率」，而不是当前尺寸（否则只能缩小、一放大就超限）
+        s = Math.Clamp(s, 0.15, 8.0);
+        double newW = _baseW * s, newH = _baseH * s;
+        if (newW < 24 || newH < 24 || newW > 8000 || newH > 8000) return;
+        _scale = s;
+        double cx = Left + Width / 2, cy = Top + Height / 2;   // 围绕中心缩放
         Width = newW; Height = newH;
         Left = cx - newW / 2; Top = cy - newH / 2;
     }

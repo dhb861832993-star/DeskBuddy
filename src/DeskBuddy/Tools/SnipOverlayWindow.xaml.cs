@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Interop;
+using System.Windows.Threading;
 using SD = System.Drawing;
 
 namespace DeskBuddy.Tools;
@@ -41,8 +42,10 @@ public partial class SnipOverlayWindow : Window
     // 放大镜
     private readonly Canvas _loupe = new();
     private readonly Rectangle[] _loupeCells = new Rectangle[LoupeN * LoupeN];
+    private readonly SolidColorBrush[] _loupeBrushes = new SolidColorBrush[LoupeN * LoupeN];  // 复用（防抖动）
     private readonly Rectangle _loupeCenter = new();
     private readonly TextBlock _loupeText = new();
+    private string _lastLoupeText = "";
     private const int LoupeN = 9;          // 9x9 网格
     private const int CellPx = 12;         // 每格像素
 
@@ -69,26 +72,36 @@ public partial class SnipOverlayWindow : Window
     // ==================== 截屏（冻结） ====================
     private void CaptureScreen()
     {
+        // 先完全隐藏自身再截屏，避免截到本窗口（否则全屏是黑的）
+        Opacity = 0;
+        Show();
+        // 等窗口真正完成一次渲染（此时透明，桌面无遮挡）
+        DoEvents();
+
         var vsX = SystemParameters.VirtualScreenLeft;
         var vsY = SystemParameters.VirtualScreenTop;
         var vsW = SystemParameters.VirtualScreenWidth;
         var vsH = SystemParameters.VirtualScreenHeight;
-        Left = vsX; Top = vsY;
-        _winW = vsW; _winH = vsH;
-        Width = vsW; Height = vsH;
 
         using var g = SD.Graphics.FromHwnd(IntPtr.Zero);
         _dpi = g.DpiX / 96.0;
         if (_dpi <= 0) _dpi = 1.0;
 
-        _bw = Math.Max(1, (int)Math.Round(vsW * _dpi));
-        _bh = Math.Max(1, (int)Math.Round(vsH * _dpi));
+        _winW = vsW; _winH = vsH;
 
-        _bmp = new SD.Bitmap(_bw, _bh);
+        // 每个显示器单独截图（正确处理各自 DPI），拼到虚拟屏幕位图上
+        _bmp = new SD.Bitmap(Math.Max(1, (int)Math.Round(vsW)), Math.Max(1, (int)Math.Round(vsH)));
         using (var bg = SD.Graphics.FromImage(_bmp))
         {
-            bg.CopyFromScreen((int)Math.Round(vsX * _dpi), (int)Math.Round(vsY * _dpi), 0, 0, new SD.Size(_bw, _bh));
+            foreach (var screen in System.Windows.Forms.Screen.AllScreens)
+            {
+                // screen.Bounds 是像素；换算成 DIP 再除以该屏 DPI 后直接 CopyFromScreen 用像素坐标
+                var sb = screen.Bounds;
+                bg.CopyFromScreen(sb.X, sb.Y, sb.X - (int)Math.Round(vsX), sb.Y - (int)Math.Round(vsY), sb.Size);
+            }
         }
+        _bw = _bmp.Width; _bh = _bmp.Height;
+        _dpi = 1.0; // 位图与虚拟屏幕 DIP 1:1（各屏已按像素铺到 DIP 网格）
 
         // 像素缓存（放大镜取色）
         var data = _bmp.LockBits(new SD.Rectangle(0, 0, _bw, _bh), SD.Imaging.ImageLockMode.ReadOnly, SD.Imaging.PixelFormat.Format32bppArgb);
@@ -104,10 +117,21 @@ public partial class SnipOverlayWindow : Window
             var src = Imaging.CreateBitmapSourceFromHBitmap(hBmp, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
             src.Freeze();
             FrozenImage.Source = src;
-            FrozenImage.Width = _bw / _dpi;   // 像素 → DIP 显示
-            FrozenImage.Height = _bh / _dpi;
+            FrozenImage.Width = _bw;   // DIP=像素（_dpi=1）
+            FrozenImage.Height = _bh;
         }
         finally { DeleteObject(hBmp); }
+
+        Left = vsX; Top = vsY;
+        Width = vsW; Height = vsH;
+        Opacity = 1;
+    }
+
+    private static void DoEvents()
+    {
+        var frame = new DispatcherFrame();
+        System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => frame.Continue = false));
+        Dispatcher.PushFrame(frame);
     }
 
     [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr hObject);
@@ -150,13 +174,15 @@ public partial class SnipOverlayWindow : Window
         _loupe.IsHitTestVisible = false;
         for (int i = 0; i < LoupeN * LoupeN; i++)
         {
-            var cell = new Rectangle { Width = CellPx, Height = CellPx, Stroke = new SolidColorBrush(Color.FromArgb(0x33, 0x00, 0x00, 0x00)), StrokeThickness = 0.5 };
+            _loupeBrushes[i] = new SolidColorBrush(Colors.Black);
+            var cell = new Rectangle { Width = CellPx, Height = CellPx, Fill = _loupeBrushes[i], Stroke = new SolidColorBrush(Color.FromArgb(0x33, 0x00, 0x00, 0x00)), StrokeThickness = 0.5 };
             _loupeCells[i] = cell; _loupe.Children.Add(cell);
         }
         _loupeCenter.Width = CellPx; _loupeCenter.Height = CellPx; _loupeCenter.Stroke = new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF)); _loupeCenter.StrokeThickness = 1.6; _loupeCenter.Fill = Brushes.Transparent;
         _loupe.Children.Add(_loupeCenter);
         _loupeText.Foreground = Brushes.White; _loupeText.FontSize = 11;
         _loupeText.TextAlignment = TextAlignment.Center;
+        _loupe.Width = LoupeN * CellPx; _loupe.Height = LoupeN * CellPx;
         var loupeBorder = new Border
         {
             Background = new SolidColorBrush(Color.FromArgb(0xE6, 0x1C, 0x1C, 0x1E)),
@@ -169,6 +195,7 @@ public partial class SnipOverlayWindow : Window
         OverlayCanvas.Children.Add(_loupe);
         OverlayCanvas.Children.Add(loupeBorder);
         _loupe.Tag = loupeBorder;
+        loupeBorder.Visibility = Visibility.Visible;
         UpdateVisuals(mouse: null);
     }
 
@@ -343,31 +370,29 @@ public partial class SnipOverlayWindow : Window
         double px = mp.X, py = mp.Y;
         // 中心颜色
         var c = GetPixelAt(px, py);
-        // 网格填色
+        // 网格填色（复用 brush，只改 Color，避免每帧重建→抖动）
         for (int gy = 0; gy < LoupeN; gy++)
         for (int gx = 0; gx < LoupeN; gx++)
         {
             int i = gy * LoupeN + gx;
-            var cellColor = GetPixelAt(px + (gx - half) / _dpi, py + (gy - half) / _dpi);
-            _loupeCells[i].Fill = new SolidColorBrush(cellColor);
+            var cellColor = GetPixelAt(px + (gx - half), py + (gy - half));
+            _loupeBrushes[i].Color = cellColor;
         }
-        _loupeCenter.Width = CellPx; _loupeCenter.Height = CellPx;
         Canvas.SetLeft(_loupeCenter, half * CellPx); Canvas.SetTop(_loupeCenter, half * CellPx);
         var panelSize = LoupeN * CellPx;
-        _loupe.Width = panelSize; _loupe.Height = panelSize;
-        // 文本：HEX + 坐标 + RGB
-        _loupeText.Text = $"#{c.R:X2}{c.G:X2}{c.B:X2}  RGB({c.R},{c.G},{c.B})\n({(int)Math.Round(px * _dpi)}, {(int)Math.Round(py * _dpi)})";
-        // 定位：鼠标右下方，越界翻转
+        // 文本：仅变化时更新（减少布局抖动）
+        var txt = $"#{c.R:X2}{c.G:X2}{c.B:X2}  RGB({c.R},{c.G},{c.B})\n({(int)Math.Round(px)}, {(int)Math.Round(py)})";
+        if (txt != _lastLoupeText) { _loupeText.Text = txt; _lastLoupeText = txt; }
+        // 定位：跟随鼠标但只按整像素吸附，减少亚像素抖动
         loupeBorder.Measure(new Size(_winW, _winH));
-        double lw = loupeBorder.DesiredSize.Width, lh = loupeBorder.DesiredSize.Height;
-        double lx = mp.X + 24, ly = mp.Y + 24;
-        if (lx + lw > _winW - 8) lx = mp.X - lw - 24;
-        if (ly + lh > _winH - 8) ly = mp.Y - lh - 24;
+        double lw = Math.Max(120, loupeBorder.DesiredSize.Width), lh = Math.Max(40, loupeBorder.DesiredSize.Height);
+        double lx = Math.Round(mp.X + 24), ly = Math.Round(mp.Y + 24);
+        if (lx + lw > _winW - 8) lx = Math.Round(mp.X - lw - 24);
+        if (ly + lh + panelSize + 20 > _winH - 8) ly = Math.Round(mp.Y - lh - panelSize - 32);
         if (lx < 8) lx = 8; if (ly < 8) ly = 8;
-        // 放大镜网格在信息面板内
+        // 网格在信息面板上方
         Canvas.SetLeft(_loupe, lx + 8); Canvas.SetTop(_loupe, ly + 8);
         Canvas.SetLeft(loupeBorder, lx); Canvas.SetTop(loupeBorder, ly + panelSize + 12);
-        loupeBorder.Visibility = Visibility.Visible;
     }
 
     // ==================== 操作条 ====================
