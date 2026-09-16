@@ -11,14 +11,19 @@ using System.Windows.Media.Imaging;
 namespace DeskBuddy.Tools;
 
 /// <summary>Snipaste 式贴图：置顶悬浮，拖动移动、滚轮以鼠标为锚点缩放、右键菜单、双击关闭。
-/// 定位用 SetWindowPos 物理像素直摆（PerMonitorV2 双屏混合 DPI 下不漂移）。</summary>
+/// 全程物理像素定位（SetWindowPos），150% DPI 下拖动/缩放不抖动。</summary>
 public sealed class PinWindow : Window
 {
     private readonly Image _image;
     private readonly BitmapSource _src;
-    private readonly double _baseW, _baseH;
+    private double _baseW, _baseH;
     private double _scale = 1.0;
-    private bool _dragging; private Point _dragStart; private Point _winStart;
+
+    // 物理像素状态（抖动的根源是 DIP 取整，全程用物理整数像素）
+    private int _px, _py, _pw, _ph;
+    private double _dpi = 1.0;
+
+    private bool _dragging; private Point _dragStart; private int _dragWinPX, _dragWinPY;
 
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndAfter, int x, int y, int cx, int cy, uint flags);
     private const uint SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010, SWP_SHOWWINDOW = 0x0040;
@@ -33,16 +38,19 @@ public sealed class PinWindow : Window
         ShowInTaskbar = false;
         ResizeMode = ResizeMode.NoResize;
         ShowActivated = false;
-        Left = x; Top = y;
-        Width = Math.Max(24, w); Height = Math.Max(24, h);
-        _baseW = Width; _baseH = Height;
 
         var host = new Border
         {
-            Background = Brushes.White,
-            BorderBrush = new SolidColorBrush(Color.FromArgb(0x44, 0x00, 0x00, 0x00)),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(2)
+            // 淡绿色渐变描边
+            BorderBrush = new LinearGradientBrush(
+                new GradientStopCollection {
+                    new GradientStop(Color.FromRgb(0x5C, 0xE8, 0xA0), 0),
+                    new GradientStop(Color.FromRgb(0x2E, 0xB8, 0x72), 0.5),
+                    new GradientStop(Color.FromRgb(0x7D, 0xF0, 0xB0), 1),
+                }, new Point(0, 0), new Point(1, 1)),
+            BorderThickness = new Thickness(2),
+            CornerRadius = new CornerRadius(3),
+            Background = Brushes.White
         };
         _image = new Image { Source = src, Stretch = Stretch.Uniform };
         host.Child = _image;
@@ -57,11 +65,14 @@ public sealed class PinWindow : Window
         Loaded += (_, _) =>
         {
             Focusable = true; Focus();
-            // 物理坐标直摆：把 WPF DIP 位置换算成物理像素（用窗口当前 DPI）
             var hnd = new WindowInteropHelper(this).Handle;
-            double dpi = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
-            SetWindowPos(hnd, IntPtr.Zero, (int)Math.Round(x * dpi), (int)Math.Round(y * dpi),
-                (int)Math.Round(w * dpi), (int)Math.Round(h * dpi), SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            _dpi = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+            if (_dpi <= 0.01) _dpi = 1.0;
+            // 初始：物理像素直摆
+            _pw = (int)Math.Round(w * _dpi); _ph = (int)Math.Round(h * _dpi);
+            _px = (int)Math.Round(x * _dpi); _py = (int)Math.Round(y * _dpi);
+            _baseW = w; _baseH = h;
+            SetWindowPos(hnd, IntPtr.Zero, _px, _py, _pw, _ph, SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
         };
         ContextMenu = BuildMenu();
     }
@@ -89,7 +100,7 @@ public sealed class PinWindow : Window
     {
         _dragging = true;
         _dragStart = e.GetPosition(this);
-        _winStart = new Point(Left, Top);
+        _dragWinPX = _px; _dragWinPY = _py;
         CaptureMouse();
         e.Handled = true;
     }
@@ -98,8 +109,12 @@ public sealed class PinWindow : Window
     {
         if (!_dragging) return;
         var p = e.GetPosition(this);
-        Left = _winStart.X + (p.X - _dragStart.X);
-        Top = _winStart.Y + (p.Y - _dragStart.Y);
+        // 拖动：物理像素整数位移（不抖）
+        int dx = (int)Math.Round((p.X - _dragStart.X) * _dpi);
+        int dy = (int)Math.Round((p.Y - _dragStart.Y) * _dpi);
+        var hnd = new WindowInteropHelper(this).Handle;
+        _px = _dragWinPX + dx; _py = _dragWinPY + dy;
+        SetWindowPos(hnd, IntPtr.Zero, _px, _py, _pw, _ph, SWP_NOZORDER | SWP_NOACTIVATE);
         e.Handled = true;
     }
 
@@ -113,22 +128,29 @@ public sealed class PinWindow : Window
     private void OnWheel(object s, MouseWheelEventArgs e)
     {
         double f = e.Delta > 0 ? 1.18 : 1 / 1.18;
-        // Snipaste 式：以鼠标位置为锚点缩放（鼠标下的点保持在原位）
-        SetScale(_scale * f, e.GetPosition(this));
+        // 以鼠标为锚点：鼠标下的物理点在缩放前后保持原位
+        var lp = e.GetPosition(this);
+        double ax = _pw > 0 ? lp.X * _dpi / _pw : 0.5;
+        double ay = _ph > 0 ? lp.Y * _dpi / _ph : 0.5;
+        SetScale(_scale * f, (ax, ay));
         e.Handled = true;
     }
 
-    private void SetScale(double s, Point? anchorLocal)
+    private void SetScale(double s, (double ax, double ay)? anchor)
     {
         s = Math.Clamp(s, 0.15, 8.0);
-        double newW = _baseW * s, newH = _baseH * s;
+        int newW = (int)Math.Round(_baseW * _dpi * s);
+        int newH = (int)Math.Round(_baseH * _dpi * s);
         if (newW < 24 || newH < 24 || newW > 8000 || newH > 8000) return;
-        double ax = 0.5, ay = 0.5;   // 默认围绕中心
-        if (anchorLocal is { } a) { ax = a.X / Math.Max(1, Width); ay = a.Y / Math.Max(1, Height); }
-        // 锚点（窗口内比例位置）在缩放前后保持同屏位置
-        double px = Left + Width * ax, py = Top + Height * ay;
+        double ax = anchor?.ax ?? 0.5, ay = anchor?.ay ?? 0.5;
+        // 锚点物理坐标（窗口内比例 × 当前物理尺寸 + 窗口物理原点）
+        int apx = _px + (int)Math.Round(_pw * ax);
+        int apy = _py + (int)Math.Round(_ph * ay);
         _scale = s;
-        Width = newW; Height = newH;
-        Left = px - newW * ax; Top = py - newH * ay;
+        _pw = newW; _ph = newH;
+        _px = apx - (int)Math.Round(newW * ax);
+        _py = apy - (int)Math.Round(newH * ay);
+        var hnd = new WindowInteropHelper(this).Handle;
+        SetWindowPos(hnd, IntPtr.Zero, _px, _py, _pw, _ph, SWP_NOZORDER | SWP_NOACTIVATE);
     }
 }

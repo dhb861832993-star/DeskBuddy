@@ -322,7 +322,7 @@ public partial class SnipOverlayWindow : Window
         var d = source as DependencyObject;
         while (d != null)
         {
-            if (ReferenceEquals(d, _toolbar)) return true;
+            if (ReferenceEquals(d, _toolbar)) { DebugLog.Write("[SNIP] from-toolbar hit"); return true; }
             d = System.Windows.Media.VisualTreeHelper.GetParent(d);
         }
         return false;
@@ -330,7 +330,8 @@ public partial class SnipOverlayWindow : Window
 
     private void OnMouseLeftDown(object s, MouseButtonEventArgs e)
     {
-        if (FromToolbar(e.OriginalSource)) { e.Handled = true; return; }   // 工具条内部：放行其 Click
+        // 工具条内部：完全放行（不设 Handled，让按钮的 MouseDown/Up→Click 正常工作）
+        if (FromToolbar(e.OriginalSource)) return;
         var host = HostOf(s); if (host == null) return;
         var vp = ToVirtual(host, e.GetPosition(host.Win));
         _uiHost = host;
@@ -408,7 +409,7 @@ public partial class SnipOverlayWindow : Window
 
     private void OnMouseLeftUp(object s, MouseButtonEventArgs e)
     {
-        if (FromToolbar(e.OriginalSource)) { e.Handled = true; return; }  // 按钮抬起交给 Click
+        if (FromToolbar(e.OriginalSource)) return;  // 按钮抬起交给按钮自己（Click 需要）
         var host = HostOf(s); if (host == null) return;
         bool was = _drawing || _dragKind > 0;
         _drawing = false; _dragKind = 0;
@@ -608,13 +609,15 @@ public partial class SnipOverlayWindow : Window
             Content = new TextBlock { Text = glyph, FontSize = 15 },
             ToolTip = tip,
             Foreground = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF5)),
-            Background = Brushes.Transparent,
+            Background = new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x2E)),
             BorderThickness = new Thickness(0),
             Padding = new Thickness(9, 5, 9, 5),
             Cursor = Cursors.Hand,
             Focusable = false
         };
-        b.Click += (s, e) => { act(); e.Handled = true; };
+        // 双保险：Click 正常走 + 预览抬起直接触发（鼠标捕获残留也能点中）
+        b.Click += (s, e) => { DebugLog.Write("[SNIP] toolbtn click"); act(); e.Handled = true; };
+        b.PreviewMouseLeftButtonUp += (s, e) => { if (b.IsMouseOver) { DebugLog.Write("[SNIP] toolbtn previewup"); act(); e.Handled = true; } };
         return b;
     }
 
@@ -639,10 +642,15 @@ public partial class SnipOverlayWindow : Window
     private void SaveSelection()
     {
         var src = RenderSelection(); if (src == null) return;
+        // 注意：this 是 0x0 隐藏宿主，不能作 Owner——用当前活动的屏覆盖窗口
+        var owner = _uiHost?.Win ?? _mw.FirstOrDefault()?.Win;
         var dlg = new Microsoft.Win32.SaveFileDialog { Filter = "PNG 图片 (*.png)|*.png", Title = "保存截图", FileName = "截图_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") };
-        if (dlg.ShowDialog(this) != true) return;
+        bool? ok;
+        if (owner != null) ok = dlg.ShowDialog(owner);
+        else ok = dlg.ShowDialog();
+        if (ok != true) return;
         try { var enc = new PngBitmapEncoder(); enc.Frames.Add(BitmapFrame.Create(src)); using var fs = File.Create(dlg.FileName); enc.Save(fs); CloseAll(); }
-        catch (Exception ex) { MessageBox.Show(this, "保存失败：" + ex.Message, "错误"); }
+        catch (Exception ex) { MessageBox.Show(owner, "保存失败：" + ex.Message, "错误"); }
     }
 
     private void PinSelection()
