@@ -94,31 +94,44 @@ public sealed class PinWindow : Window
 
     private IntPtr Hnd => new WindowInteropHelper(this).Handle;
 
-    /// <summary>物理像素直摆 + 同步 WPF DIP（消除 Win32 与 WPF 两套位置打架导致的抖动）。</summary>
+    /// <summary>物理像素直摆（唯一位置出口）。
+    /// 抖动根因：WPF 对 Left/Top 赋值会触发自己的 MoveWindow，与 SetWindowPos 竞争 → 跳变。
+    /// 解法：完全不用 WPF 定位（赋值会打架），只走 SetWindowPos；WPF 的 Left/Top 从不主动改。
+    /// 拖拽期间更不能碰 WPF 布局属性。</summary>
     private void MovePhys(int x, int y, int w, int h)
     {
         _px = x; _py = y; _pw = w; _ph = h;
         SetWindowPos(Hnd, IntPtr.Zero, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
-        // 关键：同步 WPF 期望值，否则 WPF 会用自己的 Left/Top 再摆一次（互相打架→抖动）
-        Left = x / _dpi; Top = y / _dpi; Width = w / _dpi; Height = h / _dpi;
     }
 
     private void OnDown(object s, MouseButtonEventArgs e)
     {
         _dragging = true;
-        _dragStart = e.GetPosition(this);
+        // 用屏幕物理坐标做拖拽基准（窗口移动时 GetPosition(this) 会跟着变，不能用）
+        _dragStartScreen = GetCursorPosPhys();
         _dragWinPX = _px; _dragWinPY = _py;
         CaptureMouse();
         e.Handled = true;
     }
 
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT lpPoint);
+    [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
+    private Point _dragStartScreen;
+
+    private static Point GetCursorPosPhys()
+    {
+        GetCursorPos(out var p);
+        return new Point(p.X, p.Y);
+    }
+
     private void OnMove(object s, MouseEventArgs e)
     {
         if (!_dragging) return;
-        var p = e.GetPosition(this);
-        int dx = (int)Math.Round((p.X - _dragStart.X) * _dpi);
-        int dy = (int)Math.Round((p.Y - _dragStart.Y) * _dpi);
-        MovePhys(_dragWinPX + dx, _dragWinPY + dy, _pw, _ph);
+        var cur = GetCursorPosPhys();
+        // 物理像素整数位移（基于屏幕坐标，不受窗口自身移动影响 → 零抖动）
+        MovePhys(_dragWinPX + (int)Math.Round(cur.X - _dragStartScreen.X),
+                _dragWinPY + (int)Math.Round(cur.Y - _dragStartScreen.Y),
+                _pw, _ph);
         e.Handled = true;
     }
 
@@ -132,10 +145,10 @@ public sealed class PinWindow : Window
     private void OnWheel(object s, MouseWheelEventArgs e)
     {
         double f = e.Delta > 0 ? 1.18 : 1 / 1.18;
-        // 以鼠标为锚点：鼠标下的物理点在缩放前后保持原位
-        var lp = e.GetPosition(this);
-        double ax = _pw > 0 ? lp.X * _dpi / _pw : 0.5;
-        double ay = _ph > 0 ? lp.Y * _dpi / _ph : 0.5;
+        // 以鼠标为锚点：鼠标物理屏幕坐标下的点在缩放前后保持原位
+        var cur = GetCursorPosPhys();
+        double ax = _pw > 0 ? (cur.X - _px) / _pw : 0.5;
+        double ay = _ph > 0 ? (cur.Y - _py) / _ph : 0.5;
         SetScale(_scale * f, (ax, ay));
         e.Handled = true;
     }

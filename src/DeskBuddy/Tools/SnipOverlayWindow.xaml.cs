@@ -82,9 +82,14 @@ public partial class SnipOverlayWindow : Window
 
     private void OnLoaded(object s, RoutedEventArgs e)
     {
-        CaptureScreens();
+        CaptureScreensFast();
         InitVisuals();
         Focusable = true; Focus();
+        // 重活后置：取色网格位图 + 像素缓存（不挡截屏显示）
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            try { BuildPixelGrid(); } catch { }
+        }));
     }
 
     // ==================== Win32 ====================
@@ -100,11 +105,13 @@ public partial class SnipOverlayWindow : Window
         return true;
     }
 
-    // ==================== 截屏（每屏独立，物理 1:1，Win32 直摆） ====================
+    // ==================== 截屏（每屏独立，物理 1:1，Win32 直摆；快路径） ====================
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndAfter, int x, int y, int cx, int cy, uint flags);
     private const uint SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010, SWP_SHOWWINDOW = 0x0040;
 
-    private void CaptureScreens()
+    private readonly List<(MonWindow MW, SD.Bitmap Bmp)> _shots = new();
+
+    private void CaptureScreensFast()
     {
         // 1) 物理屏矩形（DeskBuddy PerMonitorV2 → EnumDisplayMonitors = 真物理）
         var physRects = new List<SD.Rectangle>();
@@ -114,17 +121,19 @@ public partial class SnipOverlayWindow : Window
         finally { gc.Free(); }
         foreach (var r in physRects) DebugLog.Write($"[SNIP] phys: {r.X},{r.Y} {r.Width}x{r.Height}");
 
-        // 2) WPF 虚拟屏 DIP（SystemParameters 在 PerMonitorV2 = 主屏 DPI 下的全局 DIP）
+        // 2) 主屏 DPI（从已枚举的物理矩形算，不再重复枚举）
+        var mainPhys = physRects.FirstOrDefault(r => r.X == 0 && r.Y == 0);
+        var mainDipW = SystemParameters.PrimaryScreenWidth;
+        double mainDpi = (mainPhys.Width > 0 && mainDipW > 0) ? mainPhys.Width / mainDipW : 1.0;
         _vsX = SystemParameters.VirtualScreenLeft;
         _vsY = SystemParameters.VirtualScreenTop;
         _winW = SystemParameters.VirtualScreenWidth;
         _winH = SystemParameters.VirtualScreenHeight;
-        double mainDpi = ScreenHelper.MainDpi;   // 主屏 DPI（SystemParameters 以此为基准）
         DebugLog.Write($"[SNIP] virtualDIP: {_vsX},{_vsY} {_winW}x{_winH} mainDpi={mainDpi}");
 
         _mw.Clear();
+        _shots.Clear();
         int wi = 0;
-        var screenShots = new List<(MonWindow MW, SD.Bitmap Bmp)>();
         foreach (var phys in physRects)
         {
             double dpi = mainDpi;
@@ -163,7 +172,7 @@ public partial class SnipOverlayWindow : Window
             win.Show();
             var mw = new MonWindow { Win = win, Img = img, Canvas = canvas, Dip = dip, MainDpi = mainDpi, Phys = phys };
             _mw.Add(mw);
-            screenShots.Add((mw, bmp));
+            _shots.Add((mw, bmp));
             wi++;
         }
         // 统一虚拟 DIP 视界（供选区/取色）：从所有屏 dip 推总
@@ -172,15 +181,18 @@ public partial class SnipOverlayWindow : Window
         _vsX = allX; _vsY = allY;
         _winW = _mw.Select(m => m.Dip.Right).DefaultIfEmpty(0).Max() - allX;
         _winH = _mw.Select(m => m.Dip.Bottom).DefaultIfEmpty(0).Max() - allY;
-        DebugLog.Write($"[SNIP] final virtualDIP: {_vsX},{_vsY} {_winW}x{_winH}");
+        DebugLog.Write($"[SNIP] final virtualDIP: {_vsX},{_vsY} {_winW}x{_winH} (fast path done)");
+    }
 
-        // 全屏 DIP 网格位图（取色/输出用）：复用已截图，重采样一次
+    /// <summary>取色/输出用的全屏 DIP 网格位图 + 像素缓存（后台构建，不挡截屏显示）。</summary>
+    private void BuildPixelGrid()
+    {
         _bw = Math.Max(1, (int)Math.Round(_winW));
         _bh = Math.Max(1, (int)Math.Round(_winH));
         _bmp = new SD.Bitmap(_bw, _bh);
         using (var bg = SD.Graphics.FromImage(_bmp))
         {
-            foreach (var (m, mb) in screenShots)
+            foreach (var (m, mb) in _shots)
             {
                 var dx = (float)(m.Dip.X - _vsX);
                 var dy = (float)(m.Dip.Y - _vsY);
@@ -194,29 +206,7 @@ public partial class SnipOverlayWindow : Window
         _px = new byte[Math.Abs(data.Stride) * _bh];
         Marshal.Copy(data.Scan0, _px, 0, _px.Length);
         _bmp.UnlockBits(data);
-    }
-
-    /// <summary>主屏 DPI（96 基准）。</summary>
-    private static class ScreenHelper
-    {
-        public static double MainDpi
-        {
-            get
-            {
-                var vsW = SystemParameters.VirtualScreenWidth;
-                // 主屏物理宽：遍历物理矩形取 X=0 起点的
-                var rects = new List<SD.Rectangle>();
-                var act = (Action<RECT>)(r => rects.Add(new SD.Rectangle(r.L, r.T, r.R - r.L, r.B - r.T)));
-                var gc = GCHandle.Alloc(act);
-                try { EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, CollectPhys, GCHandle.ToIntPtr(gc)); }
-                finally { gc.Free(); }
-                var mainPhys = rects.FirstOrDefault(r => r.X == 0 && r.Y == 0);
-                // 主屏 DIP 宽 = VirtualScreenWidth 里的主屏部分；主屏 DIP = PrimaryScreenWidth
-                var mainDipW = SystemParameters.PrimaryScreenWidth;
-                if (mainPhys.Width > 0 && mainDipW > 0) return mainPhys.Width / mainDipW;
-                return 1.0;
-            }
-        }
+        DebugLog.Write("[SNIP] pixel grid ready");
     }
 
     private static BitmapSource ToSource(SD.Bitmap bmp)
