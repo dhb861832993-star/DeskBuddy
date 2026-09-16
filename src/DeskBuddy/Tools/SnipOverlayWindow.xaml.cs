@@ -316,8 +316,21 @@ public partial class SnipOverlayWindow : Window
         return _mw.FirstOrDefault(m => ReferenceEquals(m.Win, w));
     }
 
+    /// <summary>事件源是否在工具条内（工具条有自己的 Click 逻辑，画布不得拦截）。</summary>
+    private bool FromToolbar(object source)
+    {
+        var d = source as DependencyObject;
+        while (d != null)
+        {
+            if (ReferenceEquals(d, _toolbar)) return true;
+            d = System.Windows.Media.VisualTreeHelper.GetParent(d);
+        }
+        return false;
+    }
+
     private void OnMouseLeftDown(object s, MouseButtonEventArgs e)
     {
+        if (FromToolbar(e.OriginalSource)) { e.Handled = true; return; }   // 工具条内部：放行其 Click
         var host = HostOf(s); if (host == null) return;
         var vp = ToVirtual(host, e.GetPosition(host.Win));
         _uiHost = host;
@@ -339,6 +352,7 @@ public partial class SnipOverlayWindow : Window
 
     private void OnMouseMove(object s, MouseEventArgs e)
     {
+        if (FromToolbar(e.OriginalSource)) return;
         var host = HostOf(s); if (host == null) return;
         var vp = ToVirtual(host, e.GetPosition(host.Win));
         _uiHost = host;
@@ -394,6 +408,7 @@ public partial class SnipOverlayWindow : Window
 
     private void OnMouseLeftUp(object s, MouseButtonEventArgs e)
     {
+        if (FromToolbar(e.OriginalSource)) { e.Handled = true; return; }  // 按钮抬起交给 Click
         var host = HostOf(s); if (host == null) return;
         bool was = _drawing || _dragKind > 0;
         _drawing = false; _dragKind = 0;
