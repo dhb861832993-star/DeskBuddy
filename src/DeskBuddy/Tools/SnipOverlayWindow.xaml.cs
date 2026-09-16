@@ -26,11 +26,11 @@ public partial class SnipOverlayWindow : Window
     private sealed class MonWindow
     {
         public required Window Win;
-        public required Image Img;          // 冻结层（该屏物理像素，1:1）
-        public required Canvas Canvas;     // 选区绘制
-        public Rect Dip;                   // 该屏在虚拟屏 DIP 中的矩形
-        public double Dpi;                 // 该屏 DPI
-        public SD.Rectangle Phys;          // 该屏物理像素矩形（DeskBuddy 进程 PerMonitorV2 → 真物理）
+        public required Image Img;
+        public required Canvas Canvas;
+        public Rect Dip;                   // 全局虚拟 DIP 矩形（主屏 DPI 基准）
+        public double MainDpi;            // 主屏 DPI（全局 DIP 基准）
+        public SD.Rectangle Phys;         // 物理像素矩形
     }
     private readonly List<MonWindow> _mw = new();
 
@@ -172,7 +172,7 @@ public partial class SnipOverlayWindow : Window
                 SetWindowPos(h, IntPtr.Zero, phys.X, phys.Y, phys.Width, phys.Height, SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
             };
             win.Show();
-            _mw.Add(new MonWindow { Win = win, Img = img, Canvas = canvas, Dip = dip, Dpi = dpi, Phys = phys });
+            _mw.Add(new MonWindow { Win = win, Img = img, Canvas = canvas, Dip = dip, MainDpi = mainDpi, Phys = phys });
             wi++;
         }
         // 统一虚拟 DIP 视界（供选区/取色）：从所有屏 dip 推总
@@ -243,8 +243,27 @@ public partial class SnipOverlayWindow : Window
     }
 
     // ==================== 坐标换算 ====================
-    /// <summary>屏幕窗口内坐标 → 虚拟屏 DIP。</summary>
-    private Point ToVirtual(MonWindow m, Point local) => new Point(local.X + m.Dip.X, local.Y + m.Dip.Y);
+    /// <summary>窗口局部 DIP → 物理像素（该窗口渲染 DPI = Phys/实际窗口尺寸，布局后取 ActualWidth）。</summary>
+    private static Point LocalToPhys(MonWindow m, Point local)
+    {
+        double w = m.Win.ActualWidth > 1 ? m.Win.ActualWidth : m.Dip.Width;
+        double h = m.Win.ActualHeight > 1 ? m.Win.ActualHeight : m.Dip.Height;
+        double sx = m.Phys.Width / w, sy = m.Phys.Height / h;
+        return new Point(local.X * sx, local.Y * sy);
+    }
+    /// <summary>物理像素差量 → 窗口局部 DIP。</summary>
+    private static Point PhysDeltaToLocal(MonWindow m, double dx, double dy)
+    {
+        double w = m.Win.ActualWidth > 1 ? m.Win.ActualWidth : m.Dip.Width;
+        double h = m.Win.ActualHeight > 1 ? m.Win.ActualHeight : m.Dip.Height;
+        return new Point(dx * w / m.Phys.Width, dy * h / m.Phys.Height);
+    }
+    /// <summary>窗口局部 DIP → 虚拟屏全局 DIP（经物理像素，绝对一致）。</summary>
+    private static Point ToVirtual(MonWindow m, Point local)
+    {
+        var p = LocalToPhys(m, local);
+        return new Point(p.X / m.MainDpi, p.Y / m.MainDpi);
+    }
 
     private Color GetPixelAt(double vx, double vy)
     {
@@ -331,8 +350,12 @@ public partial class SnipOverlayWindow : Window
         }
         else if (_dragKind > 0)
         {
+            // 拖拽差量：局部DIP → 物理 → 全局DIP（跨屏一致）
             var p = e.GetPosition(host.Win);
-            var dx = (p.X - _dragStartPt.X); var dy = (p.Y - _dragStartPt.Y);
+            var cur = LocalToPhys(host, p);
+            var start = LocalToPhys(host, _dragStartPt);
+            var dx = (cur.X - start.X) / host.MainDpi;
+            var dy = (cur.Y - start.Y) / host.MainDpi;
             if (_dragKind == 1) _sel = new Rect(_dragStartSel.X + dx, _dragStartSel.Y + dy, _dragStartSel.Width, _dragStartSel.Height);
             else ApplyHandleDrag(dx, dy);
             _sel = ClampSel(_sel);
@@ -404,12 +427,24 @@ public partial class SnipOverlayWindow : Window
     }
 
     // ==================== UI 重建（每次交互全量重画到当前屏） ====================
+    /// <summary>全局虚拟 DIP → 窗口局部 DIP（经物理像素，跨屏一致）。</summary>
+    private static Rect ToLocal(MonWindow m, Rect r)
+    {
+        // 全局DIP → 物理 → 局部DIP
+        double px = r.X * m.MainDpi, py = r.Y * m.MainDpi, pw = r.Width * m.MainDpi, ph = r.Height * m.MainDpi;
+        double w = m.Win.ActualWidth > 1 ? m.Win.ActualWidth : m.Dip.Width;
+        double h = m.Win.ActualHeight > 1 ? m.Win.ActualHeight : m.Dip.Height;
+        double sx = w / m.Phys.Width, sy = h / m.Phys.Height;
+        // 物理窗口原点 → 局部
+        double lx = (px - m.Phys.X) * sx, ly = (py - m.Phys.Y) * sy;
+        return new Rect(lx, ly, pw * sx, ph * sy);
+    }
+
     private void RebuildUi(MonWindow host)
     {
         var c = host.Canvas;
         c.Children.Clear();
-        // 虚拟 → 本屏局部
-        Func<Rect, Rect> L = r => new Rect(r.X - host.Dip.X, r.Y - host.Dip.Y, r.Width, r.Height);
+        Func<Rect, Rect> L = r => ToLocal(host, r);
         var sel = _hasSel ? _sel : Rect.Empty;
         if (_hasSel)
         {
@@ -474,6 +509,8 @@ public partial class SnipOverlayWindow : Window
     private void DrawLoupe(Canvas c, Point vp, Func<Rect, Rect> toLocal)
     {
         var host = _uiHost!; if (host == null) return;
+        double hostW = host.Win.ActualWidth > 1 ? host.Win.ActualWidth : host.Dip.Width;
+        double hostH = host.Win.ActualHeight > 1 ? host.Win.ActualHeight : host.Dip.Height;
         var col = GetPixelAt(vp.X, vp.Y);
         int half = LoupeN / 2;
         for (int gy = 0; gy < LoupeN; gy++)
@@ -485,13 +522,13 @@ public partial class SnipOverlayWindow : Window
         Canvas.SetLeft(_loupeCenter, half * CellPx); Canvas.SetTop(_loupeCenter, half * CellPx);
         var txt = $"#{col.R:X2}{col.G:X2}{col.B:X2}  RGB({col.R},{col.G},{col.B})\n({(int)Math.Round(vp.X)}, {(int)Math.Round(vp.Y)})";
         if (txt != _lastLoupeText) { _loupeText.Text = txt; _lastLoupeText = txt; }
-        _loupePanel!.Measure(new Size(host.Dip.Width, host.Dip.Height));
+        _loupePanel!.Measure(new Size(hostW, hostH));
         double lw = Math.Max(120, _loupePanel.DesiredSize.Width), lh = Math.Max(40, _loupePanel.DesiredSize.Height);
         var local = toLocal(new Rect(vp.X, vp.Y, 0, 0));
         double lx = Math.Round(local.X + 24), ly = Math.Round(local.Y + 24);
         double panelSize = LoupeN * CellPx;
-        if (lx + lw > host.Dip.Width - 8) lx = Math.Round(local.X - lw - 24);
-        if (ly + lh + panelSize + 20 > host.Dip.Height - 8) ly = Math.Round(local.Y - lh - panelSize - 32);
+        if (lx + lw > hostW - 8) lx = Math.Round(local.X - lw - 24);
+        if (ly + lh + panelSize + 20 > hostH - 8) ly = Math.Round(local.Y - lh - panelSize - 32);
         if (lx < 8) lx = 8; if (ly < 8) ly = 8;
         Canvas.SetLeft(_loupe, lx + 8); Canvas.SetTop(_loupe, ly + 8);
         Canvas.SetLeft(_loupePanel, lx); Canvas.SetTop(_loupePanel, ly + panelSize + 12);
@@ -519,10 +556,14 @@ public partial class SnipOverlayWindow : Window
         }
         if (_toolbar.Parent is Panel p) p.Children.Remove(_toolbar);
         host.Canvas.Children.Add(_toolbar);
-        _toolbar.Measure(new Size(host.Dip.Width, host.Dip.Height));
+        double hostW = host.Win.ActualWidth > 1 ? host.Win.ActualWidth : host.Dip.Width;
+        double hostH = host.Win.ActualHeight > 1 ? host.Win.ActualHeight : host.Dip.Height;
+        _toolbar.Measure(new Size(hostW, hostH));
         double tw = _toolbar.DesiredSize.Width, th = _toolbar.DesiredSize.Height;
-        double x = _sel.Right - host.Dip.X - tw, y = _sel.Bottom - host.Dip.Y + 8;
-        if (y + th > host.Dip.Height - 8) y = _sel.Bottom - host.Dip.Y - th - 8;
+        // 选区(全局DIP) → 本窗口局部DIP
+        var localSel = ToLocal(host, _sel);
+        double x = localSel.Right - tw, y = localSel.Bottom + 8;
+        if (y + th > hostH - 8) y = localSel.Bottom - th - 8;
         if (x < 8) x = 8;
         Canvas.SetLeft(_toolbar, x); Canvas.SetTop(_toolbar, y);
     }
