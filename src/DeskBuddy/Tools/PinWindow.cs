@@ -65,14 +65,10 @@ public sealed class PinWindow : Window
         Loaded += (_, _) =>
         {
             Focusable = true; Focus();
-            var hnd = new WindowInteropHelper(this).Handle;
             _dpi = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
             if (_dpi <= 0.01) _dpi = 1.0;
-            // 初始：物理像素直摆
-            _pw = (int)Math.Round(w * _dpi); _ph = (int)Math.Round(h * _dpi);
-            _px = (int)Math.Round(x * _dpi); _py = (int)Math.Round(y * _dpi);
             _baseW = w; _baseH = h;
-            SetWindowPos(hnd, IntPtr.Zero, _px, _py, _pw, _ph, SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            MovePhys((int)Math.Round(x * _dpi), (int)Math.Round(y * _dpi), (int)Math.Round(w * _dpi), (int)Math.Round(h * _dpi));
         };
         ContextMenu = BuildMenu();
     }
@@ -96,6 +92,17 @@ public sealed class PinWindow : Window
         catch (Exception ex) { MessageBox.Show(this, "保存失败：" + ex.Message, "错误"); }
     }
 
+    private IntPtr Hnd => new WindowInteropHelper(this).Handle;
+
+    /// <summary>物理像素直摆 + 同步 WPF DIP（消除 Win32 与 WPF 两套位置打架导致的抖动）。</summary>
+    private void MovePhys(int x, int y, int w, int h)
+    {
+        _px = x; _py = y; _pw = w; _ph = h;
+        SetWindowPos(Hnd, IntPtr.Zero, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+        // 关键：同步 WPF 期望值，否则 WPF 会用自己的 Left/Top 再摆一次（互相打架→抖动）
+        Left = x / _dpi; Top = y / _dpi; Width = w / _dpi; Height = h / _dpi;
+    }
+
     private void OnDown(object s, MouseButtonEventArgs e)
     {
         _dragging = true;
@@ -109,12 +116,9 @@ public sealed class PinWindow : Window
     {
         if (!_dragging) return;
         var p = e.GetPosition(this);
-        // 拖动：物理像素整数位移（不抖）
         int dx = (int)Math.Round((p.X - _dragStart.X) * _dpi);
         int dy = (int)Math.Round((p.Y - _dragStart.Y) * _dpi);
-        var hnd = new WindowInteropHelper(this).Handle;
-        _px = _dragWinPX + dx; _py = _dragWinPY + dy;
-        SetWindowPos(hnd, IntPtr.Zero, _px, _py, _pw, _ph, SWP_NOZORDER | SWP_NOACTIVATE);
+        MovePhys(_dragWinPX + dx, _dragWinPY + dy, _pw, _ph);
         e.Handled = true;
     }
 
@@ -143,14 +147,9 @@ public sealed class PinWindow : Window
         int newH = (int)Math.Round(_baseH * _dpi * s);
         if (newW < 24 || newH < 24 || newW > 8000 || newH > 8000) return;
         double ax = anchor?.ax ?? 0.5, ay = anchor?.ay ?? 0.5;
-        // 锚点物理坐标（窗口内比例 × 当前物理尺寸 + 窗口物理原点）
         int apx = _px + (int)Math.Round(_pw * ax);
         int apy = _py + (int)Math.Round(_ph * ay);
         _scale = s;
-        _pw = newW; _ph = newH;
-        _px = apx - (int)Math.Round(newW * ax);
-        _py = apy - (int)Math.Round(newH * ay);
-        var hnd = new WindowInteropHelper(this).Handle;
-        SetWindowPos(hnd, IntPtr.Zero, _px, _py, _pw, _ph, SWP_NOZORDER | SWP_NOACTIVATE);
+        MovePhys(apx - (int)Math.Round(newW * ax), apy - (int)Math.Round(newH * ay), newW, newH);
     }
 }

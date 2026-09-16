@@ -124,24 +124,15 @@ public partial class SnipOverlayWindow : Window
 
         _mw.Clear();
         int wi = 0;
+        var screenShots = new List<(MonWindow MW, SD.Bitmap Bmp)>();
         foreach (var phys in physRects)
         {
-            // 该屏 DPI：物理尺寸 / WPF-DIP 尺寸。DIP 矩形 = 物理矩形换算到「主屏 DPI 基准」的 DIP
-            // （WPF 的 Left/Top 全局 DIP 用主屏基准；跨屏时副屏 100% 的 DIP = 物理 × mainDpi）
-            // 每屏 DPI = 物理 / (该屏 DIP) —— 但我们要先有 DIP。改用：DIP = 物理 / mainDpi（主屏基准统一）
-            // 主屏（dpi=1.5）：DIP = 物理/1.5；副屏（1.0）：WPF 全局 DIP 对副屏实际是 物理×1.5/1.5=物理 → 也 = 物理/mainDpi
-            // 经验证（actual L=-1620 = -1080*1.5）：WPF 把全局 DIP Left 再乘以「所在屏 DPI」渲染。
-            // 因此：全局 DIP = 物理位置 / 所在屏DPI × mainDpi？不对——实测 set L=-1080(全局DIP) → 物理落在 -1620。
-            // 即 WPF 将 Left 视为「主屏DIP」再按目标屏 1.5 拉伸 → 目标屏是副屏(1.0)却按 1.5 拉伸了？
-            // 事实：actual L=-1620 说明物理 = DIP × 1.5。而主屏窗口 3840DIP → 物理被夹到屏内。
-            // 结论：不要用 WPF 的 Left/Top 定位 —— 用 SetWindowPos 直接物理坐标摆放（绕过一切换算）。
-            double dpi = mainDpi; // 每屏渲染 DPI 由 WPF 自管；我们只保证窗口物理位置/尺寸正确
-            // 该屏截图（物理 1:1）
+            double dpi = mainDpi;
+            // 该屏物理截图（只截一次！显示与取色网格共用）
             var bmp = new SD.Bitmap(phys.Width, phys.Height);
             using (var g = SD.Graphics.FromImage(bmp))
                 g.CopyFromScreen(phys.X, phys.Y, 0, 0, new SD.Size(phys.Width, phys.Height));
 
-            // 全局 DIP 矩形（逻辑坐标系，主屏 DPI 基准）：物理 / mainDpi
             var dip = new Rect(phys.X / mainDpi, phys.Y / mainDpi, phys.Width / mainDpi, phys.Height / mainDpi);
             DebugLog.Write($"[SNIP] mon#{wi}: phys={phys.X},{phys.Y} {phys.Width}x{phys.Height} -> dip={dip.X},{dip.Y} {dip.Width}x{dip.Height}");
 
@@ -155,7 +146,6 @@ public partial class SnipOverlayWindow : Window
                 Cursor = Cursors.Cross,
                 Background = Brushes.Black,
             };
-            // 图片以物理像素 1:1 铺满（无论 WPF 怎么缩放，图随窗口走，覆盖屏即对齐）
             var img = new Image { Source = ToSource(bmp), Stretch = Stretch.Fill };
             var canvas = new Canvas();
             var grid = new Grid();
@@ -167,12 +157,13 @@ public partial class SnipOverlayWindow : Window
             win.PreviewKeyDown += OnWindowKeyDown;
             win.SourceInitialized += (s2, e2) =>
             {
-                // 用 Win32 物理坐标直接摆（绕过 WPF DPI 换算），保证像素级对齐
                 var h = new WindowInteropHelper(win).Handle;
                 SetWindowPos(h, IntPtr.Zero, phys.X, phys.Y, phys.Width, phys.Height, SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
             };
             win.Show();
-            _mw.Add(new MonWindow { Win = win, Img = img, Canvas = canvas, Dip = dip, MainDpi = mainDpi, Phys = phys });
+            var mw = new MonWindow { Win = win, Img = img, Canvas = canvas, Dip = dip, MainDpi = mainDpi, Phys = phys };
+            _mw.Add(mw);
+            screenShots.Add((mw, bmp));
             wi++;
         }
         // 统一虚拟 DIP 视界（供选区/取色）：从所有屏 dip 推总
@@ -183,17 +174,14 @@ public partial class SnipOverlayWindow : Window
         _winH = _mw.Select(m => m.Dip.Bottom).DefaultIfEmpty(0).Max() - allY;
         DebugLog.Write($"[SNIP] final virtualDIP: {_vsX},{_vsY} {_winW}x{_winH}");
 
-        // 全屏 DIP 网格位图（供取色/输出用）：把每屏物理图重采样到虚拟 DIP 网格
+        // 全屏 DIP 网格位图（取色/输出用）：复用已截图，重采样一次
         _bw = Math.Max(1, (int)Math.Round(_winW));
         _bh = Math.Max(1, (int)Math.Round(_winH));
         _bmp = new SD.Bitmap(_bw, _bh);
         using (var bg = SD.Graphics.FromImage(_bmp))
         {
-            foreach (var m in _mw)
+            foreach (var (m, mb) in screenShots)
             {
-                using var mb = new SD.Bitmap(m.Phys.Width, m.Phys.Height);
-                using (var mg = SD.Graphics.FromImage(mb))
-                    mg.CopyFromScreen(m.Phys.X, m.Phys.Y, 0, 0, new SD.Size(m.Phys.Width, m.Phys.Height));
                 var dx = (float)(m.Dip.X - _vsX);
                 var dy = (float)(m.Dip.Y - _vsY);
                 bg.DrawImage(mb, dx, dy, (float)m.Dip.Width, (float)m.Dip.Height);
