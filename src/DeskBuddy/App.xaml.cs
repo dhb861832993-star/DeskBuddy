@@ -143,6 +143,7 @@ public partial class App : Application
             case "hide": _mainWindow?.HideMenu(); break;
             case "enter": _mainWindow?.LaunchSelected(); break;
             case "settings": OpenSettings(); break;
+            case "snip": StartSnip(); break;
             default: ToggleMenu(); break;
         }
     }

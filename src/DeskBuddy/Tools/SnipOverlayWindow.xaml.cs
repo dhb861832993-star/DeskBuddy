@@ -11,6 +11,7 @@ using System.Windows.Interop;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using SD = System.Drawing;
+using DeskBuddy.Services;
 
 namespace DeskBuddy.Tools;
 
@@ -99,57 +100,51 @@ public partial class SnipOverlayWindow : Window
         return true;
     }
 
-    // ==================== 截屏（每屏独立，物理 1:1） ====================
+    // ==================== 截屏（每屏独立，物理 1:1，Win32 直摆） ====================
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndAfter, int x, int y, int cx, int cy, uint flags);
+    private const uint SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010, SWP_SHOWWINDOW = 0x0040;
+
     private void CaptureScreens()
     {
-        _vsX = SystemParameters.VirtualScreenLeft;
-        _vsY = SystemParameters.VirtualScreenTop;
-        _winW = SystemParameters.VirtualScreenWidth;
-        _winH = SystemParameters.VirtualScreenHeight;
-
-        // DeskBuddy 是 PerMonitorV2 → EnumDisplayMonitors 返回真物理坐标
+        // 1) 物理屏矩形（DeskBuddy PerMonitorV2 → EnumDisplayMonitors = 真物理）
         var physRects = new List<SD.Rectangle>();
         var act = (Action<RECT>)(r => physRects.Add(new SD.Rectangle(r.L, r.T, r.R - r.L, r.B - r.T)));
         var gc = GCHandle.Alloc(act);
         try { EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, CollectPhys, GCHandle.ToIntPtr(gc)); }
         finally { gc.Free(); }
+        foreach (var r in physRects) DebugLog.Write($"[SNIP] phys: {r.X},{r.Y} {r.Width}x{r.Height}");
 
-        // WPF 虚拟屏 DIP（SystemParameters 是物理→DIP 换算后的全局虚拟坐标）
-        // 每屏 DIP 矩形：从物理矩形反推 —— 找出哪个物理矩形包含哪个 DIP 屏幕
-        // 更可靠：用 WinForms.Screen（本进程 PerMonitorV2 下 Bounds 也是 DIP）
-        var dipScreens = System.Windows.Forms.Screen.AllScreens;
+        // 2) WPF 虚拟屏 DIP（SystemParameters 在 PerMonitorV2 = 主屏 DPI 下的全局 DIP）
+        _vsX = SystemParameters.VirtualScreenLeft;
+        _vsY = SystemParameters.VirtualScreenTop;
+        _winW = SystemParameters.VirtualScreenWidth;
+        _winH = SystemParameters.VirtualScreenHeight;
+        double mainDpi = ScreenHelper.MainDpi;   // 主屏 DPI（SystemParameters 以此为基准）
+        DebugLog.Write($"[SNIP] virtualDIP: {_vsX},{_vsY} {_winW}x{_winH} mainDpi={mainDpi}");
 
-        // 匹配：按 DIP 与物理的中心点距离（比原点匹配更稳）
-        var used = new HashSet<int>();
         _mw.Clear();
-        foreach (var scr in dipScreens)
+        int wi = 0;
+        foreach (var phys in physRects)
         {
-            var dip = new Rect(scr.Bounds.X, scr.Bounds.Y, scr.Bounds.Width, scr.Bounds.Height);
-            var c = new Point(dip.X + dip.Width / 2, dip.Y + dip.Height / 2);
-            int bestI = -1; double bestD = double.MaxValue;
-            for (int i = 0; i < physRects.Count; i++)
-            {
-                if (used.Contains(i)) continue;
-                var r = physRects[i];
-                var pc = new Point(r.X + r.Width / 2.0, r.Y + r.Height / 2.0);
-                // 物理中心换算成 DIP 需要 DPI，先粗匹配：比较宽高比 + 相对原点方向
-                var d = Math.Abs((double)r.Width / dip.Width - (double)r.Height / dip.Height) * 100
-                      + Math.Abs(Math.Sign(r.X) - Math.Sign(dip.X)) * 50
-                      + Math.Abs(Math.Sign(r.Y) - Math.Sign(dip.Y)) * 50;
-                if (d < bestD) { bestD = d; bestI = i; }
-            }
-            if (bestI < 0) continue;
-            used.Add(bestI);
-            var phys = physRects[bestI];
-            double dpi = dip.Width > 0 ? phys.Width / dip.Width : 1.0;
-            if (dpi <= 0.01) dpi = 1.0;
-
-            // 该屏物理截图
+            // 该屏 DPI：物理尺寸 / WPF-DIP 尺寸。DIP 矩形 = 物理矩形换算到「主屏 DPI 基准」的 DIP
+            // （WPF 的 Left/Top 全局 DIP 用主屏基准；跨屏时副屏 100% 的 DIP = 物理 × mainDpi）
+            // 每屏 DPI = 物理 / (该屏 DIP) —— 但我们要先有 DIP。改用：DIP = 物理 / mainDpi（主屏基准统一）
+            // 主屏（dpi=1.5）：DIP = 物理/1.5；副屏（1.0）：WPF 全局 DIP 对副屏实际是 物理×1.5/1.5=物理 → 也 = 物理/mainDpi
+            // 经验证（actual L=-1620 = -1080*1.5）：WPF 把全局 DIP Left 再乘以「所在屏 DPI」渲染。
+            // 因此：全局 DIP = 物理位置 / 所在屏DPI × mainDpi？不对——实测 set L=-1080(全局DIP) → 物理落在 -1620。
+            // 即 WPF 将 Left 视为「主屏DIP」再按目标屏 1.5 拉伸 → 目标屏是副屏(1.0)却按 1.5 拉伸了？
+            // 事实：actual L=-1620 说明物理 = DIP × 1.5。而主屏窗口 3840DIP → 物理被夹到屏内。
+            // 结论：不要用 WPF 的 Left/Top 定位 —— 用 SetWindowPos 直接物理坐标摆放（绕过一切换算）。
+            double dpi = mainDpi; // 每屏渲染 DPI 由 WPF 自管；我们只保证窗口物理位置/尺寸正确
+            // 该屏截图（物理 1:1）
             var bmp = new SD.Bitmap(phys.Width, phys.Height);
             using (var g = SD.Graphics.FromImage(bmp))
                 g.CopyFromScreen(phys.X, phys.Y, 0, 0, new SD.Size(phys.Width, phys.Height));
 
-            // 建独立覆盖窗口（该屏 DIP 矩形，WPF 自动按该屏 DPI 渲染）
+            // 全局 DIP 矩形（逻辑坐标系，主屏 DPI 基准）：物理 / mainDpi
+            var dip = new Rect(phys.X / mainDpi, phys.Y / mainDpi, phys.Width / mainDpi, phys.Height / mainDpi);
+            DebugLog.Write($"[SNIP] mon#{wi}: phys={phys.X},{phys.Y} {phys.Width}x{phys.Height} -> dip={dip.X},{dip.Y} {dip.Width}x{dip.Height}");
+
             var win = new Window
             {
                 WindowStyle = WindowStyle.None,
@@ -159,10 +154,9 @@ public partial class SnipOverlayWindow : Window
                 ResizeMode = ResizeMode.NoResize,
                 Cursor = Cursors.Cross,
                 Background = Brushes.Black,
-                Left = dip.X, Top = dip.Y, Width = dip.Width, Height = dip.Height,
             };
-            var img = new Image { Source = ToSource(bmp), Stretch = Stretch.Uniform };
-            // 物理像素 1:1（该屏 DIP 尺寸 = 物理/DPI，Uniform 不缩放）
+            // 图片以物理像素 1:1 铺满（无论 WPF 怎么缩放，图随窗口走，覆盖屏即对齐）
+            var img = new Image { Source = ToSource(bmp), Stretch = Stretch.Fill };
             var canvas = new Canvas();
             var grid = new Grid();
             grid.Children.Add(img); grid.Children.Add(canvas);
@@ -171,11 +165,25 @@ public partial class SnipOverlayWindow : Window
             win.PreviewMouseMove += OnMouseMove;
             win.PreviewMouseLeftButtonUp += OnMouseLeftUp;
             win.PreviewKeyDown += OnWindowKeyDown;
+            win.SourceInitialized += (s2, e2) =>
+            {
+                // 用 Win32 物理坐标直接摆（绕过 WPF DPI 换算），保证像素级对齐
+                var h = new WindowInteropHelper(win).Handle;
+                SetWindowPos(h, IntPtr.Zero, phys.X, phys.Y, phys.Width, phys.Height, SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            };
             win.Show();
             _mw.Add(new MonWindow { Win = win, Img = img, Canvas = canvas, Dip = dip, Dpi = dpi, Phys = phys });
+            wi++;
         }
+        // 统一虚拟 DIP 视界（供选区/取色）：从所有屏 dip 推总
+        var allX = _mw.Select(m => m.Dip.X).DefaultIfEmpty(0).Min();
+        var allY = _mw.Select(m => m.Dip.Y).DefaultIfEmpty(0).Min();
+        _vsX = allX; _vsY = allY;
+        _winW = _mw.Select(m => m.Dip.Right).DefaultIfEmpty(0).Max() - allX;
+        _winH = _mw.Select(m => m.Dip.Bottom).DefaultIfEmpty(0).Max() - allY;
+        DebugLog.Write($"[SNIP] final virtualDIP: {_vsX},{_vsY} {_winW}x{_winH}");
 
-        // 全屏 DIP 网格位图（供取色/输出用）：把每屏物理图重采样到 DIP 网格
+        // 全屏 DIP 网格位图（供取色/输出用）：把每屏物理图重采样到虚拟 DIP 网格
         _bw = Math.Max(1, (int)Math.Round(_winW));
         _bh = Math.Max(1, (int)Math.Round(_winH));
         _bmp = new SD.Bitmap(_bw, _bh);
@@ -183,7 +191,6 @@ public partial class SnipOverlayWindow : Window
         {
             foreach (var m in _mw)
             {
-                // 重新截一次物理（上面那个已被窗口占用显示）
                 using var mb = new SD.Bitmap(m.Phys.Width, m.Phys.Height);
                 using (var mg = SD.Graphics.FromImage(mb))
                     mg.CopyFromScreen(m.Phys.X, m.Phys.Y, 0, 0, new SD.Size(m.Phys.Width, m.Phys.Height));
@@ -199,6 +206,29 @@ public partial class SnipOverlayWindow : Window
         _px = new byte[Math.Abs(data.Stride) * _bh];
         Marshal.Copy(data.Scan0, _px, 0, _px.Length);
         _bmp.UnlockBits(data);
+    }
+
+    /// <summary>主屏 DPI（96 基准）。</summary>
+    private static class ScreenHelper
+    {
+        public static double MainDpi
+        {
+            get
+            {
+                var vsW = SystemParameters.VirtualScreenWidth;
+                // 主屏物理宽：遍历物理矩形取 X=0 起点的
+                var rects = new List<SD.Rectangle>();
+                var act = (Action<RECT>)(r => rects.Add(new SD.Rectangle(r.L, r.T, r.R - r.L, r.B - r.T)));
+                var gc = GCHandle.Alloc(act);
+                try { EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, CollectPhys, GCHandle.ToIntPtr(gc)); }
+                finally { gc.Free(); }
+                var mainPhys = rects.FirstOrDefault(r => r.X == 0 && r.Y == 0);
+                // 主屏 DIP 宽 = VirtualScreenWidth 里的主屏部分；主屏 DIP = PrimaryScreenWidth
+                var mainDipW = SystemParameters.PrimaryScreenWidth;
+                if (mainPhys.Width > 0 && mainDipW > 0) return mainPhys.Width / mainDipW;
+                return 1.0;
+            }
+        }
     }
 
     private static BitmapSource ToSource(SD.Bitmap bmp)

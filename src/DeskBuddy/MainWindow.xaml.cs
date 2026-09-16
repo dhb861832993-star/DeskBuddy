@@ -1584,14 +1584,6 @@ public partial class MainWindow : Window
         PositionWindow();
     }
 
-    /// <summary>双击「连连看」→ 打开思维导图编辑器。首次使用需确定保存路径。</summary>
-    private void OnOpenMindmap(object sender, RoutedEventArgs e)
-    {
-        var win = new DeskBuddy.Tools.MindmapWindow();
-        win.Show();
-        win.NewDocument(); // 新建空白图（保存时才选路径/目录）
-    }
-
     /// <summary>工具箱「截图」→ 启动 Snipaste 式截图。</summary>
     private void OnStartSnip(object sender, RoutedEventArgs e)
     {
