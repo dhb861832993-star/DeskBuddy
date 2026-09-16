@@ -537,21 +537,21 @@ public partial class SnipOverlayWindow : Window
         c.Children.Add(_loupe); c.Children.Add(_loupePanel);
     }
 
-    // ==================== 操作条 ====================
+    // ==================== 操作条（Snipaste 式图标工具条） ====================
     private void ShowToolbar(MonWindow host)
     {
         if (_toolbar == null)
         {
             _toolbar = new Border
             {
-                Background = new SolidColorBrush(Color.FromArgb(0xF0, 0x1C, 0x1C, 0x1E)),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
-                BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(9), Padding = new Thickness(6, 4, 6, 4)
+                Background = new SolidColorBrush(Color.FromArgb(0xF2, 0x1C, 0x1C, 0x1E)),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)),
+                BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(5, 3, 5, 3)
             };
             var sp = new StackPanel { Orientation = Orientation.Horizontal };
-            sp.Children.Add(MkBtn("复制", CopySelection));
-            sp.Children.Add(MkBtn("保存", SaveSelection));
-            sp.Children.Add(MkBtn("贴图", PinSelection));
+            sp.Children.Add(MkToolBtn("⎘", "复制到剪贴板", CopySelection));
+            sp.Children.Add(MkToolBtn("⬇", "保存为图片", SaveSelection));
+            sp.Children.Add(MkToolBtn("📌", "贴图（置顶悬浮）", PinSelection));
             _toolbar.Child = sp;
         }
         if (_toolbar.Parent is Panel p) p.Children.Remove(_toolbar);
@@ -560,7 +560,7 @@ public partial class SnipOverlayWindow : Window
         double hostH = host.Win.ActualHeight > 1 ? host.Win.ActualHeight : host.Dip.Height;
         _toolbar.Measure(new Size(hostW, hostH));
         double tw = _toolbar.DesiredSize.Width, th = _toolbar.DesiredSize.Height;
-        // 选区(全局DIP) → 本窗口局部DIP
+        // 选区(全局DIP) → 本窗口局部DIP；工具条贴选区右下角
         var localSel = ToLocal(host, _sel);
         double x = localSel.Right - tw, y = localSel.Bottom + 8;
         if (y + th > hostH - 8) y = localSel.Bottom - th - 8;
@@ -568,9 +568,19 @@ public partial class SnipOverlayWindow : Window
         Canvas.SetLeft(_toolbar, x); Canvas.SetTop(_toolbar, y);
     }
 
-    private Button MkBtn(string text, Action act)
+    private Button MkToolBtn(string glyph, string tip, Action act)
     {
-        var b = new Button { Content = text, Foreground = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF5)), Background = Brushes.Transparent, BorderThickness = new Thickness(0), FontSize = 12, Padding = new Thickness(10, 5, 10, 5), Cursor = Cursors.Hand };
+        var b = new Button
+        {
+            Content = new TextBlock { Text = glyph, FontSize = 15 },
+            ToolTip = tip,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF5)),
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(9, 5, 9, 5),
+            Cursor = Cursors.Hand,
+            Focusable = false
+        };
         b.Click += (s, e) => { act(); e.Handled = true; };
         return b;
     }
