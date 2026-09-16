@@ -444,16 +444,34 @@ public partial class SnipOverlayWindow : Window
     {
         var c = host.Canvas;
         c.Children.Clear();
+        // 工具条在选区完成后持久存在（Clear 后重新挂回，否则松手即被清掉）
+        if (_toolbar != null && _hasSel && _sel.Width > 6)
+        {
+            // 重新定位（RebuildUi 可能因为拖拽调整改变了选区）
+            if (_toolbar.Parent is Panel pp) pp.Children.Remove(_toolbar);
+            c.Children.Add(_toolbar);
+            double hostW = host.Win.ActualWidth > 1 ? host.Win.ActualWidth : host.Dip.Width;
+            double hostH = host.Win.ActualHeight > 1 ? host.Win.ActualHeight : host.Dip.Height;
+            _toolbar.Measure(new Size(hostW, hostH));
+            double tw = _toolbar.DesiredSize.Width, th = _toolbar.DesiredSize.Height;
+            var localSel = ToLocal(host, _sel);
+            double tx = localSel.Right - tw, ty = localSel.Bottom + 8;
+            if (ty + th > hostH - 8) ty = localSel.Bottom - th - 8;
+            if (tx < 8) tx = 8;
+            Canvas.SetLeft(_toolbar, tx); Canvas.SetTop(_toolbar, ty);
+        }
         Func<Rect, Rect> L = r => ToLocal(host, r);
         var sel = _hasSel ? _sel : Rect.Empty;
+        double hw = host.Win.ActualWidth > 1 ? host.Win.ActualWidth : host.Dip.Width;
+        double hh = host.Win.ActualHeight > 1 ? host.Win.ActualHeight : host.Dip.Height;
         if (_hasSel)
         {
             var l = L(sel);
-            // 遮罩 4 块
-            AddRect(c, 0, 0, host.Dip.Width, Math.Max(0, l.Y), maskBrush: true);
-            AddRect(c, 0, l.Bottom, host.Dip.Width, Math.Max(0, host.Dip.Height - l.Bottom), maskBrush: true);
+            // 遮罩 4 块（用实际窗口尺寸，跨屏正确）
+            AddRect(c, 0, 0, hw, Math.Max(0, l.Y), maskBrush: true);
+            AddRect(c, 0, l.Bottom, hw, Math.Max(0, hh - l.Bottom), maskBrush: true);
             AddRect(c, 0, l.Y, Math.Max(0, l.X), l.Height, maskBrush: true);
-            AddRect(c, l.Right, l.Y, Math.Max(0, host.Dip.Width - l.Right), l.Height, maskBrush: true);
+            AddRect(c, l.Right, l.Y, Math.Max(0, hw - l.Right), l.Height, maskBrush: true);
             // 边框
             var b = new Rectangle { Stroke = new SolidColorBrush(Color.FromRgb(0x4A, 0x90, 0xFF)), StrokeThickness = 1.4 };
             SetR(b, l); c.Children.Add(b);
