@@ -77,19 +77,17 @@ public partial class SnipOverlayWindow : Window
         Width = 0; Height = 0;
         Opacity = 0;
         IsHitTestVisible = false;
-        Loaded += OnLoaded;
-    }
-
-    private void OnLoaded(object s, RoutedEventArgs e)
-    {
-        CaptureScreensFast();
-        InitVisuals();
-        Focusable = true; Focus();
-        // 重活后置：取色网格位图 + 像素缓存（不挡截屏显示）
-        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        // 激活提速：截屏挪到 Show() 之前（不等 WPF 生命周期），构造完就绪
+        try { CaptureScreensFast(); InitVisuals(); } catch { }
+        Loaded += (s, e) =>
         {
-            try { BuildPixelGrid(); } catch { }
-        }));
+            Focusable = true; Focus();
+            // 重活后置：取色网格位图 + 像素缓存（不挡截屏显示）
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+            {
+                try { BuildPixelGrid(); } catch { }
+            }));
+        };
     }
 
     // ==================== Win32 ====================
@@ -134,28 +132,33 @@ public partial class SnipOverlayWindow : Window
         _mw.Clear();
         _shots.Clear();
         int wi = 0;
+        // 阶段1：全部截屏 + 转换（纯内存，最快路径）
+        var prepared = new List<(SD.Rectangle Phys, Rect Dip, BitmapSource Src)>();
         foreach (var phys in physRects)
         {
-            double dpi = mainDpi;
-            // 该屏物理截图（只截一次！显示与取色网格共用）
             var bmp = new SD.Bitmap(phys.Width, phys.Height);
             using (var g = SD.Graphics.FromImage(bmp))
                 g.CopyFromScreen(phys.X, phys.Y, 0, 0, new SD.Size(phys.Width, phys.Height));
-
             var dip = new Rect(phys.X / mainDpi, phys.Y / mainDpi, phys.Width / mainDpi, phys.Height / mainDpi);
-            DebugLog.Write($"[SNIP] mon#{wi}: phys={phys.X},{phys.Y} {phys.Width}x{phys.Height} -> dip={dip.X},{dip.Y} {dip.Width}x{dip.Height}");
-
+            prepared.Add((phys, dip, ToSource(bmp)));
+            _shots.Add((null!, bmp));
+            wi++;
+        }
+        DebugLog.Write($"[SNIP] captured {prepared.Count} screens (mem)");
+        // 阶段2：批量建窗显示
+        wi = 0;
+        foreach (var (phys, dip, src) in prepared)
+        {
             var win = new Window
             {
                 WindowStyle = WindowStyle.None,
                 ShowInTaskbar = false,
                 ShowActivated = false,
-                Topmost = true,
                 ResizeMode = ResizeMode.NoResize,
                 Cursor = Cursors.Cross,
                 Background = Brushes.Black,
             };
-            var img = new Image { Source = ToSource(bmp), Stretch = Stretch.Fill };
+            var img = new Image { Source = src, Stretch = Stretch.Fill };
             var canvas = new Canvas();
             var grid = new Grid();
             grid.Children.Add(img); grid.Children.Add(canvas);
@@ -167,12 +170,12 @@ public partial class SnipOverlayWindow : Window
             win.SourceInitialized += (s2, e2) =>
             {
                 var h = new WindowInteropHelper(win).Handle;
-                SetWindowPos(h, IntPtr.Zero, phys.X, phys.Y, phys.Width, phys.Height, SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                SetWindowPos(h, new IntPtr(-1) /*HWND_TOPMOST*/, phys.X, phys.Y, phys.Width, phys.Height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
             };
             win.Show();
             var mw = new MonWindow { Win = win, Img = img, Canvas = canvas, Dip = dip, MainDpi = mainDpi, Phys = phys };
             _mw.Add(mw);
-            _shots.Add((mw, bmp));
+            _shots[wi] = (mw, _shots[wi].Bmp);
             wi++;
         }
         // 统一虚拟 DIP 视界（供选区/取色）：从所有屏 dip 推总

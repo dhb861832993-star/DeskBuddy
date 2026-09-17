@@ -292,8 +292,10 @@ public partial class App : Application
             _mainWindow?.HideMenu();
             var win = new Tools.SnipOverlayWindow();
             win.Closed += (_, _) => _snipActive = false;
+            // 关键提速：宿主窗口不可见（Visibility=Hidden 不进渲染管线），
+            // 真正显示的是每屏子窗口（构造时已截屏就绪）
+            win.Visibility = Visibility.Hidden;
             win.Show();
-            win.Activate();
         }
         catch { _snipActive = false; }
     }
