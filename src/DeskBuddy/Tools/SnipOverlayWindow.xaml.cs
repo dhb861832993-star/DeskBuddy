@@ -139,6 +139,12 @@ public partial class SnipOverlayWindow : Window
         catch { _active = false; }
     }
 
+    /// <summary>结束（Stop/CloseAll）时通知外部重置激活态（预创建窗口不 Close，Closed 不触发）。</summary>
+    public event Action? StopRequested;
+
+    /// <summary>真实激活态（App 保险用：状态卡死时自动恢复）。</summary>
+    public static bool IsReallyActive() => _pooled?._active == true;
+
     /// <summary>结束：ShowWindow 隐藏（不销毁，下次秒开）。</summary>
     public void Stop()
     {
@@ -154,6 +160,7 @@ public partial class SnipOverlayWindow : Window
         _bmp?.Dispose(); _bmp = null; _px = null;
         foreach (var s in _shots) { try { s.Bmp?.Dispose(); } catch { } }
         _shots.Clear();
+        try { StopRequested?.Invoke(); } catch { }
     }
 
     // ==================== Win32 ====================
@@ -756,6 +763,7 @@ public partial class SnipOverlayWindow : Window
         if (_precreated) { Stop(); return; }
         foreach (var m in _mw) { try { m.Win.Close(); } catch { } }
         _bmp?.Dispose(); _bmp = null; _px = null;
+        try { StopRequested?.Invoke(); } catch { }
         Close();
     }
 

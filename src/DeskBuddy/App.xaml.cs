@@ -267,7 +267,12 @@ public partial class App : Application
     {
         _detector.OnKeyDown(vkCode);
         if (vkCode == 0x1B) HandleGlobalEscape();
-        if (vkCode == SnipVk && ModMatch() && !_snipActive) StartSnip();
+        if (vkCode == SnipVk && ModMatch())
+        {
+            // 保险：状态卡死时（异常路径没走到 Stop）自动恢复
+            if (_snipActive && !Tools.SnipOverlayWindow.IsReallyActive()) _snipActive = false;
+            if (!_snipActive) StartSnip();
+        }
     }
 
     [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vKey);
@@ -318,11 +323,17 @@ public partial class App : Application
         {
             _mainWindow?.HideMenu();
             var win = Tools.SnipOverlayWindow.Activate();
-            win.Closed += (_, _) => _snipActive = false;
+            if (!_stopHooked)
+            {
+                win.StopRequested += () => _snipActive = false;   // Stop 时重置（预创建窗口不 Close，Closed 不触发）
+                _stopHooked = true;
+            }
             win.Start();
         }
         catch { _snipActive = false; }
     }
+
+    private bool _stopHooked;
 
     /// <summary>按 Esc 必须退出：优先关图标右键菜单 → AI 对话 → 编辑器 → 设置 → 菜单。</summary>
     private void HandleGlobalEscape()
