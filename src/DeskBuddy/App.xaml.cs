@@ -335,10 +335,17 @@ public partial class App : Application
 
     private bool _stopHooked;
 
-    /// <summary>按 Esc 必须退出：优先关图标右键菜单 → AI 对话 → 编辑器 → 设置 → 菜单。</summary>
+    /// <summary>按 Esc 必须退出：截图覆盖层 → 右键菜单 → AI 对话 → 编辑器 → 设置 → 菜单。</summary>
     private void HandleGlobalEscape()
     {
         DebugLog.Write("global Esc pressed");
+        // 最高优先：截图覆盖层激活时，Esc 退出截图（覆盖窗口可能没焦点，必须这里兜底）
+        if (Tools.SnipOverlayWindow.IsReallyActive())
+        {
+            Tools.SnipOverlayWindow.Activate().Stop();
+            DebugLog.Write("[SNIP] stopped by global Esc");
+            return;
+        }
         if (_mainWindow is { } mw && mw.CloseContextMenuIfOpen())
         {
             return; // 先关右键菜单

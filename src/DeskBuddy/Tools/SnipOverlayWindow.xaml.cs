@@ -119,7 +119,7 @@ public partial class SnipOverlayWindow : Window
         };
     }
 
-    /// <summary>激活：截屏换图 → ShowWindow 显示（Win32 正确显隐 API）。</summary>
+    /// <summary>激活：截屏换图 → Win32 强制重摆显示（SWP_SHOWWINDOW 带 WS_VISIBLE 位，绕过 WPF 内部状态）。</summary>
     public void Start()
     {
         if (_active) return;
@@ -127,8 +127,16 @@ public partial class SnipOverlayWindow : Window
         try
         {
             RefreshScreens();          // 只截屏 + 换图，不建窗
-            foreach (var h in _hwnds) ShowWindow(h, SW_SHOW);
-            foreach (var m in _mw) m.Win.Activate();   // 键盘焦点（Esc/Enter/方向键）
+            int i = 0;
+            foreach (var h in _hwnds)
+            {
+                var phys = _physRects[Math.Min(i, _physRects.Count - 1)];
+                // 带位置/尺寸的完整重摆 + 显示（强制 WS_VISIBLE，比 ShowWindow 可靠）
+                SetWindowPos(h, new IntPtr(-1) /*HWND_TOPMOST*/, phys.X, phys.Y, phys.Width, phys.Height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                i++;
+            }
+            // 键盘焦点：第一个窗口设前台（Esc/Enter/方向键）
+            if (_mw.Count > 0) { try { _mw[0].Win.Activate(); } catch { } }
             Focusable = true;
             // 重活后置
             Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
