@@ -119,7 +119,7 @@ public partial class SnipOverlayWindow : Window
         };
     }
 
-    /// <summary>激活：截屏换图 → 显示子窗口（窗口早已建好渲染好）。</summary>
+    /// <summary>激活：截屏换图 → ShowWindow 显示（Win32 正确显隐 API）。</summary>
     public void Start()
     {
         if (_active) return;
@@ -127,8 +127,9 @@ public partial class SnipOverlayWindow : Window
         try
         {
             RefreshScreens();          // 只截屏 + 换图，不建窗
-            foreach (var m in _mw) m.Win.Show();
-            Focusable = true; Focus();
+            foreach (var h in _hwnds) ShowWindow(h, SW_SHOW);
+            foreach (var m in _mw) m.Win.Activate();   // 键盘焦点（Esc/Enter/方向键）
+            Focusable = true;
             // 重活后置
             Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
             {
@@ -138,21 +139,17 @@ public partial class SnipOverlayWindow : Window
         catch { _active = false; }
     }
 
-    /// <summary>结束：隐藏所有子窗口（不销毁，下次秒开）。</summary>
+    /// <summary>结束：ShowWindow 隐藏（不销毁，下次秒开）。</summary>
     public void Stop()
     {
         _active = false;
         _hasSel = false; _sel = Rect.Empty;
         _drawing = false; _dragKind = 0;
+        foreach (var h in _hwnds) ShowWindow(h, SW_HIDE);
         foreach (var m in _mw)
         {
-            try
-            {
-                m.Win.Hide();
-                m.Canvas.Children.Clear();
-                if (_toolbar?.Parent is Panel p) p.Children.Remove(_toolbar);
-            }
-            catch { }
+            try { m.Canvas.Children.Clear(); } catch { }
+            if (_toolbar?.Parent is Panel p) p.Children.Remove(_toolbar);
         }
         _bmp?.Dispose(); _bmp = null; _px = null;
         foreach (var s in _shots) { try { s.Bmp?.Dispose(); } catch { } }
@@ -174,7 +171,10 @@ public partial class SnipOverlayWindow : Window
 
     // ==================== 截屏（预创建窗口 + 激活换图） ====================
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndAfter, int x, int y, int cx, int cy, uint flags);
-    private const uint SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010, SWP_SHOWWINDOW = 0x0040;
+    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    private const int SW_HIDE = 0, SW_SHOW = 5, SW_SHOWNOACTIVATE = 4;
+    private const uint SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010, SWP_SHOWWINDOW = 0x0040, SWP_HIDEWINDOW = 0x0080;
+    private readonly List<IntPtr> _hwnds = new();
 
     private readonly List<(MonWindow MW, SD.Bitmap Bmp)> _shots = new();
     private List<SD.Rectangle> _physRects = new();
@@ -193,11 +193,12 @@ public partial class SnipOverlayWindow : Window
         _mainDpi = (mainPhys.Width > 0 && mainDipW > 0) ? mainPhys.Width / mainDipW : 1.0;
     }
 
-    /// <summary>预创建：只建窗口骨架（每屏子窗口 + 事件），不截屏。</summary>
+    /// <summary>预创建：只建窗口骨架（每屏子窗口 + 事件），不截屏。
+    /// 显示管理全走 Win32（WPF 的 Visibility/Show/Hide 互相打架，是 F1 失效的根因）。</summary>
     private void BuildMonitorWindows(bool capture)
     {
         if (capture) EnumPhys();
-        _mw.Clear(); _shots.Clear();
+        _mw.Clear(); _shots.Clear(); _hwnds.Clear();
         int wi = 0;
         foreach (var phys in _physRects)
         {
@@ -210,7 +211,6 @@ public partial class SnipOverlayWindow : Window
                 ResizeMode = ResizeMode.NoResize,
                 Cursor = Cursors.Cross,
                 Background = Brushes.Black,
-                Visibility = capture ? Visibility.Visible : Visibility.Hidden,   // 预创建时隐藏
             };
             var img = new Image { Stretch = Stretch.Fill };
             var canvas = new Canvas();
@@ -221,14 +221,17 @@ public partial class SnipOverlayWindow : Window
             win.PreviewMouseMove += OnMouseMove;
             win.PreviewMouseLeftButtonUp += OnMouseLeftUp;
             win.PreviewKeyDown += OnWindowKeyDown;
+            var isCapture = capture;   // 闭包捕获
             win.SourceInitialized += (s2, e2) =>
             {
                 var h = new WindowInteropHelper(win).Handle;
-                // 预创建：摆好位置但隐藏；激活：直接显示
+                // 摆好位置 + 顶置
                 SetWindowPos(h, new IntPtr(-1) /*HWND_TOPMOST*/, phys.X, phys.Y, phys.Width, phys.Height,
-                    SWP_NOACTIVATE | (capture ? SWP_SHOWWINDOW : 0));
+                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                if (!isCapture) ShowWindow(h, SW_HIDE);   // 预创建：建完就藏
+                _hwnds.Add(h);
             };
-            if (capture) win.Show(); else { win.Visibility = Visibility.Hidden; win.Show(); win.Hide(); }
+            win.Show();   // 创建句柄 + 初始化渲染管线（随后按需隐藏）
             var mw = new MonWindow { Win = win, Img = img, Canvas = canvas, Dip = dip, MainDpi = _mainDpi, Phys = phys };
             _mw.Add(mw);
             _shots.Add((mw, null!));
@@ -252,6 +255,7 @@ public partial class SnipOverlayWindow : Window
         if (oldRects != newRects || _mw.Count == 0)
         {
             foreach (var m in _mw) { try { m.Win.Close(); } catch { } }
+            _hwnds.Clear();
             BuildMonitorWindows(capture: false);
         }
         // 截屏换图
