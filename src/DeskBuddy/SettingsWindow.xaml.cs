@@ -82,17 +82,10 @@ public partial class SettingsWindow : Window
         MemoEnabledBox.IsChecked = config.MemoEnabled;
         ToolsEnabledBox.IsChecked = config.ToolsEnabled;
 
-        // 截图热键（组合键格式："Ctrl+Alt+S" / "F1"）
-        var snipKey = string.IsNullOrWhiteSpace(config.SnipHotkey) ? "F1" : config.SnipHotkey;
-        var snipParts = snipKey.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var snipMods = string.Join("+", snipParts.Where(p => p is "Ctrl" or "Alt" or "Shift"));
-        var snipMain = snipParts.FirstOrDefault(p => p is not ("Ctrl" or "Alt" or "Shift")) ?? "F1";
-        foreach (System.Windows.Controls.ComboBoxItem it in SnipModBox.Items)
-            if ((string?)it.Tag == snipMods) { SnipModBox.SelectedItem = it; break; }
-        if (SnipModBox.SelectedItem == null) SnipModBox.SelectedIndex = 0;
-        foreach (System.Windows.Controls.ComboBoxItem it in SnipHotkeyBox.Items)
-            if ((string?)it.Tag == snipMain) { SnipHotkeyBox.SelectedItem = it; break; }
-        if (SnipHotkeyBox.SelectedItem == null) SnipHotkeyBox.SelectedIndex = 0;
+        // 截图热键（组合键捕获式，格式 "Ctrl+Alt+S"）
+        _snipHotkey = string.IsNullOrWhiteSpace(config.SnipHotkey) ? "F1" : config.SnipHotkey;
+        SnipCaptureBtn.Content = _snipHotkey;
+        SnipHotkeyHint.Text = $"当前：{_snipHotkey}（点击左侧按钮，然后直接按下任意组合键；Esc 取消）";
 
         SelectCategory("general"); // 默认显示「通用」
 
@@ -265,8 +258,86 @@ public partial class SettingsWindow : Window
         if (sender is Button { Tag: "close" }) Close();
     }
 
+    // ===== 截图组合键捕获 =====
+    private bool _snipCapturing;
+    private string _snipHotkey = "F1";
+
+    private void OnSnipCaptureClick(object sender, RoutedEventArgs e)
+    {
+        _snipCapturing = !_snipCapturing;
+        if (_snipCapturing)
+        {
+            SnipCaptureBtn.Content = "请按下组合键…";
+            SnipHotkeyHint.Text = "例如按住 Ctrl+Alt 再按 S（松手录入）；Esc 取消";
+            SnipCaptureBtn.Focus();
+        }
+        else
+        {
+            SnipCaptureBtn.Content = _snipHotkey;
+            SnipHotkeyHint.Text = "当前：" + _snipHotkey;
+        }
+    }
+
+    /// <summary>当前按下的修饰键组合（Ctrl/Alt/Shift/Win，顺序固定）。</summary>
+    private static string BuildModString()
+    {
+        var mods = new List<string>();
+        if (Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl)) mods.Add("Ctrl");
+        if (Keyboard.IsKeyDown(Key.LeftAlt) || Keyboard.IsKeyDown(Key.RightAlt)) mods.Add("Alt");
+        if (Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift)) mods.Add("Shift");
+        if (Keyboard.IsKeyDown(Key.LWin) || Keyboard.IsKeyDown(Key.RWin)) mods.Add("Win");
+        return string.Join("+", mods);
+    }
+
+    /// <summary>主键名（支持字母/数字/F1-F12/PrtSc/空格等）。</summary>
+    private static string? KeyName(KeyEventArgs e)
+    {
+        var k = e.Key == Key.System ? e.SystemKey : e.Key;   // Alt 组合时走 System
+        return k switch
+        {
+            >= Key.A and <= Key.Z => ((char)('A' + (k - Key.A))).ToString(),
+            >= Key.D0 and <= Key.D9 => ((char)('0' + (k - Key.D0))).ToString(),
+            >= Key.NumPad0 and <= Key.NumPad9 => "Num" + (int)(k - Key.NumPad0),
+            >= Key.F1 and <= Key.F12 => "F" + (int)(k - Key.F1 + 1),
+            Key.PrintScreen => "PrintScreen",
+            Key.Space => "Space",
+            Key.OemTilde => "`",
+            _ => null
+        };
+    }
+
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // ===== 截图组合键捕获 =====
+        if (_snipCapturing)
+        {
+            e.Handled = true;
+            if (e.Key == Key.Escape)
+            {
+                _snipCapturing = false;
+                SnipCaptureBtn.Content = _snipHotkey;
+                SnipHotkeyHint.Text = "已取消。当前：" + _snipHotkey;
+                return;
+            }
+            // 修饰键本身：更新提示，等待主键
+            if (e.Key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt
+                    or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin or Key.System)
+            {
+                var cur = BuildModString();
+                SnipHotkeyHint.Text = $"已按：{cur} … 再按一个主键（字母/数字/F1-F12/` 等）";
+                return;
+            }
+            // 主键：组合修饰键录入
+            var mods = BuildModString();
+            var main = KeyName(e);
+            if (main == null) { SnipHotkeyHint.Text = "该键不支持，请按字母/数字/功能键"; return; }
+            _snipHotkey = mods.Length > 0 ? $"{mods}+{main}" : main;
+            _snipCapturing = false;
+            SnipCaptureBtn.Content = _snipHotkey;
+            SnipHotkeyHint.Text = $"已设置：{_snipHotkey}（保存后生效）";
+            return;
+        }
+
         if (!_capturing) return;
         e.Handled = true;
 
@@ -318,6 +389,13 @@ public partial class SettingsWindow : Window
     /// <summary>全局 Esc：按键捕获中则取消捕获，否则关闭设置窗口。</summary>
     public void HandleGlobalEscape()
     {
+        if (_snipCapturing)
+        {
+            _snipCapturing = false;
+            SnipCaptureBtn.Content = _snipHotkey;
+            SnipHotkeyHint.Text = "已取消。当前：" + _snipHotkey;
+            return;
+        }
         if (_capturing)
         {
             _capturing = false;
@@ -520,8 +598,7 @@ public partial class SettingsWindow : Window
             McpEnabled = McpEnabledBox.IsChecked == true,
             MemoEnabled = MemoEnabledBox.IsChecked == true,
             ToolsEnabled = ToolsEnabledBox.IsChecked == true,
-            SnipHotkey = (((SnipModBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString() ?? "") + "+" +
-                          ((SnipHotkeyBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString() ?? "F1")).TrimStart('+'),
+            SnipHotkey = _snipHotkey,
             EnableFileSearch = EnableFileSearchBox.IsChecked == true,
             SearchRoots = SearchRootsBox.Text
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
