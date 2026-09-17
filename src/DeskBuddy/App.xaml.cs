@@ -269,9 +269,7 @@ public partial class App : Application
         if (vkCode == 0x1B) HandleGlobalEscape();
         if (vkCode == SnipVk && ModMatch())
         {
-            // 保险：状态卡死时（异常路径没走到 Stop）自动恢复
-            if (_snipActive && !Tools.SnipOverlayWindow.IsReallyActive()) _snipActive = false;
-            if (!_snipActive) StartSnip();
+            if (!_snipActive || !Tools.SnipOverlayWindow.IsReallyActive()) StartSnip();
         }
     }
 
@@ -314,21 +312,17 @@ public partial class App : Application
 
     private bool _snipActive;
 
-    /// <summary>启动截图覆盖层（预创建窗口，激活只换图 → 接近 0ms）。</summary>
+    /// <summary>启动截图覆盖层（每次新建窗口 → 状态机全新，绝对可靠；旧实例先回收）。</summary>
     public void StartSnip()
     {
-        if (_snipActive) return;
+        if (_snipActive && Tools.SnipOverlayWindow.IsReallyActive()) return;   // 激活中忽略
         _snipActive = true;
         try
         {
             _mainWindow?.HideMenu();
-            var win = Tools.SnipOverlayWindow.Activate();
-            if (!_stopHooked)
-            {
-                win.StopRequested += () => _snipActive = false;   // Stop 时重置（预创建窗口不 Close，Closed 不触发）
-                _stopHooked = true;
-            }
-            win.Start();
+            var win = Tools.SnipOverlayWindow.Activate();   // 新建实例（截屏+建窗+显示）
+            win.Closed += (_, _) => _snipActive = false;    // 新实例会真 Close → Closed 正常触发
+            win.StopRequested += () => _snipActive = false;
         }
         catch { _snipActive = false; }
     }
@@ -342,7 +336,8 @@ public partial class App : Application
         // 最高优先：截图覆盖层激活时，Esc 退出截图（覆盖窗口可能没焦点，必须这里兜底）
         if (Tools.SnipOverlayWindow.IsReallyActive())
         {
-            Tools.SnipOverlayWindow.Activate().Stop();
+            var w = Tools.SnipOverlayWindow._pooled;
+            w?.StopAndClose();
             DebugLog.Write("[SNIP] stopped by global Esc");
             return;
         }

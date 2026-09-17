@@ -68,28 +68,34 @@ public partial class SnipOverlayWindow : Window
     // 选区所有者（哪个屏的 Canvas 上有操作条/放大镜）
     private MonWindow? _uiHost;
 
-    // ==================== 预创建窗口（激活接近 0ms 的关键） ====================
+    // ==================== 激活入口（可靠优先：每次新建，秒级可接受） ====================
 
-    /// <summary>静态持有：DeskBuddy 启动时预创建覆盖窗口（含每屏子窗口，隐藏待命）。
-    /// F1 时只换图 + 显示，无窗口创建/渲染开销。</summary>
-    private static SnipOverlayWindow? _pooled;
+    /// <summary>静态持有当前实例（App 保险用）。</summary>
+    public static SnipOverlayWindow? _pooled;
 
-    /// <summary>App 启动时调用：预创建截图覆盖层（隐藏待命）。</summary>
+    /// <summary>App 启动时预创建（预热 JIT/视觉树——窗口不实际建，避免 WPF 隐藏窗口的状态坑）。</summary>
     public static void PreCreate()
     {
-        if (_pooled != null) return;
-        _pooled = new SnipOverlayWindow(precreate: true);
-        // 预先渲染一帧（编译视觉树、位图着色器），但保持隐藏
-        _pooled.Visibility = Visibility.Hidden;
-        _pooled.Show();
+        // 仅预热：跑一遍枚举 + 构造函数（JIT 编译），不显示任何窗口
+        try
+        {
+            var warm = new SnipOverlayWindow(precreate: true);
+            warm.EnumPhys();
+        }
+        catch { }
     }
 
-    /// <summary>F1 触发：激活待命的覆盖层（复用已渲染窗口，只换图）。</summary>
+    /// <summary>F1 触发：新建覆盖层（每屏新窗口，显示状态机全新 → 绝对可靠）。</summary>
     public static SnipOverlayWindow Activate()
     {
-        if (_pooled == null) PreCreate();
-        return _pooled!;
+        var win = new SnipOverlayWindow(precreate: true);
+        win.BuildAllAndShow();
+        _pooled = win;
+        return win;
     }
+
+    /// <summary>真实激活态（App 保险用：状态卡死时自动恢复）。</summary>
+    public static bool IsReallyActive() => _pooled?._active == true;
 
     private bool _precreated;
     private bool _active;
@@ -106,11 +112,8 @@ public partial class SnipOverlayWindow : Window
         Width = 0; Height = 0;
         Opacity = 0;
         IsHitTestVisible = false;
-
         if (precreate)
         {
-            // 预创建模式：只建窗口骨架（不截屏！），子窗口隐藏待命
-            BuildMonitorWindows(capture: false);
             InitVisuals();
         }
         Loaded += (s, e) =>
@@ -119,24 +122,37 @@ public partial class SnipOverlayWindow : Window
         };
     }
 
-    /// <summary>激活：截屏换图 → Win32 强制重摆显示（SWP_SHOWWINDOW 带 WS_VISIBLE 位，绕过 WPF 内部状态）。</summary>
+    /// <summary>新建实例激活：截屏 → 建窗口 → 显示（每轮全新状态机，无复用坑）。</summary>
+    private void BuildAllAndShow()
+    {
+        _active = true;
+        try
+        {
+            BuildMonitorWindows(capture: true);   // 建窗即显示（全新窗口，Show 可靠）
+            foreach (var m in _mw) m.Win.Activate();
+            // 重活后置
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+            {
+                try { BuildPixelGrid(); } catch { }
+            }));
+        }
+        catch { _active = false; }
+    }
+
+    /// <summary>激活：截屏换图 → Show() 显示（与预创建的 Show→Hide 对称，状态机可靠）。</summary>
     public void Start()
     {
+        DebugLog.Write($"[SNIP] Start() called, _active={_active}, _mw.Count={_mw.Count}");
         if (_active) return;
         _active = true;
         try
         {
             RefreshScreens();          // 只截屏 + 换图，不建窗
-            int i = 0;
-            foreach (var h in _hwnds)
+            foreach (var m in _mw)
             {
-                var phys = _physRects[Math.Min(i, _physRects.Count - 1)];
-                // 带位置/尺寸的完整重摆 + 显示（强制 WS_VISIBLE，比 ShowWindow 可靠）
-                SetWindowPos(h, new IntPtr(-1) /*HWND_TOPMOST*/, phys.X, phys.Y, phys.Width, phys.Height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
-                i++;
+                m.Win.Show();          // WPF 正路显示
+                m.Win.Activate();
             }
-            // 键盘焦点：第一个窗口设前台（Esc/Enter/方向键）
-            if (_mw.Count > 0) { try { _mw[0].Win.Activate(); } catch { } }
             Focusable = true;
             // 重活后置
             Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
@@ -147,28 +163,35 @@ public partial class SnipOverlayWindow : Window
         catch { _active = false; }
     }
 
-    /// <summary>结束（Stop/CloseAll）时通知外部重置激活态（预创建窗口不 Close，Closed 不触发）。</summary>
+    /// <summary>结束（Stop/CloseAll）时通知外部重置激活态。</summary>
     public event Action? StopRequested;
 
-    /// <summary>真实激活态（App 保险用：状态卡死时自动恢复）。</summary>
-    public static bool IsReallyActive() => _pooled?._active == true;
-
-    /// <summary>结束：ShowWindow 隐藏（不销毁，下次秒开）。</summary>
+    /// <summary>结束：Hide() 隐藏（与 Show 对称；不销毁，下次秒开）。</summary>
     public void Stop()
     {
         _active = false;
         _hasSel = false; _sel = Rect.Empty;
         _drawing = false; _dragKind = 0;
-        foreach (var h in _hwnds) ShowWindow(h, SW_HIDE);
         foreach (var m in _mw)
         {
+            try { m.Win.Hide(); } catch { }
             try { m.Canvas.Children.Clear(); } catch { }
             if (_toolbar?.Parent is Panel p) p.Children.Remove(_toolbar);
         }
         _bmp?.Dispose(); _bmp = null; _px = null;
         foreach (var s in _shots) { try { s.Bmp?.Dispose(); } catch { } }
         _shots.Clear();
-        try { StopRequested?.Invoke(); } catch { }
+        DebugLog.Write("[SNIP] Stop() called, _active=false, invoking StopRequested");
+        try { StopRequested?.Invoke(); } catch (Exception ex) { DebugLog.Write($"[SNIP] StopRequested ex: {ex.Message}"); }
+    }
+
+    /// <summary>结束并真正关闭（每次新建模式：关掉所有窗口 + 宿主，状态彻底清零）。</summary>
+    public void StopAndClose()
+    {
+        Stop();
+        foreach (var m in _mw) { try { m.Win.Close(); } catch { } }
+        if (ReferenceEquals(_pooled, this)) _pooled = null;
+        try { Close(); } catch { }
     }
 
     // ==================== Win32 ====================
@@ -212,7 +235,7 @@ public partial class SnipOverlayWindow : Window
     /// 显示管理全走 Win32（WPF 的 Visibility/Show/Hide 互相打架，是 F1 失效的根因）。</summary>
     private void BuildMonitorWindows(bool capture)
     {
-        if (capture) EnumPhys();
+        EnumPhys();   // 无论 capture 与否都先枚举（否则首激活误判布局变更）
         _mw.Clear(); _shots.Clear(); _hwnds.Clear();
         int wi = 0;
         foreach (var phys in _physRects)
@@ -240,13 +263,22 @@ public partial class SnipOverlayWindow : Window
             win.SourceInitialized += (s2, e2) =>
             {
                 var h = new WindowInteropHelper(win).Handle;
-                // 摆好位置 + 顶置
+                // 摆好位置 + 顶置（隐藏态由 WPF Visibility 管理，不走 Win32 Hide）
                 SetWindowPos(h, new IntPtr(-1) /*HWND_TOPMOST*/, phys.X, phys.Y, phys.Width, phys.Height,
-                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
-                if (!isCapture) ShowWindow(h, SW_HIDE);   // 预创建：建完就藏
+                    SWP_NOACTIVATE | (isCapture ? SWP_SHOWWINDOW : 0));
                 _hwnds.Add(h);
             };
-            win.Show();   // 创建句柄 + 初始化渲染管线（随后按需隐藏）
+            if (capture)
+            {
+                win.Show();
+            }
+            else
+            {
+                // 预创建：完整走一遍 WPF 显示状态机（Show→Hide），
+                // 之后 Show()/Hide() 才能对称可靠（先设 Hidden 再 Show 会让 Visible 切换失效——WPF 内部状态坑）
+                win.Show();
+                win.Hide();
+            }
             var mw = new MonWindow { Win = win, Img = img, Canvas = canvas, Dip = dip, MainDpi = _mainDpi, Phys = phys };
             _mw.Add(mw);
             _shots.Add((mw, null!));
@@ -263,15 +295,18 @@ public partial class SnipOverlayWindow : Window
     /// <summary>激活：截屏换图 → 显示（窗口早已建好，只剩截屏 190ms）。</summary>
     private void RefreshScreens()
     {
-        // 屏幕布局可能变了，重新枚举 + 必要时重建窗口
-        var oldRects = string.Join("|", _physRects.Select(r => $"{r.X},{r.Y},{r.Width}x{r.Height}"));
+        // 屏幕布局变更检测：仅当之前有布局且真正变化时才重建（首激活 _physRects 为空 = 直接补枚举）
+        static string Fingerprint(List<SD.Rectangle> rs) =>
+            string.Join("|", rs.OrderBy(r => r.X).ThenBy(r => r.Y).Select(r => $"{r.X},{r.Y},{r.Width}x{r.Height}"));
+        var oldFp = _physRects.Count > 0 ? Fingerprint(_physRects) : null;
         EnumPhys();
-        var newRects = string.Join("|", _physRects.Select(r => $"{r.X},{r.Y},{r.Width}x{r.Height}"));
-        if (oldRects != newRects || _mw.Count == 0)
+        var newFp = Fingerprint(_physRects);
+        if ((oldFp != null && oldFp != newFp) || _mw.Count == 0)
         {
             foreach (var m in _mw) { try { m.Win.Close(); } catch { } }
             _hwnds.Clear();
             BuildMonitorWindows(capture: false);
+            DebugLog.Write("[SNIP] layout changed -> windows rebuilt");
         }
         // 截屏换图
         for (int i = 0; i < _physRects.Count && i < _mw.Count; i++)
@@ -764,26 +799,15 @@ public partial class SnipOverlayWindow : Window
         pin.Show();
     }
 
-    /// <summary>结束截图：隐藏子窗口复用（不销毁，下次 F1 秒开）。</summary>
+    /// <summary>结束截图：每次新建模式 → 真正关闭一切（状态彻底清零，下次 F1 全新）。</summary>
     private void CloseAll()
     {
-        // 预创建模式下 Stop 隐藏复用；否则（未预创建的兜底实例）直接关
-        if (_precreated) { Stop(); return; }
-        foreach (var m in _mw) { try { m.Win.Close(); } catch { } }
-        _bmp?.Dispose(); _bmp = null; _px = null;
-        try { StopRequested?.Invoke(); } catch { }
-        Close();
+        StopAndClose();
     }
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
-        // 预创建实例：隐藏而非真关闭（保持待命）
-        if (_precreated && !_disposing)
-        {
-            e.Cancel = true;
-            Stop();
-            return;
-        }
+        // 每次新建模式：允许真关闭（不再拦截）
         base.OnClosing(e);
     }
 
@@ -800,6 +824,7 @@ public partial class SnipOverlayWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         foreach (var m in _mw) { try { if (m.Win.IsLoaded) m.Win.Close(); } catch { } }
+        if (ReferenceEquals(_pooled, this)) _pooled = null;
         _bmp?.Dispose(); _bmp = null; _px = null;
         base.OnClosed(e);
     }
