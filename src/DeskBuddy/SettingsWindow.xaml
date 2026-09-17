@@ -396,14 +396,38 @@
                                         Click="OnClearMemoArchive" Style="{StaticResource MacButton}"/>
 
                                 <TextBlock Text="截图热键" Style="{StaticResource FieldLabel}" Margin="0,14,0,4"/>
-                                <ComboBox x:Name="SnipHotkeyBox" Height="30" FontSize="12" Width="220" HorizontalAlignment="Left"
-                                          Style="{StaticResource MacComboBox}">
-                                    <ComboBoxItem Tag="F1" Content="F1"/>
-                                    <ComboBoxItem Tag="F2" Content="F2"/>
-                                    <ComboBoxItem Tag="F3" Content="F3"/>
-                                    <ComboBoxItem Tag="F4" Content="F4"/>
-                                    <ComboBoxItem Tag="PrintScreen" Content="PrintScreen（PrtSc）"/>
-                                </ComboBox>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="100"/>
+                                        <ColumnDefinition Width="120"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox x:Name="SnipModBox" Grid.Column="0" Height="30" FontSize="12"
+                                              Style="{StaticResource MacComboBox}">
+                                        <ComboBoxItem Tag="" Content="无"/>
+                                        <ComboBoxItem Tag="Ctrl" Content="Ctrl"/>
+                                        <ComboBoxItem Tag="Alt" Content="Alt"/>
+                                        <ComboBoxItem Tag="Shift" Content="Shift"/>
+                                        <ComboBoxItem Tag="Ctrl+Alt" Content="Ctrl+Alt"/>
+                                        <ComboBoxItem Tag="Ctrl+Shift" Content="Ctrl+Shift"/>
+                                        <ComboBoxItem Tag="Alt+Shift" Content="Alt+Shift"/>
+                                    </ComboBox>
+                                    <ComboBox x:Name="SnipHotkeyBox" Grid.Column="1" Height="30" FontSize="12" Margin="6,0,0,0"
+                                              Style="{StaticResource MacComboBox}">
+                                        <ComboBoxItem Tag="F1" Content="F1"/>
+                                        <ComboBoxItem Tag="F2" Content="F2"/>
+                                        <ComboBoxItem Tag="F3" Content="F3"/>
+                                        <ComboBoxItem Tag="F4" Content="F4"/>
+                                        <ComboBoxItem Tag="F5" Content="F5"/>
+                                        <ComboBoxItem Tag="F6" Content="F6"/>
+                                        <ComboBoxItem Tag="PrintScreen" Content="PrintScreen"/>
+                                        <ComboBoxItem Tag="Q" Content="Q"/>
+                                        <ComboBoxItem Tag="A" Content="A"/>
+                                        <ComboBoxItem Tag="S" Content="S"/>
+                                        <ComboBoxItem Tag="X" Content="X"/>
+                                    </ComboBox>
+                                </Grid>
+                                <TextBlock Text="提示：组合键（如 Ctrl+Alt+S）可避免与软件冲突；无修饰键时按 F1-F6/PrtSc。"
+                                           FontSize="10.5" Foreground="{DynamicResource TextSecondary}" Margin="0,6,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
 
                             <!-- ========== 搜索 ========== -->

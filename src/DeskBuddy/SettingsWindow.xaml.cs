@@ -82,10 +82,16 @@ public partial class SettingsWindow : Window
         MemoEnabledBox.IsChecked = config.MemoEnabled;
         ToolsEnabledBox.IsChecked = config.ToolsEnabled;
 
-        // 截图热键
+        // 截图热键（组合键格式："Ctrl+Alt+S" / "F1"）
         var snipKey = string.IsNullOrWhiteSpace(config.SnipHotkey) ? "F1" : config.SnipHotkey;
+        var snipParts = snipKey.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var snipMods = string.Join("+", snipParts.Where(p => p is "Ctrl" or "Alt" or "Shift"));
+        var snipMain = snipParts.FirstOrDefault(p => p is not ("Ctrl" or "Alt" or "Shift")) ?? "F1";
+        foreach (System.Windows.Controls.ComboBoxItem it in SnipModBox.Items)
+            if ((string?)it.Tag == snipMods) { SnipModBox.SelectedItem = it; break; }
+        if (SnipModBox.SelectedItem == null) SnipModBox.SelectedIndex = 0;
         foreach (System.Windows.Controls.ComboBoxItem it in SnipHotkeyBox.Items)
-            if ((string?)it.Tag == snipKey) { SnipHotkeyBox.SelectedItem = it; break; }
+            if ((string?)it.Tag == snipMain) { SnipHotkeyBox.SelectedItem = it; break; }
         if (SnipHotkeyBox.SelectedItem == null) SnipHotkeyBox.SelectedIndex = 0;
 
         SelectCategory("general"); // 默认显示「通用」
@@ -514,7 +520,8 @@ public partial class SettingsWindow : Window
             McpEnabled = McpEnabledBox.IsChecked == true,
             MemoEnabled = MemoEnabledBox.IsChecked == true,
             ToolsEnabled = ToolsEnabledBox.IsChecked == true,
-            SnipHotkey = (SnipHotkeyBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString() ?? "F1",
+            SnipHotkey = (((SnipModBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString() ?? "") + "+" +
+                          ((SnipHotkeyBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString() ?? "F1")).TrimStart('+'),
             EnableFileSearch = EnableFileSearchBox.IsChecked == true,
             SearchRoots = SearchRootsBox.Text
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
