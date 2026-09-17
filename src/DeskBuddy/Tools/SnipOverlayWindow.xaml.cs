@@ -68,8 +68,37 @@ public partial class SnipOverlayWindow : Window
     // 选区所有者（哪个屏的 Canvas 上有操作条/放大镜）
     private MonWindow? _uiHost;
 
-    public SnipOverlayWindow()
+    // ==================== 预创建窗口（激活接近 0ms 的关键） ====================
+
+    /// <summary>静态持有：DeskBuddy 启动时预创建覆盖窗口（含每屏子窗口，隐藏待命）。
+    /// F1 时只换图 + 显示，无窗口创建/渲染开销。</summary>
+    private static SnipOverlayWindow? _pooled;
+
+    /// <summary>App 启动时调用：预创建截图覆盖层（隐藏待命）。</summary>
+    public static void PreCreate()
     {
+        if (_pooled != null) return;
+        _pooled = new SnipOverlayWindow(precreate: true);
+        // 预先渲染一帧（编译视觉树、位图着色器），但保持隐藏
+        _pooled.Visibility = Visibility.Hidden;
+        _pooled.Show();
+    }
+
+    /// <summary>F1 触发：激活待命的覆盖层（复用已渲染窗口，只换图）。</summary>
+    public static SnipOverlayWindow Activate()
+    {
+        if (_pooled == null) PreCreate();
+        return _pooled!;
+    }
+
+    private bool _precreated;
+    private bool _active;
+
+    public SnipOverlayWindow() : this(precreate: false) { }
+
+    private SnipOverlayWindow(bool precreate)
+    {
+        _precreated = precreate;
         // 本窗口是主逻辑宿主（不可见），真实覆盖是每屏的子窗口
         WindowStyle = WindowStyle.None;
         ShowInTaskbar = false;
@@ -77,17 +106,57 @@ public partial class SnipOverlayWindow : Window
         Width = 0; Height = 0;
         Opacity = 0;
         IsHitTestVisible = false;
-        // 激活提速：截屏挪到 Show() 之前（不等 WPF 生命周期），构造完就绪
-        try { CaptureScreensFast(); InitVisuals(); } catch { }
+
+        if (precreate)
+        {
+            // 预创建模式：只建窗口骨架（不截屏！），子窗口隐藏待命
+            BuildMonitorWindows(capture: false);
+            InitVisuals();
+        }
         Loaded += (s, e) =>
         {
+            Focusable = true;
+        };
+    }
+
+    /// <summary>激活：截屏换图 → 显示子窗口（窗口早已建好渲染好）。</summary>
+    public void Start()
+    {
+        if (_active) return;
+        _active = true;
+        try
+        {
+            RefreshScreens();          // 只截屏 + 换图，不建窗
+            foreach (var m in _mw) m.Win.Show();
             Focusable = true; Focus();
-            // 重活后置：取色网格位图 + 像素缓存（不挡截屏显示）
+            // 重活后置
             Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
             {
                 try { BuildPixelGrid(); } catch { }
             }));
-        };
+        }
+        catch { _active = false; }
+    }
+
+    /// <summary>结束：隐藏所有子窗口（不销毁，下次秒开）。</summary>
+    public void Stop()
+    {
+        _active = false;
+        _hasSel = false; _sel = Rect.Empty;
+        _drawing = false; _dragKind = 0;
+        foreach (var m in _mw)
+        {
+            try
+            {
+                m.Win.Hide();
+                m.Canvas.Children.Clear();
+                if (_toolbar?.Parent is Panel p) p.Children.Remove(_toolbar);
+            }
+            catch { }
+        }
+        _bmp?.Dispose(); _bmp = null; _px = null;
+        foreach (var s in _shots) { try { s.Bmp?.Dispose(); } catch { } }
+        _shots.Clear();
     }
 
     // ==================== Win32 ====================
@@ -103,52 +172,36 @@ public partial class SnipOverlayWindow : Window
         return true;
     }
 
-    // ==================== 截屏（每屏独立，物理 1:1，Win32 直摆；快路径） ====================
+    // ==================== 截屏（预创建窗口 + 激活换图） ====================
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndAfter, int x, int y, int cx, int cy, uint flags);
     private const uint SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010, SWP_SHOWWINDOW = 0x0040;
 
     private readonly List<(MonWindow MW, SD.Bitmap Bmp)> _shots = new();
+    private List<SD.Rectangle> _physRects = new();
+    private double _mainDpi = 1.5;
 
-    private void CaptureScreensFast()
+    /// <summary>枚举物理屏（预创建时算好，激活时直接复用）。</summary>
+    private void EnumPhys()
     {
-        // 1) 物理屏矩形（DeskBuddy PerMonitorV2 → EnumDisplayMonitors = 真物理）
-        var physRects = new List<SD.Rectangle>();
-        var act = (Action<RECT>)(r => physRects.Add(new SD.Rectangle(r.L, r.T, r.R - r.L, r.B - r.T)));
+        _physRects = new List<SD.Rectangle>();
+        var act = (Action<RECT>)(r => _physRects.Add(new SD.Rectangle(r.L, r.T, r.R - r.L, r.B - r.T)));
         var gc = GCHandle.Alloc(act);
         try { EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, CollectPhys, GCHandle.ToIntPtr(gc)); }
         finally { gc.Free(); }
-        foreach (var r in physRects) DebugLog.Write($"[SNIP] phys: {r.X},{r.Y} {r.Width}x{r.Height}");
-
-        // 2) 主屏 DPI（从已枚举的物理矩形算，不再重复枚举）
-        var mainPhys = physRects.FirstOrDefault(r => r.X == 0 && r.Y == 0);
+        var mainPhys = _physRects.FirstOrDefault(r => r.X == 0 && r.Y == 0);
         var mainDipW = SystemParameters.PrimaryScreenWidth;
-        double mainDpi = (mainPhys.Width > 0 && mainDipW > 0) ? mainPhys.Width / mainDipW : 1.0;
-        _vsX = SystemParameters.VirtualScreenLeft;
-        _vsY = SystemParameters.VirtualScreenTop;
-        _winW = SystemParameters.VirtualScreenWidth;
-        _winH = SystemParameters.VirtualScreenHeight;
-        DebugLog.Write($"[SNIP] virtualDIP: {_vsX},{_vsY} {_winW}x{_winH} mainDpi={mainDpi}");
+        _mainDpi = (mainPhys.Width > 0 && mainDipW > 0) ? mainPhys.Width / mainDipW : 1.0;
+    }
 
-        _mw.Clear();
-        _shots.Clear();
+    /// <summary>预创建：只建窗口骨架（每屏子窗口 + 事件），不截屏。</summary>
+    private void BuildMonitorWindows(bool capture)
+    {
+        if (capture) EnumPhys();
+        _mw.Clear(); _shots.Clear();
         int wi = 0;
-        // 阶段1：全部截屏 + 转换（纯内存，最快路径）
-        var prepared = new List<(SD.Rectangle Phys, Rect Dip, BitmapSource Src)>();
-        foreach (var phys in physRects)
+        foreach (var phys in _physRects)
         {
-            var bmp = new SD.Bitmap(phys.Width, phys.Height);
-            using (var g = SD.Graphics.FromImage(bmp))
-                g.CopyFromScreen(phys.X, phys.Y, 0, 0, new SD.Size(phys.Width, phys.Height));
-            var dip = new Rect(phys.X / mainDpi, phys.Y / mainDpi, phys.Width / mainDpi, phys.Height / mainDpi);
-            prepared.Add((phys, dip, ToSource(bmp)));
-            _shots.Add((null!, bmp));
-            wi++;
-        }
-        DebugLog.Write($"[SNIP] captured {prepared.Count} screens (mem)");
-        // 阶段2：批量建窗显示
-        wi = 0;
-        foreach (var (phys, dip, src) in prepared)
-        {
+            var dip = new Rect(phys.X / _mainDpi, phys.Y / _mainDpi, phys.Width / _mainDpi, phys.Height / _mainDpi);
             var win = new Window
             {
                 WindowStyle = WindowStyle.None,
@@ -157,8 +210,9 @@ public partial class SnipOverlayWindow : Window
                 ResizeMode = ResizeMode.NoResize,
                 Cursor = Cursors.Cross,
                 Background = Brushes.Black,
+                Visibility = capture ? Visibility.Visible : Visibility.Hidden,   // 预创建时隐藏
             };
-            var img = new Image { Source = src, Stretch = Stretch.Fill };
+            var img = new Image { Stretch = Stretch.Fill };
             var canvas = new Canvas();
             var grid = new Grid();
             grid.Children.Add(img); grid.Children.Add(canvas);
@@ -170,21 +224,47 @@ public partial class SnipOverlayWindow : Window
             win.SourceInitialized += (s2, e2) =>
             {
                 var h = new WindowInteropHelper(win).Handle;
-                SetWindowPos(h, new IntPtr(-1) /*HWND_TOPMOST*/, phys.X, phys.Y, phys.Width, phys.Height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                // 预创建：摆好位置但隐藏；激活：直接显示
+                SetWindowPos(h, new IntPtr(-1) /*HWND_TOPMOST*/, phys.X, phys.Y, phys.Width, phys.Height,
+                    SWP_NOACTIVATE | (capture ? SWP_SHOWWINDOW : 0));
             };
-            win.Show();
-            var mw = new MonWindow { Win = win, Img = img, Canvas = canvas, Dip = dip, MainDpi = mainDpi, Phys = phys };
+            if (capture) win.Show(); else { win.Visibility = Visibility.Hidden; win.Show(); win.Hide(); }
+            var mw = new MonWindow { Win = win, Img = img, Canvas = canvas, Dip = dip, MainDpi = _mainDpi, Phys = phys };
             _mw.Add(mw);
-            _shots[wi] = (mw, _shots[wi].Bmp);
+            _shots.Add((mw, null!));
             wi++;
         }
-        // 统一虚拟 DIP 视界（供选区/取色）：从所有屏 dip 推总
+        // 统一虚拟 DIP 视界
         var allX = _mw.Select(m => m.Dip.X).DefaultIfEmpty(0).Min();
         var allY = _mw.Select(m => m.Dip.Y).DefaultIfEmpty(0).Min();
         _vsX = allX; _vsY = allY;
         _winW = _mw.Select(m => m.Dip.Right).DefaultIfEmpty(0).Max() - allX;
         _winH = _mw.Select(m => m.Dip.Bottom).DefaultIfEmpty(0).Max() - allY;
-        DebugLog.Write($"[SNIP] final virtualDIP: {_vsX},{_vsY} {_winW}x{_winH} (fast path done)");
+    }
+
+    /// <summary>激活：截屏换图 → 显示（窗口早已建好，只剩截屏 190ms）。</summary>
+    private void RefreshScreens()
+    {
+        // 屏幕布局可能变了，重新枚举 + 必要时重建窗口
+        var oldRects = string.Join("|", _physRects.Select(r => $"{r.X},{r.Y},{r.Width}x{r.Height}"));
+        EnumPhys();
+        var newRects = string.Join("|", _physRects.Select(r => $"{r.X},{r.Y},{r.Width}x{r.Height}"));
+        if (oldRects != newRects || _mw.Count == 0)
+        {
+            foreach (var m in _mw) { try { m.Win.Close(); } catch { } }
+            BuildMonitorWindows(capture: false);
+        }
+        // 截屏换图
+        for (int i = 0; i < _physRects.Count && i < _mw.Count; i++)
+        {
+            var phys = _physRects[i];
+            var bmp = new SD.Bitmap(phys.Width, phys.Height);
+            using (var g = SD.Graphics.FromImage(bmp))
+                g.CopyFromScreen(phys.X, phys.Y, 0, 0, new SD.Size(phys.Width, phys.Height));
+            _mw[i].Img.Source = ToSource(bmp);
+            _shots[i] = (_mw[i], bmp);
+        }
+        DebugLog.Write($"[SNIP] refreshed {_mw.Count} screens (windows reused)");
     }
 
     /// <summary>取色/输出用的全屏 DIP 网格位图 + 像素缓存（后台构建，不挡截屏显示）。</summary>
@@ -665,10 +745,35 @@ public partial class SnipOverlayWindow : Window
         pin.Show();
     }
 
+    /// <summary>结束截图：隐藏子窗口复用（不销毁，下次 F1 秒开）。</summary>
     private void CloseAll()
     {
+        // 预创建模式下 Stop 隐藏复用；否则（未预创建的兜底实例）直接关
+        if (_precreated) { Stop(); return; }
         foreach (var m in _mw) { try { m.Win.Close(); } catch { } }
         _bmp?.Dispose(); _bmp = null; _px = null;
+        Close();
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        // 预创建实例：隐藏而非真关闭（保持待命）
+        if (_precreated && !_disposing)
+        {
+            e.Cancel = true;
+            Stop();
+            return;
+        }
+        base.OnClosing(e);
+    }
+
+    private bool _disposing;
+
+    /// <summary>App 退出时真正销毁（内部用）。</summary>
+    public void Shutdown()
+    {
+        _disposing = true;
+        foreach (var m in _mw) { try { m.Win.Close(); } catch { } }
         Close();
     }
 

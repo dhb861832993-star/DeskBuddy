@@ -90,6 +90,9 @@ public partial class App : Application
         _hook.KeyDown += OnGlobalKeyDown;
         _hook.KeyUp += k => _detector.OnKeyUp(k);
 
+        // 预创建截图覆盖窗口（含每屏子窗口，隐藏待命）→ F1 激活接近 0ms
+        Tools.SnipOverlayWindow.PreCreate();
+
         // 调试触发器（仅 QM_DEBUG=1 时启用）：通过 deskbuddy_trigger.txt 模拟热键/输入
         if (DebugLog.Enabled)
         {
@@ -282,7 +285,7 @@ public partial class App : Application
 
     private bool _snipActive;
 
-    /// <summary>启动截图覆盖层（冻结屏幕 → 选区 → 复制/保存/贴图）。</summary>
+    /// <summary>启动截图覆盖层（预创建窗口，激活只换图 → 接近 0ms）。</summary>
     public void StartSnip()
     {
         if (_snipActive) return;
@@ -290,12 +293,9 @@ public partial class App : Application
         try
         {
             _mainWindow?.HideMenu();
-            var win = new Tools.SnipOverlayWindow();
+            var win = Tools.SnipOverlayWindow.Activate();
             win.Closed += (_, _) => _snipActive = false;
-            // 关键提速：宿主窗口不可见（Visibility=Hidden 不进渲染管线），
-            // 真正显示的是每屏子窗口（构造时已截屏就绪）
-            win.Visibility = Visibility.Hidden;
-            win.Show();
+            win.Start();
         }
         catch { _snipActive = false; }
     }
