@@ -556,14 +556,18 @@ public partial class SnipOverlayWindow : Window
         {
             _toolbar = new Border
             {
-                Background = new SolidColorBrush(Color.FromArgb(0xF2, 0x1C, 0x1C, 0x1E)),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)),
-                BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(5, 3, 5, 3)
+                Background = new SolidColorBrush(Color.FromArgb(0xF5, 0x14, 0x14, 0x16)),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(0x55, 0x4A, 0x90, 0xFF)),
+                BorderThickness = new Thickness(1.2),
+                CornerRadius = new CornerRadius(12),
+                Padding = new Thickness(6, 5, 6, 5)
             };
             var sp = new StackPanel { Orientation = Orientation.Horizontal };
-            sp.Children.Add(MkToolBtn("⎘", "复制到剪贴板", CopySelection));
-            sp.Children.Add(MkToolBtn("⬇", "保存为图片", SaveSelection));
-            sp.Children.Add(MkToolBtn("📌", "贴图（置顶悬浮）", PinSelection));
+            sp.Children.Add(MkToolBtn("复制", "复制到剪贴板 (Enter)", CopySelection, Color.FromRgb(0x4A, 0x90, 0xFF)));
+            sp.Children.Add(MkSep());
+            sp.Children.Add(MkToolBtn("保存", "保存为 PNG (Ctrl+S)", SaveSelection, Color.FromRgb(0x30, 0xD1, 0x58)));
+            sp.Children.Add(MkSep());
+            sp.Children.Add(MkToolBtn("贴图", "贴图置顶悬浮（滚轮缩放）", PinSelection, Color.FromRgb(0xFF, 0x9F, 0x0A)));
             _toolbar.Child = sp;
         }
         if (_toolbar.Parent is Panel p) p.Children.Remove(_toolbar);
@@ -572,7 +576,6 @@ public partial class SnipOverlayWindow : Window
         double hostH = host.Win.ActualHeight > 1 ? host.Win.ActualHeight : host.Dip.Height;
         _toolbar.Measure(new Size(hostW, hostH));
         double tw = _toolbar.DesiredSize.Width, th = _toolbar.DesiredSize.Height;
-        // 选区(全局DIP) → 本窗口局部DIP；工具条贴选区右下角
         var localSel = ToLocal(host, _sel);
         double x = localSel.Right - tw, y = localSel.Bottom + 8;
         if (y + th > hostH - 8) y = localSel.Bottom - th - 8;
@@ -580,23 +583,41 @@ public partial class SnipOverlayWindow : Window
         Canvas.SetLeft(_toolbar, x); Canvas.SetTop(_toolbar, y);
     }
 
-    private Button MkToolBtn(string glyph, string tip, Action act)
+    /// <summary>图标 + 文字 的双信息按钮（一眼看懂，不用猜）。</summary>
+    private Button MkToolBtn(string label, string tip, Action act, Color accent)
     {
+        var sp = new StackPanel { Orientation = Orientation.Horizontal };
+        // 图标点（彩色圆点，像 Snipaste 的彩色按钮）
+        sp.Children.Add(new Ellipse { Width = 10, Height = 10, Fill = new SolidColorBrush(accent), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
+        sp.Children.Add(new TextBlock { Text = label, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF)), VerticalAlignment = VerticalAlignment.Center });
+
         var b = new Button
         {
-            Content = new TextBlock { Text = glyph, FontSize = 15 },
+            Content = sp,
             ToolTip = tip,
-            Foreground = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF5)),
-            Background = new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x2E)),
+            Background = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
+            Foreground = Brushes.White,
             BorderThickness = new Thickness(0),
-            Padding = new Thickness(9, 5, 9, 5),
+            Padding = new Thickness(12, 7, 12, 7),
             Cursor = Cursors.Hand,
             Focusable = false
         };
-        // 双保险：Click 正常走 + 预览抬起直接触发（鼠标捕获残留也能点中）
-        b.Click += (s, e) => { DebugLog.Write("[SNIP] toolbtn click"); act(); e.Handled = true; };
-        b.PreviewMouseLeftButtonUp += (s, e) => { if (b.IsMouseOver) { DebugLog.Write("[SNIP] toolbtn previewup"); act(); e.Handled = true; } };
+        b.Click += (s, e) => { DebugLog.Write("[SNIP] toolbtn click: " + label); act(); e.Handled = true; };
+        b.PreviewMouseLeftButtonUp += (s, e) => { if (b.IsMouseOver) { DebugLog.Write("[SNIP] toolbtn previewup: " + label); act(); e.Handled = true; } };
         return b;
+    }
+
+    private static System.Windows.Shapes.Path MkSep()
+    {
+        var sep = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse("M 0 0 L 0 18"),
+            Stroke = new SolidColorBrush(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)),
+            StrokeThickness = 1,
+            Margin = new Thickness(4, 0, 4, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        return sep;
     }
 
     // ==================== 输出 ====================
