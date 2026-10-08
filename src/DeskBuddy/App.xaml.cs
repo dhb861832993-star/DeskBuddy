@@ -275,14 +275,15 @@ public partial class App : Application
 
     [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vKey);
 
-    /// <summary>当前修饰键组合是否匹配配置（如 "Ctrl+Alt"）。</summary>
+    /// <summary>当前修饰键组合是否匹配配置（Win 键不参与匹配，避免误伤）。</summary>
     private static bool ModMatch()
     {
         bool ctrl = (GetAsyncKeyState(0x11) & 0x8000) != 0;
         bool alt = (GetAsyncKeyState(0x12) & 0x8000) != 0;
         bool shift = (GetAsyncKeyState(0x10) & 0x8000) != 0;
         var m = _snipMods;
-        return ctrl == m.Contains("Ctrl") && alt == m.Contains("Alt") && shift == m.Contains("Shift");
+        bool needCtrl = m.Contains("Ctrl"), needAlt = m.Contains("Alt"), needShift = m.Contains("Shift");
+        return ctrl == needCtrl && alt == needAlt && shift == needShift;
     }
 
     // ==================== 截图 ====================
@@ -290,7 +291,20 @@ public partial class App : Application
     private static int SnipVk = 0x70;      // 主键虚拟码
     private static string _snipMods = "";   // 修饰键组合（"Ctrl+Alt" 等，空 = 无）
 
-    /// <summary>从配置解析截图热键（支持 "Ctrl+Alt+S"、"F1"、"PrintScreen" 等格式）。</summary>
+    /// <summary>配置串 → 虚拟键码（支持 A-Z / 0-9 / Num0-9 / F1-F12 / PrtSc / Space / `）。</summary>
+    private static int VkOf(string key) => key switch
+    {
+        "PrintScreen" => 0x2C,
+        "Space" => 0x20,
+        "`" => 0xC0,
+        _ when key.Length == 1 && key[0] >= '0' && key[0] <= '9' => 0x30 + (key[0] - '0'),
+        _ when key.Length == 1 && key[0] >= 'A' && key[0] <= 'Z' => 0x41 + (key[0] - 'A'),
+        _ when key.StartsWith("Num") && key.Length == 4 && key[3] >= '0' && key[3] <= '9' => 0x60 + (key[3] - '0'),
+        _ when key.Length >= 2 && key[0] == 'F' && int.TryParse(key[1..], out var f) && f is >= 1 and <= 12 => 0x70 + (f - 1),
+        _ => 0x70, // F1
+    };
+
+    /// <summary>从配置解析截图热键（支持 "Ctrl+Alt+S"、"F1"、"Ctrl+Shift+PrintScreen" 等格式）。</summary>
     public static void ParseSnipHotkey(string hotkey)
     {
         hotkey ??= "F1";
@@ -298,13 +312,8 @@ public partial class App : Application
         var mods = parts.Where(p => p is "Ctrl" or "Alt" or "Shift").ToList();
         var key = parts.FirstOrDefault(p => p is not ("Ctrl" or "Alt" or "Shift")) ?? "F1";
         _snipMods = string.Join("+", mods);
-        SnipVk = key switch
-        {
-            "F2" => 0x71, "F3" => 0x72, "F4" => 0x73, "F5" => 0x74, "F6" => 0x75,
-            "PrintScreen" => 0x2C,
-            "A" => 0x41, "S" => 0x53, "Q" => 0x51, "X" => 0x58,
-            _ => 0x70, // F1
-        };
+        SnipVk = VkOf(key);
+        DebugLog.Write($"[SNIP] hotkey parsed: '{hotkey}' -> vk=0x{SnipVk:X2} mods='{_snipMods}'");
     }
 
     // 旧配置兼容（单键格式）

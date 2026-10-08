@@ -327,8 +327,9 @@ public partial class SettingsWindow : Window
                 SnipHotkeyHint.Text = $"已按：{cur} … 再按一个主键（字母/数字/F1-F12/` 等）";
                 return;
             }
-            // 主键：组合修饰键录入
+            // 主键：组合修饰键录入（Win 参与——但保存端只认 Ctrl/Alt/Shift，故 Win 报不支持）
             var mods = BuildModString();
+            if (mods.Contains("Win")) { SnipHotkeyHint.Text = "Win 键暂不支持作截图修饰键，请用 Ctrl/Alt/Shift 组合"; return; }
             var main = KeyName(e);
             if (main == null) { SnipHotkeyHint.Text = "该键不支持，请按字母/数字/功能键"; return; }
             _snipHotkey = mods.Length > 0 ? $"{mods}+{main}" : main;
