@@ -221,3 +221,5 @@
 <p align="center">
   Made with 鉂わ笍 路 鍙屽嚮 Ctrl锛岄┈涓婂紑濮嬶綖
 </p>
+## 功能地图
+详细的功能页面索引见 [docs/FEATURE-MAP.md](docs/FEATURE-MAP.md)（所有页面/热键/接入点的权威对照表）。
