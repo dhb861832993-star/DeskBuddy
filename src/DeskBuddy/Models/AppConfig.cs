@@ -71,13 +71,19 @@ public class AppConfig
 
     // ===== 备忘录 =====
 
-    /// <summary>是否启用右侧备忘录面板（开启后呼出菜单自动显示；默认关闭）。</summary>
+    /// <summary>是否启用右侧备忘录面板（功能总开关，设置项）。</summary>
     public bool MemoEnabled { get; set; }
+
+    /// <summary>备忘录面板展开状态记忆（用户点图标的最近状态；null=未操作过，用 MemoEnabled 作初始）。</summary>
+    public bool? MemoPanelOpen { get; set; }
 
     // ===== 工具箱（左侧工具面板） =====
 
-    /// <summary>是否启用左侧工具面板（开启后呼出菜单自动显示；默认关闭）。</summary>
+    /// <summary>是否启用左侧工具面板（功能总开关，设置项）。</summary>
     public bool ToolsEnabled { get; set; }
+
+    /// <summary>工具箱面板展开状态记忆（用户点图标的最近状态；null=未操作过，用 ToolsEnabled 作初始）。</summary>
+    public bool? ToolsPanelOpen { get; set; }
 
     // ===== 截图 =====
 

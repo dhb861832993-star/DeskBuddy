@@ -118,8 +118,9 @@ public partial class MainWindow : Window
         ReloadConfig();
         ApplyTheme();
 
-        // 备忘录：启用则在每次呼出时右侧自动显示，否则隐藏
-        if (_config.MemoEnabled)
+        // 备忘录：用户记忆优先（点图标关了就保持关），null=首次用总开关初始化
+        var memoWant = _config.MemoPanelOpen ?? (_config.MemoEnabled ? true : false);
+        if (memoWant && _config.MemoEnabled)
         {
             if (MemoPanel.Visibility != Visibility.Visible)
             {
@@ -129,14 +130,18 @@ public partial class MainWindow : Window
                 PositionWindow();
             }
         }
-        else if (MemoPanel.Visibility == Visibility.Visible)
+        else
         {
-            MemoPanel.Visibility = Visibility.Collapsed;
-            PositionWindow();
+            if (MemoPanel.Visibility == Visibility.Visible)
+            {
+                MemoPanel.Visibility = Visibility.Collapsed;
+                PositionWindow();
+            }
         }
 
-        // 工具箱：启用则在每次呼出时左侧自动显示，否则隐藏
-        if (_config.ToolsEnabled)
+        // 工具箱：用户记忆优先（同上）
+        var toolsWant = _config.ToolsPanelOpen ?? (_config.ToolsEnabled ? true : false);
+        if (toolsWant && _config.ToolsEnabled)
         {
             if (ToolsPanel.Visibility != Visibility.Visible)
             {
@@ -144,10 +149,13 @@ public partial class MainWindow : Window
                 PositionWindow();
             }
         }
-        else if (ToolsPanel.Visibility == Visibility.Visible)
+        else
         {
-            ToolsPanel.Visibility = Visibility.Collapsed;
-            PositionWindow();
+            if (ToolsPanel.Visibility == Visibility.Visible)
+            {
+                ToolsPanel.Visibility = Visibility.Collapsed;
+                PositionWindow();
+            }
         }
 
         RefreshItems();
@@ -1557,7 +1565,7 @@ public partial class MainWindow : Window
             ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    /// <summary>切换备忘录面板显示/隐藏。</summary>
+    /// <summary>切换备忘录面板显示/隐藏（记忆状态到配置）。</summary>
     private void OnMemoToggle(object sender, RoutedEventArgs e)
     {
         if (MemoPanel.Visibility == Visibility.Visible)
@@ -1571,17 +1579,33 @@ public partial class MainWindow : Window
             MemoPanel.Visibility = Visibility.Visible;
             MemoInput.Focus();
         }
+        SavePanelStates();
         PositionWindow();
     }
 
-    /// <summary>切换左侧工具面板（工具箱）显示/隐藏。</summary>
+    /// <summary>切换左侧工具面板（工具箱）显示/隐藏（记忆状态到配置）。</summary>
     private void OnToolsToggle(object sender, RoutedEventArgs e)
     {
         if (ToolsPanel.Visibility == Visibility.Visible)
             ToolsPanel.Visibility = Visibility.Collapsed;
         else
             ToolsPanel.Visibility = Visibility.Visible;
+        SavePanelStates();
         PositionWindow();
+    }
+
+    /// <summary>把两个面板的当前展开状态存进配置（下次呼出保持一致）。</summary>
+    private void SavePanelStates()
+    {
+        var changed = false;
+        var memoOpen = MemoPanel.Visibility == Visibility.Visible;
+        if (_config.MemoPanelOpen != memoOpen) { _config.MemoPanelOpen = memoOpen; changed = true; }
+        var toolsOpen = ToolsPanel.Visibility == Visibility.Visible;
+        if (_config.ToolsPanelOpen != toolsOpen) { _config.ToolsPanelOpen = toolsOpen; changed = true; }
+        if (changed)
+        {
+            try { ConfigManager.Save(_config); } catch { }
+        }
     }
 
     /// <summary>工具箱「截图」→ 启动 Snipaste 式截图。</summary>
