@@ -122,21 +122,77 @@ public partial class SnipOverlayWindow : Window
         };
     }
 
-    /// <summary>新建实例激活：截屏 → 建窗口 → 显示（每轮全新状态机，无复用坑）。</summary>
+    /// <summary>新建实例激活：先截屏 → 再建窗显示（窗口创建时会先显示黑底——必须已截好图再建窗，否则截到自己=全黑）。</summary>
     private void BuildAllAndShow()
     {
         _active = true;
         try
         {
-            BuildMonitorWindows(capture: true);   // 建窗即显示（全新窗口，Show 可靠）
+            // 阶段1：先截屏（含布局枚举），纯内存
+            EnumPhys();
+            _mw.Clear(); _shots.Clear(); _hwnds.Clear();
+            var prepared = new List<(SD.Rectangle Phys, Rect Dip, System.Windows.Media.Imaging.BitmapSource Src, SD.Bitmap Bmp)>();
+            foreach (var phys in _physRects)
+            {
+                var bmp = new SD.Bitmap(phys.Width, phys.Height);
+                using (var g = SD.Graphics.FromImage(bmp))
+                    g.CopyFromScreen(phys.X, phys.Y, 0, 0, new SD.Size(phys.Width, phys.Height));
+                var dip = new Rect(phys.X / _mainDpi, phys.Y / _mainDpi, phys.Width / _mainDpi, phys.Height / _mainDpi);
+                prepared.Add((phys, dip, ToSource(bmp), bmp));
+            }
+            DebugLog.Write($"[SNIP] captured {prepared.Count} screens (pre-window)");
+            // 阶段2：建窗 + 立即挂图 + 显示（全新窗口状态机可靠）
+            foreach (var (phys, dip, src, bmp) in prepared)
+            {
+                var win = new Window
+                {
+                    WindowStyle = WindowStyle.None,
+                    ShowInTaskbar = false,
+                    ShowActivated = false,
+                    ResizeMode = ResizeMode.NoResize,
+                    Cursor = Cursors.Cross,
+                    Background = Brushes.Black,
+                    // 关键：WPF 布局尺寸显式给（否则 ActualWidth=0，Image 渲染 0×0 → 全黑）
+                    Left = dip.X, Top = dip.Y,
+                    Width = dip.Width, Height = dip.Height,
+                };
+                var img = new Image { Source = src, Stretch = Stretch.Fill };   // 建窗即带图
+                var canvas = new Canvas();
+                var grid = new Grid();
+                grid.Children.Add(img); grid.Children.Add(canvas);
+                win.Content = grid;
+                win.PreviewMouseLeftButtonDown += OnMouseLeftDown;
+                win.PreviewMouseMove += OnMouseMove;
+                win.PreviewMouseLeftButtonUp += OnMouseLeftUp;
+                win.PreviewKeyDown += OnWindowKeyDown;
+                var ph = phys;
+                win.SourceInitialized += (s2, e2) =>
+                {
+                    var h = new WindowInteropHelper(win).Handle;
+                    // Win32 按物理像素校准位置 + 顶置；尺寸 WPF 管理（两套状态不打架）
+                    SetWindowPos(h, new IntPtr(-1) /*HWND_TOPMOST*/, ph.X, ph.Y, 0, 0,
+                        SWP_NOACTIVATE | SWP_SHOWWINDOW | 0x0001 /*SWP_NOSIZE*/);
+                    _hwnds.Add(h);
+                };
+                win.Show();
+                var mw = new MonWindow { Win = win, Img = img, Canvas = canvas, Dip = dip, MainDpi = _mainDpi, Phys = phys };
+                _mw.Add(mw);
+                _shots.Add((mw, bmp));
+            }
+            // 统一虚拟 DIP 视界
+            var allX = _mw.Select(m => m.Dip.X).DefaultIfEmpty(0).Min();
+            var allY = _mw.Select(m => m.Dip.Y).DefaultIfEmpty(0).Min();
+            _vsX = allX; _vsY = allY;
+            _winW = _mw.Select(m => m.Dip.Right).DefaultIfEmpty(0).Max() - allX;
+            _winH = _mw.Select(m => m.Dip.Bottom).DefaultIfEmpty(0).Max() - allY;
             foreach (var m in _mw) m.Win.Activate();
-            // 重活后置
+            // 重活后置（取色网格 + 像素缓存）
             Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
             {
                 try { BuildPixelGrid(); } catch { }
             }));
         }
-        catch { _active = false; }
+        catch (Exception ex) { DebugLog.Write($"[SNIP] BuildAllAndShow ex: {ex.Message}"); _active = false; }
     }
 
     /// <summary>激活：截屏换图 → Show() 显示（与预创建的 Show→Hide 对称，状态机可靠）。</summary>
