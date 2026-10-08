@@ -78,9 +78,9 @@ public partial class SettingsWindow : Window
             _ => 0
         };
 
-        // 备忘录
-        MemoEnabledBox.IsChecked = config.MemoEnabled;
-        ToolsEnabledBox.IsChecked = config.ToolsEnabled;
+        // 备忘录/工具箱（与主界面图标【同一状态源】：开关 = 面板是否显示，两边改都互相同步）
+        MemoEnabledBox.IsChecked = config.MemoPanelOpen ?? config.MemoEnabled;
+        ToolsEnabledBox.IsChecked = config.ToolsPanelOpen ?? config.ToolsEnabled;
 
         // 截图热键（组合键捕获式，格式 "Ctrl+Alt+S"）
         _snipHotkey = string.IsNullOrWhiteSpace(config.SnipHotkey) ? "F1" : config.SnipHotkey;
@@ -602,8 +602,11 @@ public partial class SettingsWindow : Window
             AiApiKey = _config.AiApiKey,
             AiSystemPrompt = _config.AiSystemPrompt,
             McpEnabled = McpEnabledBox.IsChecked == true,
+            // 统一状态源：设置勾选 = 面板显示状态（总开关与记忆合一，两边互相同步）
             MemoEnabled = MemoEnabledBox.IsChecked == true,
+            MemoPanelOpen = MemoEnabledBox.IsChecked == true,
             ToolsEnabled = ToolsEnabledBox.IsChecked == true,
+            ToolsPanelOpen = ToolsEnabledBox.IsChecked == true,
             SnipHotkey = _snipHotkey,
             EnableFileSearch = EnableFileSearchBox.IsChecked == true,
             SearchRoots = SearchRootsBox.Text

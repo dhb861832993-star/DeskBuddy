@@ -118,9 +118,10 @@ public partial class MainWindow : Window
         ReloadConfig();
         ApplyTheme();
 
-        // 备忘录：用户记忆优先（点图标关了就保持关），null=首次用总开关初始化
-        var memoWant = _config.MemoPanelOpen ?? (_config.MemoEnabled ? true : false);
-        if (memoWant && _config.MemoEnabled)
+        // 备忘录：单一状态源 = MemoPanelOpen（主界面图标 & 设置复选框写的是同一个字段）
+        // 兼容旧配置：无 MemoPanelOpen 时用 MemoEnabled 初始
+        var memoWant = _config.MemoPanelOpen ?? _config.MemoEnabled;
+        if (memoWant)
         {
             if (MemoPanel.Visibility != Visibility.Visible)
             {
@@ -130,18 +131,15 @@ public partial class MainWindow : Window
                 PositionWindow();
             }
         }
-        else
+        else if (MemoPanel.Visibility == Visibility.Visible)
         {
-            if (MemoPanel.Visibility == Visibility.Visible)
-            {
-                MemoPanel.Visibility = Visibility.Collapsed;
-                PositionWindow();
-            }
+            MemoPanel.Visibility = Visibility.Collapsed;
+            PositionWindow();
         }
 
-        // 工具箱：用户记忆优先（同上）
-        var toolsWant = _config.ToolsPanelOpen ?? (_config.ToolsEnabled ? true : false);
-        if (toolsWant && _config.ToolsEnabled)
+        // 工具箱：单一状态源 = ToolsPanelOpen（同上）
+        var toolsWant = _config.ToolsPanelOpen ?? _config.ToolsEnabled;
+        if (toolsWant)
         {
             if (ToolsPanel.Visibility != Visibility.Visible)
             {
@@ -149,13 +147,10 @@ public partial class MainWindow : Window
                 PositionWindow();
             }
         }
-        else
+        else if (ToolsPanel.Visibility == Visibility.Visible)
         {
-            if (ToolsPanel.Visibility == Visibility.Visible)
-            {
-                ToolsPanel.Visibility = Visibility.Collapsed;
-                PositionWindow();
-            }
+            ToolsPanel.Visibility = Visibility.Collapsed;
+            PositionWindow();
         }
 
         RefreshItems();
@@ -1594,14 +1589,14 @@ public partial class MainWindow : Window
         PositionWindow();
     }
 
-    /// <summary>把两个面板的当前展开状态存进配置（下次呼出保持一致）。</summary>
+    /// <summary>把两个面板的当前展开状态存进配置（单一状态源：开合字段与总开关同步写，任何读取方都一致）。</summary>
     private void SavePanelStates()
     {
         var changed = false;
         var memoOpen = MemoPanel.Visibility == Visibility.Visible;
-        if (_config.MemoPanelOpen != memoOpen) { _config.MemoPanelOpen = memoOpen; changed = true; }
+        if (_config.MemoPanelOpen != memoOpen) { _config.MemoPanelOpen = memoOpen; _config.MemoEnabled = memoOpen; changed = true; }
         var toolsOpen = ToolsPanel.Visibility == Visibility.Visible;
-        if (_config.ToolsPanelOpen != toolsOpen) { _config.ToolsPanelOpen = toolsOpen; changed = true; }
+        if (_config.ToolsPanelOpen != toolsOpen) { _config.ToolsPanelOpen = toolsOpen; _config.ToolsEnabled = toolsOpen; changed = true; }
         if (changed)
         {
             try { ConfigManager.Save(_config); } catch { }
