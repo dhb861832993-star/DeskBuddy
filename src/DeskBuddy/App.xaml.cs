@@ -91,6 +91,9 @@ public partial class App : Application
         _hook.KeyDown += OnGlobalKeyDown;
         _hook.KeyUp += k => _detector.OnKeyUp(k);
 
+        // 启动时立即解析截图热键（否则 SnipVk/_snipMods 停留在默认值，配置里的组合键不生效）
+        ParseSnipHotkey(_config.SnipHotkey);
+
         // 预创建截图覆盖窗口（含每屏子窗口，隐藏待命）→ F1 激活接近 0ms
         Tools.SnipOverlayWindow.PreCreate();
 
