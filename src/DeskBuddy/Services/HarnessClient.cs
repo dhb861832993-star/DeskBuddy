@@ -71,16 +71,34 @@ public static class HarnessClient
 
     // ==================== 底层 RPC ====================
 
-    /// <summary>调用 Harness RPC（client-request 信封），返回 result.value。</summary>
-    private static async Task<JsonElement> RpcAsync(string baseUrl, string method, object payload, CancellationToken ct)
+    /// <summary>调用 Harness RPC（client-request 信封），返回 result.value。
+    /// v2：方法名斜杠格式（session/list）、payload 包 args['_request']、每请求附鉴权 Cookie。</summary>
+    private static async Task<JsonElement> RpcAsync(string baseUrl, string method, object? args, CancellationToken ct)
     {
-        var envelope = new { type = "client-request", rpcId = Guid.NewGuid().ToString("N"), method, payload };
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl.TrimEnd('/')}/api/{method}")
+        var slashMethod = method.Replace('.', '/');
+        // payload: args 里默认补 _request（typert descriptor 要求）
+        var argsDict = args as Dictionary<string, object?>;
+        if (argsDict == null)
+        {
+            argsDict = new Dictionary<string, object?>();
+            if (args is not null)
+            {
+                foreach (var p in args.GetType().GetProperties())
+                    argsDict[p.Name] = p.GetValue(args);
+            }
+        }
+        argsDict.TryAdd("_request", new Dictionary<string, object?>());
+        var payload = new Dictionary<string, object?> { ["args"] = argsDict };
+        var envelope = new { type = "client-request", rpcId = Guid.NewGuid().ToString("N"), method = slashMethod, payload };
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl.TrimEnd('/')}/api/{slashMethod}")
         {
             Content = new StringContent(JsonSerializer.Serialize(envelope), Encoding.UTF8, "application/json")
         };
+        DshAuth.Attach(req, baseUrl);   // 鉴权 Cookie
         using var resp = await Http.SendAsync(req, ct);
         var json = await resp.Content.ReadAsStringAsync(ct);
+        if ((int)resp.StatusCode == 401)
+            throw new InvalidOperationException("DSH 鉴权失败（401）：请确认 ~/.dsh/.credentials.yaml 的 browser-session 有效（重启过 dsh web 后会自动续签）");
         using var doc = JsonDocument.Parse(json);
         if (doc.RootElement.TryGetProperty("result", out var result) &&
             result.TryGetProperty("ok", out var ok) && ok.GetBoolean())
@@ -117,6 +135,7 @@ public static class HarnessClient
         {
             Content = new StringContent(JsonSerializer.Serialize(envelope), Encoding.UTF8, "application/json")
         };
+        DshAuth.Attach(req, baseUrl);   // 鉴权 Cookie
         using var resp = await Http.SendAsync(req, ct);
         var body = await resp.Content.ReadAsStringAsync(ct);
         DebugLog.Write($"respond status={(int)resp.StatusCode} body={body[..Math.Min(200, body.Length)]}");
@@ -343,14 +362,16 @@ public static class HarnessClient
                     baseUrl[(baseUrl.IndexOf("://") + 3)..] + "/api/events.mux";
 
         using var ws = new ClientWebSocket();
+        // WebSocket 升级请求也带鉴权 Cookie（/api/events.mux 走同一道 fence）
+        ws.Options.SetRequestHeader("Cookie", DshAuth.CookieHeader(baseUrl));
         await ws.ConnectAsync(new Uri(wsUrl), ct);
 
         // 先连事件流再发消息，避免漏掉早期分块
-        await RpcAsync(baseUrl, "session.prompt", new
+        await RpcAsync(baseUrl, "session.prompt", new Dictionary<string, object?>
         {
-            sessionId,
-            mode = "queue",
-            content = new[] { new { type = "text", text = userText } }
+            ["sessionId"] = sessionId,
+            ["mode"] = "queue",
+            ["content"] = new[] { new { type = "text", text = userText } }
         }, ct);
 
         var buf = new byte[262144];
