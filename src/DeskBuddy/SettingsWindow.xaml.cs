@@ -289,10 +289,9 @@ public partial class SettingsWindow : Window
         return string.Join("+", mods);
     }
 
-    /// <summary>主键名（支持字母/数字/F1-F12/PrtSc/空格等）。</summary>
-    private static string? KeyName(KeyEventArgs e)
+    /// <summary>主键名（吃真实 Key——Alt 组合时 e.Key=System 真实键在 SystemKey，调用方已解包）。</summary>
+    private static string? RealKeyName(Key k)
     {
-        var k = e.Key == Key.System ? e.SystemKey : e.Key;   // Alt 组合时走 System
         return k switch
         {
             >= Key.A and <= Key.Z => ((char)('A' + (k - Key.A))).ToString(),
@@ -302,9 +301,13 @@ public partial class SettingsWindow : Window
             Key.PrintScreen => "PrintScreen",
             Key.Space => "Space",
             Key.OemTilde => "`",
+            Key.Escape => "Esc",
             _ => null
         };
     }
+
+    /// <summary>主键名（从事件解包 SystemKey）。</summary>
+    private static string? KeyName(KeyEventArgs e) => RealKeyName(e.Key == Key.System ? e.SystemKey : e.Key);
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -312,26 +315,28 @@ public partial class SettingsWindow : Window
         if (_snipCapturing)
         {
             e.Handled = true;
-            if (e.Key == Key.Escape)
+            if (e.Key == Key.Escape && (Keyboard.Modifiers & ModifierKeys.Alt) == 0)
             {
                 _snipCapturing = false;
                 SnipCaptureBtn.Content = _snipHotkey;
                 SnipHotkeyHint.Text = "已取消。当前：" + _snipHotkey;
                 return;
             }
-            // 修饰键本身：更新提示，等待主键
-            if (e.Key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt
-                    or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin or Key.System)
+            // 关键：按住 Alt 时其他键走 Key.System（真实键在 SystemKey）——
+            // 必须先取真实键再判断是不是修饰键，否则 Alt+F1 的 F1 被当修饰键提示吞掉、永远录不进去
+            var realKey = e.Key == Key.System ? e.SystemKey : e.Key;
+            if (realKey is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt
+                    or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin)
             {
                 var cur = BuildModString();
                 SnipHotkeyHint.Text = $"已按：{cur} … 再按一个主键（字母/数字/F1-F12/` 等）";
                 return;
             }
-            // 主键：组合修饰键录入（Win 参与——但保存端只认 Ctrl/Alt/Shift，故 Win 报不支持）
+            // 主键：组合修饰键录入
             var mods = BuildModString();
             if (mods.Contains("Win")) { SnipHotkeyHint.Text = "Win 键暂不支持作截图修饰键，请用 Ctrl/Alt/Shift 组合"; return; }
-            var main = KeyName(e);
-            if (main == null) { SnipHotkeyHint.Text = "该键不支持，请按字母/数字/功能键"; return; }
+            var main = RealKeyName(realKey);
+            if (main == null) { SnipHotkeyHint.Text = $"“{realKey}”不支持，请按字母/数字/功能键"; return; }
             _snipHotkey = mods.Length > 0 ? $"{mods}+{main}" : main;
             _snipCapturing = false;
             SnipCaptureBtn.Content = _snipHotkey;
