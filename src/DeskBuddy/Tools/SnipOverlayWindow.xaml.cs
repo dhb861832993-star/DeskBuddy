@@ -813,16 +813,41 @@ public partial class SnipOverlayWindow : Window
         return sep;
     }
 
-    // ==================== 输出 ====================
+    // ==================== 输出（原始物理像素，零重采样 = 不糊） ====================
+    /// <summary>从【原始物理像素截图】裁剪选区：选区(全局DIP) → 所在屏 → 该屏物理坐标。
+    /// 不走 DIP 网格（那会先缩到 2560 再拉伸 = 糊）。</summary>
     private BitmapSource? RenderSelection()
     {
-        if (_bmp == null || !_hasSel) return null;
-        int x = (int)Math.Round(_sel.X - _vsX), y = (int)Math.Round(_sel.Y - _vsY);
-        int w = (int)Math.Round(_sel.Width), h = (int)Math.Round(_sel.Height);
-        x = Math.Clamp(x, 0, _bw - 1); y = Math.Clamp(y, 0, _bh - 1);
-        w = Math.Clamp(w, 1, _bw - x); h = Math.Clamp(h, 1, _bh - y);
-        using var part = _bmp.Clone(new SD.Rectangle(x, y, w, h), _bmp.PixelFormat);
-        return ToSource(part);
+        if (!_hasSel || _shots.Count == 0) return null;
+        // 选区（全局 DIP）转物理像素
+        double px = _sel.X * _mainDpi, py = _sel.Y * _mainDpi;
+        double pw = _sel.Width * _mainDpi, ph = _sel.Height * _mainDpi;
+        // 找选区主要落在哪个屏（按选区中心）
+        double cx = px + pw / 2, cy = py + ph / 2;
+        MonWindow? best = null;
+        foreach (var m in _mw)
+        {
+            // m.Phys 是物理坐标矩形
+            if (cx >= m.Phys.X && cx < m.Phys.X + m.Phys.Width && cy >= m.Phys.Y && cy < m.Phys.Y + m.Phys.Height)
+            { best = m; break; }
+        }
+        best ??= _mw.FirstOrDefault(m => _sel.IntersectsWith(new Rect(m.Phys.X / _mainDpi, m.Phys.Y / _mainDpi, m.Phys.Width / _mainDpi, m.Phys.Height / _mainDpi)));
+        if (best == null) return null;
+        // 找对应截图（同屏）
+        var shot = _shots.FirstOrDefault(s => ReferenceEquals(s.MW, best));
+        var bmp = shot.Bmp ?? _bmp;
+        if (bmp == null) return null;
+        // 全局物理 → 该屏物理局部坐标
+        int x = (int)Math.Round(px - best.Phys.X), y = (int)Math.Round(py - best.Phys.Y);
+        int w = Math.Max(1, (int)Math.Round(pw)), h = Math.Max(1, (int)Math.Round(ph));
+        x = Math.Clamp(x, 0, bmp.Width - 1); y = Math.Clamp(y, 0, bmp.Height - 1);
+        w = Math.Clamp(w, 1, bmp.Width - x); h = Math.Clamp(h, 1, bmp.Height - y);
+        try
+        {
+            using var part = bmp.Clone(new SD.Rectangle(x, y, w, h), bmp.PixelFormat);
+            return ToSource(part);
+        }
+        catch { return null; }
     }
 
     private void CopySelection()
@@ -850,7 +875,9 @@ public partial class SnipOverlayWindow : Window
         var src = RenderSelection(); if (src == null) return;
         double x = _sel.X, y = _sel.Y;
         var sel = _sel;
+        double dpi = _mainDpi;
         CloseAll();
+        // 贴图显示尺寸 = 选区 DIP（视觉与框选时一致）；图片本体是物理像素高清
         var pin = new PinWindow(src, x, y, sel.Width, sel.Height);
         pin.Show();
     }

@@ -52,7 +52,12 @@ public sealed class PinWindow : Window
             CornerRadius = new CornerRadius(3),
             Background = Brushes.White
         };
+        // 高画质：物理像素对齐 + 高质量缩放算法（滚轮缩放时不糊）
+        UseLayoutRounding = true;
+        SnapsToDevicePixels = true;
         _image = new Image { Source = src, Stretch = Stretch.Uniform };
+        RenderOptions.SetBitmapScalingMode(_image, BitmapScalingMode.HighQuality);
+        RenderOptions.SetEdgeMode(_image, EdgeMode.Aliased);
         host.Child = _image;
         Content = host;
 
