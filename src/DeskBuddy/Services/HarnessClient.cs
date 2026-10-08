@@ -72,11 +72,11 @@ public static class HarnessClient
     // ==================== 底层 RPC ====================
 
     /// <summary>调用 Harness RPC（client-request 信封），返回 result.value。
-    /// v2：方法名斜杠格式（session/list）、payload 包 args['_request']、每请求附鉴权 Cookie。</summary>
+    /// v2：方法名斜杠格式（session/list）、payload 装 args。注意：
+    /// session/list 等隐式上下文方法需要 "_request":{} 字段；session/page 等显式参数方法【不】需要且会报 unexpected——由调用方自行决定。</summary>
     private static async Task<JsonElement> RpcAsync(string baseUrl, string method, object? args, CancellationToken ct)
     {
         var slashMethod = method.Replace('.', '/');
-        // payload: args 里默认补 _request（typert descriptor 要求）
         var argsDict = args as Dictionary<string, object?>;
         if (argsDict == null)
         {
@@ -87,7 +87,9 @@ public static class HarnessClient
                     argsDict[p.Name] = p.GetValue(args);
             }
         }
-        argsDict.TryAdd("_request", new Dictionary<string, object?>());
+        // session/list / workspace.list 等隐式上下文 endpoint 需要 _request
+        if (slashMethod is "session/list" or "workspace/list" or "session/modelCatalog")
+            argsDict.TryAdd("_request", new Dictionary<string, object?>());
         var payload = new Dictionary<string, object?> { ["args"] = argsDict };
         var envelope = new { type = "client-request", rpcId = Guid.NewGuid().ToString("N"), method = slashMethod, payload };
         using var req = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl.TrimEnd('/')}/api/{slashMethod}")
@@ -291,15 +293,92 @@ public static class HarnessClient
 
     // ==================== 历史 ====================
 
-    /// <summary>读取会话历史，返回可展示的消息行（user/assistant 文本 + 工具摘要）。</summary>
+    /// <summary>读取会话历史（session/page 分页 API：先探测最新 cursor，再整页拉取）。
+    /// 返回可展示的消息行（user/assistant 文本 + 工具摘要）。</summary>
     public static async Task<List<(string Role, string Text)>> GetHistoryAsync(AppConfig cfg, string sessionId, CancellationToken ct)
     {
         var baseUrl = BaseUrl(cfg);
-        var value = await RpcAsync(baseUrl, "session.history", new { sessionId }, ct);
         var result = new List<(string, string)>();
-        if (!value.TryGetProperty("events", out var events)) return result;
 
-        foreach (var entry in events.EnumerateArray())
+        // 1) 探测最新 cursor：故意发超大 throughSeq，从报错信息读出真实 cursor
+        var cursor = await ProbeCursorAsync(baseUrl, sessionId, ct);
+        if (cursor < 0) return result;
+
+        // 2) 就这个 cursor 拉一页（maxMessages 给大：尽量一页拉全）
+        const int pageSize = 800;
+        var value = await RpcAsync(baseUrl, "session/page", new Dictionary<string, object?>
+        {
+            ["request"] = new Dictionary<string, object?>
+            {
+                ["address"] = new Dictionary<string, object?> { ["kind"] = "session", ["sessionId"] = sessionId },
+                ["throughSeq"] = cursor,
+                ["maxMessages"] = pageSize,
+            }
+        }, ct);
+
+        if (!value.TryGetProperty("records", out var records)) return result;
+        AppendRecords(records, result);
+
+        // 3) hasMore → 用 records[0].seq 作为 beforeSeq 继续往回翻（最多 4 页防失控）
+        var hasMore = value.TryGetProperty("hasMore", out var hm) && hm.GetBoolean();
+        var pages = 0;
+        while (hasMore && pages < 4 && result.Count < 2000)
+        {
+            int firstSeq;
+            try
+            {
+                using var doc = JsonDocument.Parse(JsonSerializer.Serialize(value));
+                var recs = doc.RootElement.GetProperty("records");
+                firstSeq = recs[0].GetProperty("event").GetProperty("seq").GetInt32();
+            }
+            catch { break; }
+            if (firstSeq <= 0) break;
+            value = await RpcAsync(baseUrl, "session/page", new Dictionary<string, object?>
+            {
+                ["request"] = new Dictionary<string, object?>
+                {
+                    ["address"] = new Dictionary<string, object?> { ["kind"] = "session", ["sessionId"] = sessionId },
+                    ["throughSeq"] = cursor,
+                    ["beforeSeq"] = firstSeq,
+                    ["maxMessages"] = pageSize,
+                }
+            }, ct);
+            if (!value.TryGetProperty("records", out records) || records.GetArrayLength() == 0) break;
+            AppendRecords(records, result);
+            hasMore = value.TryGetProperty("hasMore", out hm) && hm.GetBoolean();
+            pages++;
+        }
+        return result;
+    }
+
+    /// <summary>探测会话最新 seq（通过 throughSeq 越界报错的错误消息提取 cursor）。</summary>
+    private static async Task<int> ProbeCursorAsync(string baseUrl, string sessionId, CancellationToken ct)
+    {
+        try
+        {
+            await RpcAsync(baseUrl, "session/page", new Dictionary<string, object?>
+            {
+                ["request"] = new Dictionary<string, object?>
+                {
+                    ["address"] = new Dictionary<string, object?> { ["kind"] = "session", ["sessionId"] = sessionId },
+                    ["throughSeq"] = int.MaxValue,
+                    ["maxMessages"] = 1,
+                }
+            }, ct);
+            return -1; // 不该到这（越界必报错）
+        }
+        catch (InvalidOperationException ex)
+        {
+            // "session page through seq X is past cursor Y"
+            var m = System.Text.RegularExpressions.Regex.Match(ex.Message ?? "", @"past cursor (\d+)");
+            return m.Success ? int.Parse(m.Groups[1].Value) : -1;
+        }
+    }
+
+    /// <summary>把 records 解析为消息行。</summary>
+    private static void AppendRecords(JsonElement records, List<(string Role, string Text)> result)
+    {
+        foreach (var entry in records.EnumerateArray())
         {
             if (!entry.TryGetProperty("event", out var ev)) continue;
             var type = ev.TryGetProperty("type", out var t) ? t.GetString() : null;
@@ -307,7 +386,6 @@ public static class HarnessClient
             {
                 var text = ExtractText(ev, "data");
                 if (string.IsNullOrWhiteSpace(text)) continue;
-                // 跳过系统注入的上下文消息（runtime context 等）
                 if (text.StartsWith("Current runtime context", StringComparison.Ordinal) ||
                     text.StartsWith("当前运行时上下文", StringComparison.Ordinal) ||
                     text.Contains("Current DSH file policy"))
@@ -327,7 +405,6 @@ public static class HarnessClient
                 if (!string.IsNullOrEmpty(name)) result.Add(("status", $"🔧 使用工具：{name}"));
             }
         }
-        return result;
     }
 
     private static string ExtractText(JsonElement ev, string dataProp)
