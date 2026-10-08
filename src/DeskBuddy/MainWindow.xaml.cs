@@ -698,26 +698,72 @@ public partial class MainWindow : Window
         ItemList.ItemsPanel = panel;
     }
 
+    /// <summary>所有显示器的工作区（物理→DIP，用于多屏定位）。</summary>
+    private static List<Rect> AllScreens()
+    {
+        var result = new List<Rect>();
+        try
+        {
+            foreach (var s in System.Windows.Forms.Screen.AllScreens)
+            {
+                var b = s.WorkingArea;   // WinForms 物理像素（PerMonitorV2 进程内即 DIP）
+                result.Add(new Rect(b.X, b.Y, b.Width, b.Height));
+            }
+        }
+        catch { }
+        if (result.Count == 0) result.Add(new Rect(SystemParameters.WorkArea.Left, SystemParameters.WorkArea.Top, SystemParameters.WorkArea.Width, SystemParameters.WorkArea.Height));
+        return result;
+    }
+
+    /// <summary>光标当前所在屏的工作区（找不到就主屏）。</summary>
+    private static Rect ScreenAtCursor()
+    {
+        var c = System.Windows.Forms.Cursor.Position;   // 物理像素
+        foreach (var r in AllScreens())
+        {
+            if (c.X >= r.Left && c.X < r.Right && c.Y >= r.Top && c.Y < r.Bottom) return r;
+        }
+        var wa = SystemParameters.WorkArea;
+        return new Rect(wa.Left, wa.Top, wa.Width, wa.Height);
+    }
+
     private void PositionWindow()
     {
-        var wa = SystemParameters.WorkArea;
+        // 多屏：跟随光标所在屏（每屏尺寸/比例不同时确保放得下）
+        var wa = ScreenAtCursor();
+        // 该屏可用宽不够时的自适应缩放策略：
+        // 主面板核心内容 ≥480；工具箱+备忘录在窄屏优先保留备忘录（核心功能），
+        // 两栏都展开需要 480+250+310+24≈1064 —— 竖屏(1080)恰好极限，再窄(如笔记本竖接)就收工具箱
+        var availableW = wa.Width - 40;
         // 宫格模式：窗口宽度固定容纳一排瓷砖，避免右侧大片留白
         var width = _config.WindowWidth > 400 ? _config.WindowWidth : 900;
         if (_config.LayoutMode != "list")
         {
             width = GridColumns * TileWidth + 24; // 一排固定 GridColumns 个
         }
-        // 备忘录面板展开时，宽度要同时容纳网格 + 备忘录两栏，否则网格被挤窄、图标被裁
-        if (MemoPanel.Visibility == Visibility.Visible)
-            width = width + MemoPanel.Width + 12;
-        // 左侧工具面板展开时同样叠加宽度
-        if (ToolsPanel.Visibility == Visibility.Visible)
-            width = width + ToolsPanel.Width + 12;
-        Width = Math.Clamp(width, 480, wa.Width - 40);
+        // 面板宽度预算：先备忘录（核心）后工具箱；窄屏(竖屏)放不下两栏时自动收起工具箱
+        var wantMemo = MemoPanel.Visibility == Visibility.Visible;
+        var wantTools = ToolsPanel.Visibility == Visibility.Visible;
+        var toolsOn = wantTools;
+        var memoOn = wantMemo;
+        // 弹性预算：核心内容最小 480；两栏全开 ≈ 480+250+310+36
+        if (wantMemo && wantTools && width + 250 + 310 + 36 > availableW)
+        {
+            // 两栏放不下：优先留备忘录，收工具箱（仅本屏ayout调整，不改用户记忆）
+            toolsOn = width + 310 + 24 <= availableW;
+        }
+        if (wantMemo && !toolsOn && width + 310 > availableW)
+        {
+            // 备忘录也放不下（极端窄屏）：都收
+            memoOn = false;
+        }
+        if (memoOn) width += 310 + 12;
+        if (toolsOn) width += 250 + 12;
+        Width = Math.Clamp(width, Math.Min(480, availableW), availableW);
         _ = Dispatcher.BeginInvoke(new Action(() =>
         {
             var listW = ItemList.ActualWidth;
-            DebugLog.Write($"PositionWindow: mode={_config.LayoutMode} Width={Width:F0} listW={listW:F0} cell≈{(listW > 0 ? listW / GridColumns : 0):F0} cols={GridColumns}");
+            DebugLog.Write($"PositionWindow: screen@{wa.Left:F0},{wa.Top:F0} {wa.Width:F0}x{wa.Height:F0} Width={Width:F0} memo={memoOn} tools={toolsOn} cols={GridColumns}");
         }));
 
         var header = 58 + 1 + 34 + 14 + 12; // 搜索栏 + 分隔线 + 底部 + 边距
@@ -747,18 +793,19 @@ public partial class MainWindow : Window
         }
         // 有文件结果或备忘录面板展开时允许扩展到整个工作区高度（否则受 MaxWindowHeight 限制）
         // ——备忘录展开时窗口加高，能显示更多条目
-        var memoOpen = MemoPanel.Visibility == Visibility.Visible;
+        var memoOpen = memoOn;
         var maxH = (_fileResults.Count > 0 || memoOpen)
-            ? Math.Max(wa.Height - 60, _config.MaxWindowHeight)
+            ? Math.Max(wa.Height - 60, Math.Min(_config.MaxWindowHeight, wa.Height - 60))
             : Math.Min(_config.MaxWindowHeight, wa.Height - 60);
         // 整体加高三分之一（主面板含备忘录）
         desired = desired * 4 / 3;
-        var newH = Math.Clamp(desired, 240, maxH);
+        var newH = Math.Clamp(desired, Math.Min(240, maxH), Math.Max(240, maxH));
         // 高度没变化就跳过设置，避免无谓的重排抖动
         if (Math.Abs(Height - newH) > 2) Height = newH;
 
+        // 该屏内居中水平 · 顶部 18%（竖屏比例不同也自然适配）
         Left = wa.Left + (wa.Width - Width) / 2;
-        Top = wa.Top + wa.Height * 0.18;
+        Top = wa.Top + Math.Min(wa.Height * 0.18, Math.Max(0, wa.Height - Height - 20));
     }
 
     /// <summary>宫格每排固定瓷砖数（超过就开新一排）。</summary>
