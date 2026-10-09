@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -66,7 +67,16 @@ public sealed class PinWindow : Window
         MouseLeftButtonUp += OnUp;
         MouseWheel += OnWheel;
         MouseDoubleClick += (_, _) => Close();
-        PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { Close(); e.Handled = true; } };
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Escape) { Close(); e.Handled = true; }
+            // Ctrl+C：贴图原图复制到剪贴板（像素无忧：存的是物理像素原始位图）
+            if (e.Key == Key.C && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+            {
+                CopyToClipboard();
+                e.Handled = true;
+            }
+        };
         Loaded += (_, _) =>
         {
             Focusable = true; Focus();
@@ -81,12 +91,39 @@ public sealed class PinWindow : Window
     private ContextMenu BuildMenu()
     {
         var m = new ContextMenu();
-        var copy = new MenuItem { Header = "复制" }; copy.Click += (_, _) => { try { Clipboard.SetImage(_src); } catch { } };
+        var copy = new MenuItem { Header = "复制" }; copy.Click += (_, _) => CopyToClipboard();
         var save = new MenuItem { Header = "保存…" }; save.Click += (_, _) => Save();
         var scale1 = new MenuItem { Header = "缩放 100%" }; scale1.Click += (_, _) => SetScale(1.0, null);
         var close = new MenuItem { Header = "关闭" }; close.Click += (_, _) => Close();
         m.Items.Add(copy); m.Items.Add(save); m.Items.Add(scale1); m.Items.Add(new Separator()); m.Items.Add(close);
         return m;
+    }
+
+    /// <summary>把贴图原图（物理像素）复制到剪贴板；成功后给一个小型视觉反馈（描边闪一下绿色）。</summary>
+    private void CopyToClipboard()
+    {
+        try
+        {
+            Clipboard.SetImage(_src);
+            FlashBorder();
+        }
+        catch { }
+    }
+
+    /// <summary>描边闪烁提示已复制。</summary>
+    private async void FlashBorder()
+    {
+        try
+        {
+            if (Content is Border b)
+            {
+                var orig = b.BorderBrush;
+                b.BorderBrush = new SolidColorBrush(Color.FromRgb(0x5C, 0xE8, 0xA0));
+                await Task.Delay(150);
+                b.BorderBrush = orig;
+            }
+        }
+        catch { }
     }
 
     private void Save()
@@ -112,7 +149,8 @@ public sealed class PinWindow : Window
     private void OnDown(object s, MouseButtonEventArgs e)
     {
         _dragging = true;
-        // 用屏幕物理坐标做拖拽基准（窗口移动时 GetPosition(this) 会跟着变，不能用）
+        // 点击即取焦点（ShowActivated=false 的贴图默认无键盘焦点，Ctrl+C/Ctrl+S 需要）
+        try { Focusable = true; Focus(); } catch { }
         _dragStartScreen = GetCursorPosPhys();
         _dragWinPX = _px; _dragWinPY = _py;
         CaptureMouse();
