@@ -77,7 +77,7 @@ public sealed class PinWindow : Window
         };
         UseLayoutRounding = true;
         SnapsToDevicePixels = true;
-        _image = new Image { Source = src, Stretch = Stretch.Uniform };
+        _image = new Image { Source = src, Stretch = Stretch.Fill };
         RenderOptions.SetBitmapScalingMode(_image, BitmapScalingMode.HighQuality);
         _ink = new Canvas { IsHitTestVisible = true };
         _layers = new Grid();
@@ -93,6 +93,11 @@ public sealed class PinWindow : Window
         MouseWheel += OnWheel;
         MouseDoubleClick += (_, _) => Close();
         PreviewKeyDown += OnKey;
+        // 关键：窗口显式 DIP 尺寸（WPF Auto 内容尺寸 = 0 → 图渲染 0×0 只剩工具条——同截图黑屏bug）
+        Width = Math.Max(24, w);
+        Height = Math.Max(24, h);
+        Left = x; Top = y;
+
         Loaded += (_, _) =>
         {
             Focusable = true; Focus();
