@@ -109,6 +109,11 @@ public sealed class PinWindow : Window
         MouseMove += OnMove;
         MouseLeftButtonUp += OnUp;
         PreviewMouseRightButtonDown += OnRightDown;   // 绘制中右键=取消（先于 ContextMenu）
+        PreviewMouseRightButtonUp += (s2, e2) =>
+        {
+            // 菜单在右键【抬起】时绽放——绘制中吞掉，杜绝「取消+菜单同时出现」
+            if (_tool is 1 or 2) { e2.Handled = true; }
+        };
         MouseWheel += OnWheel;
         MouseDoubleClick += (_, _) => Close();
         PreviewKeyDown += OnKey;
