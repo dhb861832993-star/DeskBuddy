@@ -10,6 +10,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using DeskBuddy.Services;
 
 namespace DeskBuddy.Tools;
 
@@ -20,6 +21,7 @@ public sealed class PinWindow : Window
 {
     private readonly Image _image;
     private readonly Canvas _ink;         // 标注层（笔画/矩形）
+    private readonly Canvas _uiCanvas = new();   // 装饰层（工具条/气泡，Canvas 点定位防 Grid 遮挡）
     private readonly Grid _layers;
     private readonly Border _host;
     private readonly BitmapSource _src;
@@ -56,8 +58,10 @@ public sealed class PinWindow : Window
     {
         _src = src;
         WindowStyle = WindowStyle.None;
-        AllowsTransparency = true;
-        Background = Brushes.Transparent;
+        // 不用 AllowsTransparency：分层窗口在高 DPI 的 GDI 位图渲染有已知怪病（图不显示）；
+        // 圆角Border改为直角——可靠性优先
+        AllowsTransparency = false;
+        Background = Brushes.White;
         Topmost = true;
         ShowInTaskbar = false;
         ResizeMode = ResizeMode.NoResize;
@@ -77,12 +81,24 @@ public sealed class PinWindow : Window
         };
         UseLayoutRounding = true;
         SnapsToDevicePixels = true;
-        _image = new Image { Source = src, Stretch = Stretch.Fill };
+        // Image 显式布局尺寸 + Uniform：窗口尺寸（DIP）= 选区 DIP（图为物理像素高清）
+        // ★布局教训（二分实测 Grid 变体 V_C ✓ / V_B ✗）：
+        //   1) Image 必须放 Grid 才能正确 Stretch 铺开（直接当 Border/Window 的 Content 布局协商失败→不渲染）
+        //   2) Grid 的非定位子元素（如工具条 Border）会 Stretch 填满整格 → 深色工具条背景盖住整张图！
+        //   → 装饰（工具条/气泡）必须放【Canvas 定位层】（Canvas 只按 Left/Top 画，绝不铺满）
+        _image = new Image
+        {
+            Source = src,
+            Stretch = Stretch.Uniform,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+        };
         RenderOptions.SetBitmapScalingMode(_image, BitmapScalingMode.HighQuality);
         _ink = new Canvas { IsHitTestVisible = true };
         _layers = new Grid();
-        _layers.Children.Add(_image);
-        _layers.Children.Add(_ink);
+        _layers.Children.Add(_image);        // 第1层：底图（Grid 布局铺开 ✓）
+        _layers.Children.Add(_ink);           // 第2层：笔迹
+        _layers.Children.Add(_uiCanvas);      // 第3层：装饰（Canvas 点定位，工具条/气泡绝不遮挡）
         _host.Child = _layers;
         _layers.SizeChanged += (_, _) => PositionToolPanel();
         Content = _host;
@@ -104,7 +120,10 @@ public sealed class PinWindow : Window
             _dpi = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
             if (_dpi <= 0.01) _dpi = 1.0;
             _baseW = w; _baseH = h;
-            MovePhys((int)Math.Round(x * _dpi), (int)Math.Round(y * _dpi), (int)Math.Round(w * _dpi), (int)Math.Round(h * _dpi));
+            _px = (int)Math.Round(x * _dpi); _py = (int)Math.Round(y * _dpi);
+            _pw = (int)Math.Round(w * _dpi); _ph = (int)Math.Round(h * _dpi);
+            DebugLog.Write($"[PIN] loaded: W={Width:F0}xH{Height:F0} dpi={_dpi} src={src.PixelWidth}x{src.PixelHeight} pr={_pw}x{_ph}");
+            // 初始位置由 WPF Left/Top/Width/Height(DIP) 自理——不 SetWindowPos（避免物理/DIP 打架裁切）
             BuildToolPanel();   // 常驻工具条
         };
         ContextMenu = BuildMenu();
@@ -187,7 +206,7 @@ public sealed class PinWindow : Window
         sp.Children.Add(MkTool("↩", "撤销一笔（Ctrl+Z）", UndoStroke));
 
         _toolPanel.Child = sp;
-        _layers.Children.Add(_toolPanel);
+        _uiCanvas.Children.Add(_toolPanel);
         RefreshToolPanel();
         PositionToolPanel();
     }
@@ -417,7 +436,7 @@ public sealed class PinWindow : Window
             }
             if (_thickBubble.Parent is Panel p2) p2.Children.Remove(_thickBubble);
             if (_thickBubble.Child is TextBlock tb) tb.Text = $"{_penW:0.#} px";
-            _layers.Children.Add(_thickBubble);
+            _uiCanvas.Children.Add(_thickBubble);
             _thickBubble.Measure(new Size(Math.Max(1, _layers.ActualWidth), Math.Max(1, _layers.ActualHeight)));
             _thickBubble.SetValue(Canvas.LeftProperty, Math.Max(4, Math.Min(at.X + 14, _layers.ActualWidth - _thickBubble.DesiredSize.Width - 4)));
             _thickBubble.SetValue(Canvas.TopProperty, Math.Max(4, at.Y - _thickBubble.DesiredSize.Height - 8));
@@ -442,22 +461,20 @@ public sealed class PinWindow : Window
         return m;
     }
 
-    /// <summary>合成「底图 + 标注」（隐藏工具条后 RenderTargetBitmap，物理 DPI 高清）。</summary>
+    /// <summary>合成「底图 + 标注」（隐藏工具条后渲染 _layers——不含装饰层）。</summary>
     private RenderTargetBitmap? Compose()
     {
         try
         {
-            var tp = _toolPanel;
-            if (tp?.Parent is Panel p) p.Children.Remove(tp);
-            var bp = _thickBubble;
-            if (bp?.Parent is Panel p2) p2.Children.Remove(bp);
             var w = _layers.ActualWidth > 1 ? _layers.ActualWidth : _baseW;
             var h = _layers.ActualHeight > 1 ? _layers.ActualHeight : _baseH;
             var dpi = _dpi > 0.01 ? _dpi : 1.0;
+            _layers.Measure(new Size(w, h));
+            _layers.Arrange(new Rect(0, 0, w, h));
+            _layers.UpdateLayout();
             var rtb = new RenderTargetBitmap((int)Math.Round(w * dpi), (int)Math.Round(h * dpi), 96 * dpi, 96 * dpi, PixelFormats.Pbgra32);
             rtb.Render(_layers);
             rtb.Freeze();
-            if (tp != null && _layers != null) { _layers.Children.Add(tp); PositionToolPanel(); }
             return rtb;
         }
         catch { return null; }

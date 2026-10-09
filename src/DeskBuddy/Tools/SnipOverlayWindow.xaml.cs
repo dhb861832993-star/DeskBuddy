@@ -875,9 +875,9 @@ public partial class SnipOverlayWindow : Window
         var src = RenderSelection(); if (src == null) return;
         double x = _sel.X, y = _sel.Y;
         var sel = _sel;
-        double dpi = _mainDpi;
         CloseAll();
         // 贴图显示尺寸 = 选区 DIP（视觉与框选时一致）；图片本体是物理像素高清
+        DebugLog.Write($"[SNIP] pin: src={src.PixelWidth}x{src.PixelHeight} sel={sel.Width:F0}x{sel.Height:F0} at ({sel.X:F0},{sel.Y:F0})");
         var pin = new PinWindow(src, x, y, sel.Width, sel.Height);
         pin.Show();
     }
