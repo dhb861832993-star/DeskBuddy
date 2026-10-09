@@ -112,13 +112,16 @@ public sealed class PinWindow : Window
         MouseDoubleClick += (_, _) => Close();
         PreviewKeyDown += OnKey;
         // 关键：窗口显式 DIP 尺寸 + 底部工具停靠区（工具条在贴图【外侧】右下角）
-        const double DockH = 46;   // 底部停靠带高度（工具条 + 间距）
+        // 布局教训：Grid 的 Star 行会被 Image 自然尺寸(物理像素)撑爆——改【显式行高】：
+        // 行1 = 选区高 h（Image 恰好填满），行2 = DockH 停靠带，窗口总高 = h + DockH（精确）
+        const double DockH = 46;
         _dock = new Canvas { IsHitTestVisible = true };
         _root = new Grid();
-        _root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });   // 图片区
-        _root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(DockH) });                  // 停靠区
+        _root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(h) });      // 图片区（显式高）
+        _root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(DockH) });  // 停靠区
         Grid.SetRow(_layers, 0);
         _root.Children.Add(_layers);
+        Grid.SetRow(_dock, 1);
         _root.Children.Add(_dock);
         _host.Child = _root;
         Content = _host;
@@ -138,6 +141,12 @@ public sealed class PinWindow : Window
             _pw = (int)Math.Round(w * _dpi); _ph = (int)Math.Round((h + DockH) * _dpi);
             DebugLog.Write($"[PIN] loaded: W={Width:F0}xH{Height:F0} dpi={_dpi} src={src.PixelWidth}x{src.PixelHeight} pr={_pw}x{_ph}");
             BuildToolPanel();   // 常驻工具条（停靠区）
+            // 布局完成后再摆一次（Loaded 时 ActualHeight 未定 → 工具条 startling 位置错）
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
+            {
+                PositionToolPanel();
+                DebugLog.Write($"[PIN] toolbar final: dock={_dock.ActualWidth:F0}x{_dock.ActualHeight:F0}");
+            }));
         };
         ContextMenu = BuildMenu();
     }
@@ -184,14 +193,25 @@ public sealed class PinWindow : Window
         };
         var sp = new StackPanel { Orientation = Orientation.Horizontal };
 
-        // 工具按钮：拖动 / 画笔 / 矩形（双保险触发：Click + PreviewUp直发——
-        // 窗口级 PreviewDown 先行处理时 Button.Click 常哑火，PreviewUp+IsMouseOver 已验证可靠）
+        // 工具按钮：拖动 / 画笔 / 矩形
+        // ★Button 的 Click 路由在本窗口（多层 Preview 拦截+CaptureMouse）下不可靠——
+        //   换【Border+MouseLeftButtonDown 直挂】（色板同款，用户实测有效）
         for (int t = 0; t <= 2; t++)
         {
+            int tt = t;   // 闭包独立捕获
             var glyph = t == 0 ? ToolNone : t == 1 ? ToolPen : ToolRect;
             var tip = t == 0 ? "移动/缩放（1）" : t == 1 ? "画笔（2）" : "矩形（3）";
-            var b = MkTool(glyph, tip, () => SetTool(t));
-            b.Tag = t;
+            var b = new Border
+            {
+                Child = new TextBlock { Text = glyph, FontSize = 14, Foreground = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF5)) },
+                Padding = new Thickness(8, 4, 8, 4),
+                CornerRadius = new CornerRadius(7),
+                Background = Brushes.Transparent,
+                Cursor = Cursors.Hand,
+                Tag = t,
+                ToolTip = tip,
+            };
+            b.MouseLeftButtonDown += (s2, e2) => { SetTool(tt); e2.Handled = true; };
             sp.Children.Add(b);
         }
         sp.Children.Add(Sep());
@@ -217,7 +237,18 @@ public sealed class PinWindow : Window
         }
         sp.Children.Add(Sep());
         // 撤销
-        sp.Children.Add(MkTool("↩", "撤销一笔（Ctrl+Z）", UndoStroke));
+        // 撤销（Border 直挂，同色板方案）
+        var undo = new Border
+        {
+            Child = new TextBlock { Text = "↩", FontSize = 14, Foreground = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF5)) },
+            Padding = new Thickness(8, 4, 8, 4),
+            CornerRadius = new CornerRadius(7),
+            Background = Brushes.Transparent,
+            Cursor = Cursors.Hand,
+            ToolTip = "撤销一笔（Ctrl+Z）",
+        };
+        undo.MouseLeftButtonDown += (s2, e2) => { UndoStroke(); e2.Handled = true; };
+        sp.Children.Add(undo);
 
         _toolPanel.Child = sp;
         // 工具条放底部停靠区（贴图外）右下角
@@ -234,21 +265,6 @@ public sealed class PinWindow : Window
         VerticalAlignment = VerticalAlignment.Center,
     };
 
-    private Button MkTool(string glyph, string tip, Action act)
-    {
-        var b = new Button
-        {
-            Content = glyph, ToolTip = tip, FontSize = 13,
-            Foreground = Brushes.White, Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0), Padding = new Thickness(7, 4, 7, 4),
-            Cursor = Cursors.Hand, Focusable = false,
-        };
-        b.Click += (s, e) => { act(); e.Handled = true; };
-        // 双保险：窗口级 PreviewDown 抢跑时 Click 哑火——PreviewUp+IsMouseOver 直接触发（截图工具条同款已验证）
-        b.PreviewMouseLeftButtonUp += (s, e) => { if (b.IsMouseOver) { act(); e.Handled = true; } };
-        return b;
-    }
-
     private void SetTool(int t)
     {
         DebugLog.Write($"[PIN] SetTool {t}");
@@ -262,12 +278,14 @@ public sealed class PinWindow : Window
         if (_toolPanel?.Child is not StackPanel sp) return;
         foreach (var el in sp.Children)
         {
-            if (el is Button b && b.Tag is int t)
+            // 工具按钮（Border）
+            if (el is Border b && b.Tag is int t)
             {
                 b.Background = t == _tool
                     ? new SolidColorBrush(Color.FromRgb(0x2E, 0xB8, 0x72))
                     : Brushes.Transparent;
             }
+            // 色板点（Border + Color Tag）
             if (el is Border d && d.Tag is Color c)
             {
                 d.BorderBrush = c == _penColor
@@ -279,16 +297,19 @@ public sealed class PinWindow : Window
         }
     }
 
-    /// <summary>工具条贴「底部停靠区」右下角（贴图方框外侧）。</summary>
+    /// <summary>工具条贴「底部停靠区」右侧（贴图方框外·水平右对齐·带内垂直居中）。</summary>
     private void PositionToolPanel()
     {
         if (_toolPanel == null) return;
         double w = ActualWidth > 1 ? ActualWidth : Width;
-        double dockH = _root.RowDefinitions.Count > 1 ? _root.RowDefinitions[1].Height.Value : _dockH;
+        // 停靠带实际高度（布局后）；未布局时用声明值
+        double dockH = _dock.ActualHeight > 1 ? _dock.ActualHeight : (_root.RowDefinitions.Count > 1 ? _root.RowDefinitions[1].Height.Value : _dockH);
         _toolPanel.Measure(new Size(Math.Max(1, w), Math.Max(1, dockH)));
         double tw = _toolPanel.DesiredSize.Width, th = _toolPanel.DesiredSize.Height;
-        double x = Math.Max(4, w - tw - 8);
-        double y = Math.Max(2, (dockH - th) / 2);   // 停靠带内垂直居中
+        double x = Math.Max(4, w - tw - 8);          // 右对齐
+        double y = Math.Max(2, (dockH - th) / 2);    // 停靠带内垂直居中
+        // 兜底：th>带高（异常）时贴带顶
+        if (th + 4 > dockH) y = 2;
         _toolPanel.SetValue(Canvas.LeftProperty, x);
         _toolPanel.SetValue(Canvas.TopProperty, y);
     }
