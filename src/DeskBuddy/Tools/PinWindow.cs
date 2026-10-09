@@ -108,6 +108,7 @@ public sealed class PinWindow : Window
         MouseLeftButtonDown += OnDown;
         MouseMove += OnMove;
         MouseLeftButtonUp += OnUp;
+        PreviewMouseRightButtonDown += OnRightDown;   // 绘制中右键=取消（先于 ContextMenu）
         MouseWheel += OnWheel;
         MouseDoubleClick += (_, _) => Close();
         PreviewKeyDown += OnKey;
@@ -444,6 +445,30 @@ public sealed class PinWindow : Window
         e.Handled = true;
     }
 
+    /// <summary>右击（绘制中）：取消当前未完成的笔画/矩形（丢弃半成品，不退出工具）。
+    /// 右击（非绘制中）：回到移动工具。</summary>
+    private void OnRightDown(object s, MouseButtonEventArgs e)
+    {
+        if (IsFromToolPanelRight(e)) { e.Handled = false; return; }
+        if (_strokeActive)
+        {
+            // 丢弃正在画的一半
+            if (_currentStroke != null) { _ink.Children.Remove(_currentStroke); _currentStroke = null; }
+            if (_currentRect != null) { _ink.Children.Remove(_currentRect); _currentRect = null; }
+            _strokeActive = false;
+            ReleaseMouseCapture();
+            DebugLog.Write("[PIN] right-click: draft cancelled");
+        }
+        else if (_tool != 0)
+        {
+            SetTool(0);   // 退出绘制工具，回移动
+            DebugLog.Write("[PIN] right-click: back to move tool");
+        }
+        e.Handled = true;
+    }
+
+    private bool IsFromToolPanelRight(MouseButtonEventArgs e) => IsFromToolPanel(e);
+
     private void OnWheel(object s, MouseWheelEventArgs e)
     {
         // 有绘制工具时：滚轮调粗细；无工具：缩放
@@ -502,6 +527,17 @@ public sealed class PinWindow : Window
         m.Items.Add(undo); m.Items.Add(new Separator());
         m.Items.Add(copy); m.Items.Add(save); m.Items.Add(scale1); m.Items.Add(new Separator()); m.Items.Add(close);
         return m;
+    }
+
+    /// <summary>右键打开菜单前拦截：绘制中右键语义=取消（OnRightDown 已消化）。</summary>
+    protected override void OnContextMenuOpening(ContextMenuEventArgs e)
+    {
+        if (_tool is 1 or 2)
+        {
+            e.Handled = true;   // 绘制工具激活时不弹菜单（右键专属取消）
+            return;
+        }
+        base.OnContextMenuOpening(e);
     }
 
     /// <summary>合成「底图 + 标注」（隐藏工具条后渲染 _layers——不含装饰层）。</summary>
