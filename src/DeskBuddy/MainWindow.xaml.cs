@@ -101,6 +101,28 @@ public partial class MainWindow : Window
         RoundedWindow.Apply(this, RootCard.CornerRadius.TopLeft);
         LoadMemo();
         RefreshMemoList();
+        // PerMonitorV2：窗口 DPI 变化（跨屏）→ 用新 DPI 重算位置保持居中
+        Loaded += (_, _) =>
+        {
+            try
+            {
+                if (PresentationSource.FromVisual(this) is HwndSource hs)
+                {
+                    hs.AddHook(OnWndProc);
+                }
+            }
+            catch { }
+        };
+    }
+
+    private IntPtr OnWndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        const int WM_DPICHANGED = 0x02E0;
+        if (msg == WM_DPICHANGED && IsVisible)
+        {
+            Dispatcher.BeginInvoke(PositionWindow);
+        }
+        return IntPtr.Zero;
     }
 
     // ==================== 显示 / 隐藏 ====================
@@ -715,22 +737,54 @@ public partial class MainWindow : Window
         return result;
     }
 
-    /// <summary>光标当前所在屏的工作区（找不到就主屏）。</summary>
-    private static Rect ScreenAtCursor()
+    private double WindowDpi
     {
-        var c = System.Windows.Forms.Cursor.Position;   // 物理像素
-        foreach (var r in AllScreens())
+        get
         {
-            if (c.X >= r.Left && c.X < r.Right && c.Y >= r.Top && c.Y < r.Bottom) return r;
+            try
+            {
+                // 窗口已显示：用真实合成 DPI（主屏 1.5 / 副屏 1.0）
+                if (IsLoaded)
+                {
+                    var src = PresentationSource.FromVisual(this);
+                    if (src?.CompositionTarget != null)
+                    {
+                        var d = src.CompositionTarget.TransformToDevice.M11;
+                        if (d > 0.01) return d;
+                    }
+                }
+            }
+            catch { }
+            // 未显示：用光标所在屏的 DPI（WinForms 屏宽物理 / WPF SystemParameters 主屏 DIP 反推全局基准）
+            return 1.0;
         }
-        var wa = SystemParameters.WorkArea;
-        return new Rect(wa.Left, wa.Top, wa.Width, wa.Height);
+    }
+
+    /// <summary>光标所在屏（工作区，换算成窗口 DIP 坐标系）。
+    /// 关键：WPF 的 Left/Top/Width 都是「窗口 DPI 下的 DIP」——同一个窗口跨屏时这些值会被
+    /// WPF 按【新屏 DPI】重新解释。因此这里必须用【窗口 DPI】把 WinForms 物理矩形换算成 DIP，
+    /// 保证数学在同一个坐标系。竖屏 1.0× 无缩放；主屏 1.5× 全部除 1.5。
+    /// </summary>
+    private Rect ScreenAtCursorForWindow()
+    {
+        double dpi = WindowDpi;
+        var c = System.Windows.Forms.Cursor.Position;
+        foreach (var s in System.Windows.Forms.Screen.AllScreens)
+        {
+            var b = s.WorkingArea;
+            var waDip = new Rect(b.X / dpi, b.Y / dpi, b.Width / dpi, b.Height / dpi);
+            var cDip = new Point(c.X / dpi, c.Y / dpi);
+            if (cDip.X >= waDip.Left && cDip.X < waDip.Right && cDip.Y >= waDip.Top && cDip.Y < waDip.Bottom)
+                return waDip;
+        }
+        var p = System.Windows.Forms.Screen.PrimaryScreen?.WorkingArea ?? new System.Drawing.Rectangle(0, 0, 1920, 1080);
+        return new Rect(p.X / dpi, p.Y / dpi, p.Width / dpi, p.Height / dpi);
     }
 
     private void PositionWindow()
     {
-        // 多屏：跟随光标所在屏（每屏尺寸/比例不同时确保放得下）
-        var wa = ScreenAtCursor();
+        // 多屏：跟随光标所在屏（统一 DIP 坐标系，杜绝物理/DIP 混算导致的偏移）
+        var wa = ScreenAtCursorForWindow();
         // 该屏可用宽不够时的自适应缩放策略：
         // 主面板核心内容 ≥480；工具箱+备忘录在窄屏优先保留备忘录（核心功能），
         // 两栏都展开需要 480+250+310+24≈1064 —— 竖屏(1080)恰好极限，再窄(如笔记本竖接)就收工具箱
@@ -806,6 +860,7 @@ public partial class MainWindow : Window
         // 该屏内居中水平 · 顶部 18%（竖屏比例不同也自然适配）
         Left = wa.Left + (wa.Width - Width) / 2;
         Top = wa.Top + Math.Min(wa.Height * 0.18, Math.Max(0, wa.Height - Height - 20));
+        DebugLog.Write($"PositionWindow: final Left={Left:F0} Top={Top:F0} Width={Width:F0} (screen@{wa.Left:F0},{wa.Top:F0} {wa.Width:F0}x{wa.Height:F0})");
     }
 
     /// <summary>宫格每排固定瓷砖数（超过就开新一排）。</summary>
