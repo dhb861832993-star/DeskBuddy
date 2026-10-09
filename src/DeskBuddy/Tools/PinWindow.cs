@@ -21,8 +21,11 @@ public sealed class PinWindow : Window
 {
     private readonly Image _image;
     private readonly Canvas _ink;         // 标注层（笔画/矩形）
-    private readonly Canvas _uiCanvas = new();   // 装饰层（工具条/气泡，Canvas 点定位防 Grid 遮挡）
-    private readonly Grid _layers;
+    private readonly Canvas _uiCanvas = new();   // 图片区装饰（气泡提示）
+    private readonly Grid _layers;        // 图片区（图+笔迹）
+    private readonly Grid _root;          // 根：图片区 + 底部工具停靠区两行
+    private readonly Canvas _dock;        // 底部停靠区（工具条常驻）
+    private double _dockH = 46;
     private readonly Border _host;
     private readonly BitmapSource _src;
     private double _baseW, _baseH;
@@ -98,10 +101,9 @@ public sealed class PinWindow : Window
         _layers = new Grid();
         _layers.Children.Add(_image);        // 第1层：底图（Grid 布局铺开 ✓）
         _layers.Children.Add(_ink);           // 第2层：笔迹
-        _layers.Children.Add(_uiCanvas);      // 第3层：装饰（Canvas 点定位，工具条/气泡绝不遮挡）
-        _host.Child = _layers;
+        _layers.Children.Add(_uiCanvas);      // 第3层：装饰（气泡，点定位绝不遮挡）
         _layers.SizeChanged += (_, _) => PositionToolPanel();
-        Content = _host;
+        SizeChanged += (_, _) => PositionToolPanel();   // 窗口尺寸变化（缩放）也重摆
 
         MouseLeftButtonDown += OnDown;
         MouseMove += OnMove;
@@ -109,9 +111,20 @@ public sealed class PinWindow : Window
         MouseWheel += OnWheel;
         MouseDoubleClick += (_, _) => Close();
         PreviewKeyDown += OnKey;
-        // 关键：窗口显式 DIP 尺寸（WPF Auto 内容尺寸 = 0 → 图渲染 0×0 只剩工具条——同截图黑屏bug）
+        // 关键：窗口显式 DIP 尺寸 + 底部工具停靠区（工具条在贴图【外侧】右下角）
+        const double DockH = 46;   // 底部停靠带高度（工具条 + 间距）
+        _dock = new Canvas { IsHitTestVisible = true };
+        _root = new Grid();
+        _root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });   // 图片区
+        _root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(DockH) });                  // 停靠区
+        Grid.SetRow(_layers, 0);
+        _root.Children.Add(_layers);
+        _root.Children.Add(_dock);
+        _host.Child = _root;
+        Content = _host;
+
         Width = Math.Max(24, w);
-        Height = Math.Max(24, h);
+        Height = Math.Max(24, h + DockH);
         Left = x; Top = y;
 
         Loaded += (_, _) =>
@@ -120,11 +133,11 @@ public sealed class PinWindow : Window
             _dpi = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
             if (_dpi <= 0.01) _dpi = 1.0;
             _baseW = w; _baseH = h;
+            _dockH = DockH;
             _px = (int)Math.Round(x * _dpi); _py = (int)Math.Round(y * _dpi);
-            _pw = (int)Math.Round(w * _dpi); _ph = (int)Math.Round(h * _dpi);
+            _pw = (int)Math.Round(w * _dpi); _ph = (int)Math.Round((h + DockH) * _dpi);
             DebugLog.Write($"[PIN] loaded: W={Width:F0}xH{Height:F0} dpi={_dpi} src={src.PixelWidth}x{src.PixelHeight} pr={_pw}x{_ph}");
-            // 初始位置由 WPF Left/Top/Width/Height(DIP) 自理——不 SetWindowPos（避免物理/DIP 打架裁切）
-            BuildToolPanel();   // 常驻工具条
+            BuildToolPanel();   // 常驻工具条（停靠区）
         };
         ContextMenu = BuildMenu();
     }
@@ -171,7 +184,8 @@ public sealed class PinWindow : Window
         };
         var sp = new StackPanel { Orientation = Orientation.Horizontal };
 
-        // 工具按钮：拖动 / 画笔 / 矩形
+        // 工具按钮：拖动 / 画笔 / 矩形（双保险触发：Click + PreviewUp直发——
+        // 窗口级 PreviewDown 先行处理时 Button.Click 常哑火，PreviewUp+IsMouseOver 已验证可靠）
         for (int t = 0; t <= 2; t++)
         {
             var glyph = t == 0 ? ToolNone : t == 1 ? ToolPen : ToolRect;
@@ -206,7 +220,8 @@ public sealed class PinWindow : Window
         sp.Children.Add(MkTool("↩", "撤销一笔（Ctrl+Z）", UndoStroke));
 
         _toolPanel.Child = sp;
-        _uiCanvas.Children.Add(_toolPanel);
+        // 工具条放底部停靠区（贴图外）右下角
+        _dock.Children.Add(_toolPanel);
         RefreshToolPanel();
         PositionToolPanel();
     }
@@ -229,11 +244,14 @@ public sealed class PinWindow : Window
             Cursor = Cursors.Hand, Focusable = false,
         };
         b.Click += (s, e) => { act(); e.Handled = true; };
+        // 双保险：窗口级 PreviewDown 抢跑时 Click 哑火——PreviewUp+IsMouseOver 直接触发（截图工具条同款已验证）
+        b.PreviewMouseLeftButtonUp += (s, e) => { if (b.IsMouseOver) { act(); e.Handled = true; } };
         return b;
     }
 
     private void SetTool(int t)
     {
+        DebugLog.Write($"[PIN] SetTool {t}");
         _tool = t;
         Cursor = t == 1 ? Cursors.Pen : t == 2 ? Cursors.Cross : Cursors.Arrow;
         RefreshToolPanel();
@@ -261,14 +279,16 @@ public sealed class PinWindow : Window
         }
     }
 
-    /// <summary>工具条贴「窗口右下角」（DIP）。</summary>
+    /// <summary>工具条贴「底部停靠区」右下角（贴图方框外侧）。</summary>
     private void PositionToolPanel()
     {
         if (_toolPanel == null) return;
-        _toolPanel.Measure(new Size(Math.Max(1, _layers.ActualWidth), Math.Max(1, _layers.ActualHeight)));
+        double w = ActualWidth > 1 ? ActualWidth : Width;
+        double dockH = _root.RowDefinitions.Count > 1 ? _root.RowDefinitions[1].Height.Value : _dockH;
+        _toolPanel.Measure(new Size(Math.Max(1, w), Math.Max(1, dockH)));
         double tw = _toolPanel.DesiredSize.Width, th = _toolPanel.DesiredSize.Height;
-        double x = Math.Max(4, _layers.ActualWidth - tw - 6);
-        double y = Math.Max(4, _layers.ActualHeight - th - 6);
+        double x = Math.Max(4, w - tw - 8);
+        double y = Math.Max(2, (dockH - th) / 2);   // 停靠带内垂直居中
         _toolPanel.SetValue(Canvas.LeftProperty, x);
         _toolPanel.SetValue(Canvas.TopProperty, y);
     }
@@ -286,7 +306,9 @@ public sealed class PinWindow : Window
     private void OnDown(object s, MouseButtonEventArgs e)
     {
         try { Focusable = true; Focus(); } catch { }
-        if (IsFromToolPanel(e)) { e.Handled = false; return; }   // 工具条内部按钮自理
+        var fromTb = IsFromToolPanel(e);
+        DebugLog.Write($"[PIN] down: fromTool={fromTb} tool={_tool} src={e.OriginalSource?.GetType().Name}");
+        if (fromTb) { e.Handled = false; return; }   // 工具条内部按钮自理
 
         var p = e.GetPosition(_ink);
         if (_tool == 1)
@@ -545,12 +567,15 @@ public sealed class PinWindow : Window
     {
         s = Math.Clamp(s, 0.15, 8.0);
         int newW = (int)Math.Round(_baseW * _dpi * s);
-        int newH = (int)Math.Round(_baseH * _dpi * s);
+        int newH = (int)Math.Round((_baseH + _dockH) * _dpi * s);   // 含底部停靠区
         if (newW < 24 || newH < 24 || newW > 8000 || newH > 8000) return;
         double ax = anchor?.ax ?? 0.5, ay = anchor?.ay ?? 0.5;
         int apx = _px + (int)Math.Round(_pw * ax);
         int apy = _py + (int)Math.Round(_ph * ay);
         _scale = s;
         MovePhys(apx - (int)Math.Round(newW * ax), apy - (int)Math.Round(newH * ay), newW, newH);
+        // WPF DIP 尺寸同步（与 SetWindowPos 协作不冲突：窗口宽高变了触发布局自适应）
+        Width = _baseW * s;
+        Height = (_baseH + _dockH) * s;
     }
 }
