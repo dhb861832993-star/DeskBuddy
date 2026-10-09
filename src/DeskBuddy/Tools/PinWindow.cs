@@ -636,8 +636,12 @@ public sealed class PinWindow : Window
         int apy = _py + (int)Math.Round(_ph * ay);
         _scale = s;
         MovePhys(apx - (int)Math.Round(newW * ax), apy - (int)Math.Round(newH * ay), newW, newH);
-        // WPF DIP 尺寸同步（与 SetWindowPos 协作不冲突：窗口宽高变了触发布局自适应）
+        // WPF DIP 尺寸同步 + ★图片行高同步（显式行高不会跟随窗口——必须手动缩放，否则只白框变大图不动）
         Width = _baseW * s;
         Height = (_baseH + _dockH) * s;
+        if (_root.RowDefinitions.Count > 0)
+        {
+            _root.RowDefinitions[0].Height = new GridLength(_baseH * s);   // 图片区 = 选区高 × scale
+        }
     }
 }
