@@ -755,8 +755,24 @@ public partial class MainWindow : Window
                 }
             }
             catch { }
-            // 未显示：用光标所在屏的 DPI（WinForms 屏宽物理 / WPF SystemParameters 主屏 DIP 反推全局基准）
-            return 1.0;
+            // 未显示 fallback：主屏真实 DPI（PrimaryScreen 物理 ÷ SystemParameters DIP）。
+            // 之前固定 1.0 → 首次激活在 150% 主屏上 Left 用了错 DIP 视觉偏右；
+            // 显示后 WM_DPICHANGED 钩子会再修正，但首次弹位必须先对。
+            return PrimaryDpi;
+        }
+    }
+
+    private static double? _primDpi;
+    private static double PrimaryDpi
+    {
+        get
+        {
+            if (_primDpi is double d2 && d2 > 0.01) return d2;
+            var p = System.Windows.Forms.Screen.PrimaryScreen;
+            double v = p != null && SystemParameters.PrimaryScreenWidth > 1 ? p.Bounds.Width / SystemParameters.PrimaryScreenWidth : 1.0;
+            if (v <= 0.01) v = 1.0;
+            _primDpi = v;
+            return v;
         }
     }
 
