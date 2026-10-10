@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using System.Windows.Shapes;
 using DeskBuddy.Services;
 
@@ -45,6 +46,8 @@ public sealed class PinWindow : Window
     private readonly List<UIElement> _strokes = new();
 
     private Border? _toolPanel;
+    private Window? _toolHost;            // 工具条独立悬浮窗（挂在贴图右下外侧）
+    private System.Windows.Threading.DispatcherTimer? _toolOwnerGuard;
     private Border? _thickBubble;
 
     // 物理像素状态
@@ -252,10 +255,40 @@ public sealed class PinWindow : Window
         sp.Children.Add(undo);
 
         _toolPanel.Child = sp;
-        // 工具条放底部停靠区（贴图外）右下角
-        _dock.Children.Add(_toolPanel);
+        // 工具条 = 独立悬浮子窗口（挂在贴图右下角【外侧正下方】，无白条、跟随移动/缩放）
+        _toolHost = new Window
+        {
+            WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Topmost = true,
+            Background = Brushes.Transparent,
+            AllowsTransparency = true,   // 小窗口无位图渲染问题（只有原生控件）
+            Content = _toolPanel,
+            SizeToContent = SizeToContent.WidthAndHeight,
+        };
+        _toolHost.Show();
+        _toolOwnerGuard = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+        _toolOwnerGuard.Tick += (_, _) => FollowToolHost();
+        _toolOwnerGuard.Start();
         RefreshToolPanel();
         PositionToolPanel();
+    }
+
+    /// <summary>工具条跟随贴图窗口（右下角外侧正下方 DIP，Owner 联动）。</summary>
+    private void FollowToolHost()
+    {
+        if (_toolHost == null || !_toolHost.IsLoaded) return;
+        try
+        {
+            _toolHost.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double tw = _toolPanel?.DesiredSize.Width ?? 280, th = _toolPanel?.DesiredSize.Height ?? 37;
+            // 贴图窗口 DIP 右下 → 工具条贴其正下方右对齐
+            _toolHost.Left = Left + Width - tw - 10;
+            _toolHost.Top = Top + Height + 6;      // 外侧 6px 间距
+        }
+        catch { }
     }
 
     private static System.Windows.Shapes.Path Sep() => new()
@@ -298,19 +331,8 @@ public sealed class PinWindow : Window
         }
     }
 
-    /// <summary>工具条悬浮「图片右下角」（内侧边、右对齐、半压底边——无白条背景）。</summary>
-    private void PositionToolPanel()
-    {
-        if (_toolPanel == null) return;
-        double w = ActualWidth > 1 ? ActualWidth : Width;
-        double h = ActualHeight > 1 ? ActualHeight : Height;
-        _toolPanel.Measure(new Size(Math.Max(1, w), Math.Max(1, h)));
-        double tw = _toolPanel.DesiredSize.Width, th = _toolPanel.DesiredSize.Height;
-        double x = Math.Max(4, w - tw - 10);              // 右边距 10
-        double y = Math.Max(4, h - th - 10);              // 半压底边（内缩 10）
-        _toolPanel.SetValue(Canvas.LeftProperty, x);
-        _toolPanel.SetValue(Canvas.TopProperty, y);
-    }
+    /// <summary>同 FollowToolHost（SizeChanged/Loaded 回调入口）。</summary>
+    private void PositionToolPanel() => FollowToolHost();
 
     private void UndoStroke()
     {
@@ -537,6 +559,18 @@ public sealed class PinWindow : Window
         base.OnContextMenuOpening(e);
     }
 
+    /// <summary>贴图关闭时收掉工具条子窗与跟随定时器。</summary>
+    protected override void OnClosed(EventArgs e)
+    {
+        try
+        {
+            _toolOwnerGuard?.Stop();
+            _toolHost?.Close();
+        }
+        catch { }
+        base.OnClosed(e);
+    }
+
     /// <summary>合成「底图 + 标注」（隐藏工具条后渲染 _layers——不含装饰层）。</summary>
     private RenderTargetBitmap? Compose()
     {
@@ -604,7 +638,7 @@ public sealed class PinWindow : Window
     {
         _px = x; _py = y; _pw = w; _ph = h;
         SetWindowPos(Hnd, IntPtr.Zero, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
-        PositionToolPanel();
+        FollowToolHost();   // 工具条立即跟随（拖动流畅）
     }
 
     [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT lpPoint);
@@ -635,5 +669,6 @@ public sealed class PinWindow : Window
         {
             _root.RowDefinitions[0].Height = new GridLength(_baseH * s);
         }
+        FollowToolHost();
     }
 }
