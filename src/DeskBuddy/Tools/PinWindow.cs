@@ -182,9 +182,11 @@ public sealed class PinWindow : Window
 
     // ==================== 常驻工具条（右下角） ====================
 
-    /// <summary>构建标注工具条：工具三选（拖动/画笔/矩形）+ 色板 + 撤销。</summary>
+    /// <summary>构建标注工具条：工具三选（拖动/画笔/矩形）+ 色板 + 撤销。
+    /// 防重入（Visual 只能有一个父级——重复构建曾致 argc 崩溃）。</summary>
     private void BuildToolPanel()
     {
+        if (_toolHost != null) return;   // 已建过：跳过
         _toolPanel = new Border
         {
             Background = new SolidColorBrush(Color.FromArgb(0xF2, 0x1C, 0x1C, 0x1E)),

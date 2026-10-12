@@ -324,8 +324,14 @@ public partial class App : Application
 
     private bool _snipActive;
 
-    /// <summary>启动截图覆盖层（每次新建窗口 → 状态机全新，绝对可靠；旧实例先回收）。</summary>
+    /// <summary>启动截图覆盖层。钩子线程调用需切 UI 线程（防跨线程窗口操作崩溃）。</summary>
     public void StartSnip()
+    {
+        if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(StartSnip); return; }
+        ActivatedSnip();
+    }
+
+    private void ActivatedSnip()
     {
         if (_snipActive && Tools.SnipOverlayWindow.IsReallyActive()) return;   // 激活中忽略
         _snipActive = true;
@@ -342,8 +348,10 @@ public partial class App : Application
     private bool _stopHooked;
 
     /// <summary>按 Esc 必须退出：截图覆盖层 → 右键菜单 → AI 对话 → 编辑器 → 设置 → 菜单。</summary>
+    /// <summary>按 Esc 必须退出（钩子线程进来 → 切 UI 线程防崩）。</summary>
     private void HandleGlobalEscape()
     {
+        if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(HandleGlobalEscape); return; }
         DebugLog.Write("global Esc pressed");
         // 最高优先：截图覆盖层激活时，Esc 退出截图（覆盖窗口可能没焦点，必须这里兜底）
         if (Tools.SnipOverlayWindow.IsReallyActive())
@@ -382,8 +390,16 @@ public partial class App : Application
         _chatWindow.ShowAndAsk(initial);
     }
 
+    /// <summary>切换主菜单。⚠调用方可能来自非 UI 线程（KeyboardHook 回调线程）——
+    /// 必须切回 Dispatcher：跨线程改 UI Window 是 argc0 崩溃源（Window.Show 的 RootVisual
+    /// 挂接对线程有亲和性）。写 DebugLog 前先切。</summary>
     private void ToggleMenu()
     {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(ToggleMenu);
+            return;
+        }
         DebugLog.Write("ToggleMenu called");
         if (_settingsWindow is { IsVisible: true } || ItemEditorWindow.IsOpen)
         {
