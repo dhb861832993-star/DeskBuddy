@@ -84,8 +84,9 @@ public partial class App : Application
         _tray.ExitRequested += ExitApp;
         _tray.UpdateHotkeyText(HotkeyDisplay(_config.Hotkey));
 
-        // ---- 全局双击热键 ----
-        _detector = new DoubleTapDetector(VkFromHotkey(_config.Hotkey), _config.DoubleTapIntervalMs);
+        // ---- 呼出热键（v2：单键=双击检测器 / 组合键=按下直发） ----
+        var menuVkForTap = ParseMenuHotkey(_config.Hotkey);
+        _detector = new DoubleTapDetector(menuVkForTap, _config.DoubleTapIntervalMs);   // 组合模式 vk=0 不参与
         _detector.DoubleTapped += ToggleMenu;
         _hook = new KeyboardHook();
         _hook.KeyDown += OnGlobalKeyDown;
@@ -160,8 +161,8 @@ public partial class App : Application
     {
         _config = cfg;
         ConfigManager.Save(cfg);
-        var vk = VkFromHotkey(cfg.Hotkey);
-        ParseSnipHotkey(cfg.SnipHotkey);   // 解析主键 + 修饰键组合
+        var vk = ParseMenuHotkey(cfg.Hotkey);   // 单键→双击 vk；组合键→0（不参与双击）
+        ParseSnipHotkey(cfg.SnipHotkey);
         if (_detector != null)
         {
             var (curVk, curInterval) = _detector.Current;
@@ -265,11 +266,21 @@ public partial class App : Application
 
     private void OnConfigChanged(AppConfig cfg) => ApplyConfig(cfg);
 
-    /// <summary>全局按键处理：双击检测 + 截图热键（支持组合键）+ 全局 Esc 退出。</summary>
+    /// <summary>全局按键处理：呼出（单键双击/组合单击）+ 截图热键 + 全局 Esc 退出。</summary>
     private void OnGlobalKeyDown(int vkCode)
     {
-        _detector.OnKeyDown(vkCode);
+        _detector.OnKeyDown(vkCode);   // 单键模式（组合模式 vk=0 永不匹配）
         if (vkCode == 0x1B) HandleGlobalEscape();
+        // 呼出：组合键模式 → 主键按下且修饰键精确匹配 → 立即呼出（节流 350ms 防自动重复连发）
+        if (_menuMods.Length > 0 && vkCode == _menuVk && ModsMatchCurrent(_menuMods))
+        {
+            var now = Environment.TickCount64;
+            if (now - _menuLastTrigger > 350)
+            {
+                _menuLastTrigger = now;
+                ToggleMenu();
+            }
+        }
         if (vkCode == SnipVk && ModMatch())
         {
             if (!_snipActive || !Tools.SnipOverlayWindow.IsReallyActive()) StartSnip();
@@ -294,17 +305,22 @@ public partial class App : Application
     private static int SnipVk = 0x70;      // 主键虚拟码
     private static string _snipMods = "";   // 修饰键组合（"Ctrl+Alt" 等，空 = 无）
 
-    /// <summary>配置串 → 虚拟键码（支持 A-Z / 0-9 / Num0-9 / F1-F12 / PrtSc / Space / `）。</summary>
-    private static int VkOf(string key) => key switch
+    /// <summary>配置串 → 虚拟键码（A-Z / 0-9 / Num0-9 / F1-F12 / PrtSc / Space / ` / CapsLock / Win；呼出与截图共用）。</summary>
+    private static int VkOf(string key) => key?.Trim() switch
     {
-        "PrintScreen" => 0x2C,
-        "Space" => 0x20,
+        "PrintScreen" or "PRINTSCREEN" => 0x2C,
+        "Print" or "printscreen" => 0x2C,
+        "Space" or "SPACE" or "space" => 0x20,
+        "CapsLock" or "CAPSLOCK" or "capslock" => 0x14,
+        "Win" or "WIN" or "win" => 0x5B,
         "`" => 0xC0,
-        _ when key.Length == 1 && key[0] >= '0' && key[0] <= '9' => 0x30 + (key[0] - '0'),
+        _ when key!.Length == 1 && char.IsDigit(key[0]) => 0x30 + (key[0] - '0'),
         _ when key.Length == 1 && key[0] >= 'A' && key[0] <= 'Z' => 0x41 + (key[0] - 'A'),
-        _ when key.StartsWith("Num") && key.Length == 4 && key[3] >= '0' && key[3] <= '9' => 0x60 + (key[3] - '0'),
-        _ when key.Length >= 2 && key[0] == 'F' && int.TryParse(key[1..], out var f) && f is >= 1 and <= 12 => 0x70 + (f - 1),
-        _ => 0x70, // F1
+        _ when key.Length == 1 && key[0] >= 'a' && key[0] <= 'z' => 0x41 + (key[0] - 'a'),
+        _ when key.StartsWith("Num", StringComparison.OrdinalIgnoreCase) && key.Length == 4 && key[3] >= '0' && key[3] <= '9' => 0x60 + (key[3] - '0'),
+        _ when key.Length >= 2 && (key[0] == 'F' || key[0] == 'f') && int.TryParse(key[1..], out var f) && f is >= 1 and <= 24 => 0x70 + (f - 1),
+        _ => 0
+        ,
     };
 
     /// <summary>从配置解析截图热键（支持 "Ctrl+Alt+S"、"F1"、"Ctrl+Shift+PrintScreen" 等格式）。</summary>
@@ -441,21 +457,65 @@ public partial class App : Application
         base.OnExit(e);
     }
 
-    private static int VkFromHotkey(string hotkey) => hotkey?.ToUpperInvariant() switch
-    {
-        "ALT" => 0x12,
-        "SHIFT" => 0x10,
-        "CAPSLOCK" => 0x14,
-        "WIN" => 0x5B,
-        _ => 0x11 // Ctrl
-    };
+    // ==================== 呼出热键（v2：任意单键双击 / 任意组合键单击） ====================
 
-    private static string HotkeyDisplay(string hotkey) => hotkey?.ToUpperInvariant() switch
+    private static int _menuVk = 0x12;        // 呼出主键 vk
+    private static string _menuMods = "";     // 组合模式修饰键（"Ctrl+Alt"；空 = 单键双击模式）
+    private static long _menuLastTrigger;     // 单击模式节流（防按键自动重复连发）
+
+    /// <summary>解析呼出热键：单键（Alt/CapsLock/F7/任意键）→ 双击模式（兼容旧配置&防误触）；
+    /// 组合键（Ctrl+Alt+Q 等）→ 按下即呼出。返回 detector 应使用的 vk（组合模式返回 0 = 不参与双击）。</summary>
+    private static int ParseMenuHotkey(string? hotkey)
     {
-        "ALT" => "Alt",
-        "SHIFT" => "Shift",
-        "CAPSLOCK" => "CapsLock",
-        "WIN" => "Win",
-        _ => "Ctrl"
-    };
+        hotkey = (hotkey ?? "Alt").Trim();
+        var parts = hotkey.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var vkFull = hotkey?.ToUpperInvariant() switch   // 旧单修饰键兼容（含 CapsLock/Win）
+        {
+            "ALT" => 0x12,
+            "SHIFT" => 0x10,
+            "CAPSLOCK" => 0x14,
+            "WIN" => 0x5B,
+            _ => -1
+        };
+        if (parts.Length == 1)
+        {
+            _menuMods = "";
+            if (vkFull > 0) { _menuVk = vkFull; DebugLog.Write($"[MENU] hotkey parsed: '{hotkey}' -> vk=0x{_menuVk:X2} mods='' mode=tap(legacy)"); return _menuVk; }
+            _menuVk = VkOf(parts[0]);      // 新式任意单键（F7/Q/Space…）
+            DebugLog.Write($"[MENU] hotkey parsed: '{hotkey}' -> vk=0x{_menuVk:X2} mods='' mode=tap");
+            return _menuVk;
+        }
+        // 组合键：修饰集合 + 主键
+        var mods = parts.Where(p => p is "Ctrl" or "Alt" or "Shift" or "Win").Select(p => p == "Win" ? "Win" : p).ToList();
+        var main = parts.FirstOrDefault(p => p is not ("Ctrl" or "Alt" or "Shift" or "Win"));
+        if (main == null)
+        {
+            // 纯多修饰（Ctrl+Alt）：用最后一个做主键单键双击（少见，降级处理）
+            _menuMods = "";
+            _menuVk = VkOf(parts[^1]);
+            return _menuVk;
+        }
+        _menuMods = string.Join("+", mods);
+        _menuVk = VkOf(main);
+        DebugLog.Write($"[MENU] hotkey parsed: '{hotkey}' -> vk=0x{_menuVk:X2} mods='{_menuMods}' mode={(mods.Count > 0 && parts.Length > 1 ? "combo" : "tap")}");
+        return 0;   // 组合模式：detector 不参与
+    }
+
+    /// <summary>当前按下状态是否【精确等于】给定修饰键组合（钩子线程安全：GetAsyncKeyState）。</summary>
+    private static bool ModsMatchCurrent(string mods)
+    {
+        bool ctrl = (GetAsyncKeyState(0x11) & 0x8000) != 0;
+        bool alt = (GetAsyncKeyState(0x12) & 0x8000) != 0;
+        bool shift = (GetAsyncKeyState(0x10) & 0x8000) != 0;
+        bool win = (GetAsyncKeyState(0x5B) & 0x8000) != 0 || (GetAsyncKeyState(0x5C) & 0x8000) != 0;
+        return ctrl == mods.Contains("Ctrl") && alt == mods.Contains("Alt")
+            && shift == mods.Contains("Shift") && win == mods.Contains("Win");
+    }
+
+    private static string HotkeyDisplay(string? hotkey)
+    {
+        hotkey = (hotkey ?? "Alt").Trim();
+        var parts = hotkey.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Length == 1 ? $"双击 {parts[0]} 呼出" : $"按 {hotkey} 呼出";
+    }
 }

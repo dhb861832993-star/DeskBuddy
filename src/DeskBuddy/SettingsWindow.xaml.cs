@@ -33,7 +33,8 @@ public partial class SettingsWindow : Window
         _config = config;
         RoundedWindow.Apply(this, RootCard.CornerRadius.TopLeft);
         _selectedHotkey = NormalizeHotkey(config.Hotkey);
-        HotkeyBtn.Content = _selectedHotkey;
+        HotkeyBtn.Content = MenuHotkeyDisplay(_selectedHotkey);
+        PreviewKeyUp += OnPreviewKeyUp;   // 呼出捕获：修饰键松开（无主键跟来）= 录入单键双击
         IntervalSlider.Value = config.DoubleTapIntervalMs;
         UpdateIntervalLabel();
 
@@ -148,14 +149,21 @@ public partial class SettingsWindow : Window
         btn.Background = active ? (Brush)FindResource("SelectedBg") : Brushes.Transparent;
     }
 
-    private static string NormalizeHotkey(string h) => h?.ToUpperInvariant() switch
+    /// <summary>呼出热键规范化：旧修饰键映射回标准名；新格式（单键/组合键 Ctrl+Alt+Q）原样保留。</summary>
+    private static string NormalizeHotkey(string? h)
     {
-        "ALT" => "Alt",
-        "SHIFT" => "Shift",
-        "CAPSLOCK" => "CapsLock",
-        "WIN" => "Win",
-        _ => "Ctrl"
-    };
+        h = (h ?? "").Trim();
+        if (h.Length == 0) return "Alt";
+        return h.ToLowerInvariant() switch
+        {
+            "alt" => "Alt",
+            "shift" => "Shift",
+            "capslock" => "CapsLock",
+            "win" => "Win",
+            "ctrl" => "Ctrl",
+            _ => h   // 新式（F7 / Q / Ctrl+Alt+Q 组合）保留原样
+        };
+    }
 
     private static ItemRow MakeRow(DeskBuddyItem item)
     {
@@ -347,34 +355,108 @@ public partial class SettingsWindow : Window
         if (!_capturing) return;
         e.Handled = true;
 
-        var key = e.Key switch
+        // ===== 呼出热键组合捕获 =====
+        if (e.Key == Key.Escape && (Keyboard.Modifiers & ModifierKeys.Alt) == 0)
         {
-            Key.LeftCtrl or Key.RightCtrl => "Ctrl",
-            Key.LeftAlt or Key.RightAlt or Key.System => "Alt",
-            Key.LeftShift or Key.RightShift => "Shift",
-            Key.CapsLock => "CapsLock",
-            Key.LWin or Key.RWin => "Win",
-            _ => null
-        };
-
-        if (e.Key == Key.Escape)
+            _capturing = false; _menuModCandidate = null;
+            HotkeyBtn.Content = MenuHotkeyDisplay(_selectedHotkey);
+            HotkeyHint.Text = "已取消。当前：" + MenuHotkeyDisplay(_selectedHotkey);
+            return;
+        }
+        // 按住 Alt 时其他键走 Key.System（真实键在 SystemKey）——先解包再判定
+        var menuRealKey = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (e.Key is Key.System && menuRealKey == Key.Escape)
         {
+            _menuModCandidate = null;   // Alt+Esc 释放录入状态，不取消
+            return;
+        }
+        if (menuRealKey is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt
+                or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin or Key.CapsLock)
+        {
+            // 修饰键按下：记候选——【松开时无主键跟来 = 录入单键双击模式】
+            _menuModCandidate = menuRealKey;
+            var cur = BuildModString();
+            HotkeyHint.Text = string.IsNullOrEmpty(cur)
+                ? $"已按 {ModNameOf(menuRealKey)}——松开即录入「双击 {ModNameOf(menuRealKey)} 呼出」；若要组合键请继续按住并按主键"
+                : $"已按：{cur} … 再按一个主键（字母/数字/F1-F12）";
+            return;
+        }
+        _menuModCandidate = null;   // 有主键按下：候选作废（走组合/单键录入）
+        var menuMods = BuildModString();
+        var menuMain = RealKeyName(menuRealKey);
+        if (menuMain == null || menuMain == "Esc")
+        {
+            HotkeyHint.Text = $"“{menuRealKey}”不支持，请按字母/数字/功能键或纯修饰键";
+            return;
+        }
+        if (menuMods.Length == 0)
+        {
+            // 单键（任意字母/数字/功能键）→ 双击模式
+            _selectedHotkey = menuMain;
             _capturing = false;
-            HotkeyBtn.Content = _selectedHotkey;
-            HotkeyHint.Text = "已取消。点击右侧按钮后，再直接按下新快捷键";
+            HotkeyBtn.Content = MenuHotkeyDisplay(_selectedHotkey);
+            HotkeyHint.Text = $"已设置：双击 {menuMain} 呼出菜单（保存后生效）";
             return;
         }
-
-        if (key == null)
+        if (menuMods.Contains("Win"))
         {
-            HotkeyHint.Text = $"“{e.Key}”不受支持，请按 Ctrl / Alt / Shift / CapsLock / Win";
+            HotkeyHint.Text = "Win 键暂不支持作呼出修饰键，请用 Ctrl/Alt/Shift 组合";
             return;
         }
-
-        _selectedHotkey = key;
+        _selectedHotkey = $"{menuMods}+{menuMain}";
         _capturing = false;
-        HotkeyBtn.Content = key;
-        HotkeyHint.Text = $"已选择：双击 {key} 呼出菜单（保存后生效）";
+        HotkeyBtn.Content = MenuHotkeyDisplay(_selectedHotkey);
+        HotkeyHint.Text = $"已设置：按 {MenuHotkeyDisplay(_selectedHotkey)} 呼出菜单（保存后生效）";
+    }
+
+    private Key? _menuModCandidate;   // 呼出捕获中按下的修饰键（松开无主键=单键录入）
+
+    /// <summary>修饰键 Key → 显示名。</summary>
+    private static string ModNameOf(Key k) => k switch
+    {
+        Key.LeftCtrl or Key.RightCtrl => "Ctrl",
+        Key.LeftAlt or Key.RightAlt => "Alt",
+        Key.LeftShift or Key.RightShift => "Shift",
+        Key.CapsLock => "CapsLock",
+        Key.LWin or Key.RWin => "Win",
+        _ => k.ToString()
+    };
+
+    /// <summary>呼出捕获中修饰键松开：期间没有主键 → 录入单修饰键（双击模式）。</summary>
+    private void OnPreviewKeyUp(object? sender, KeyEventArgs e)
+    {
+        if (!_capturing) return;
+        if (!_menuModCandidate.HasValue) return;
+        var up = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (up != _menuModCandidate.Value) return;
+        // 期间是否按过其他主键（修饰键仍按着的其他键不算）
+        var othersDown = Keyboard.Modifiers & ~ModifierFor(up);
+        if (othersDown != ModifierKeys.None)
+        {
+            _menuModCandidate = null;   // 有其他修饰键仍按住（多修饰组合场景）——不录入
+            return;
+        }
+        _selectedHotkey = ModNameOf(up);
+        _menuModCandidate = null;
+        _capturing = false;
+        HotkeyBtn.Content = MenuHotkeyDisplay(_selectedHotkey);
+        HotkeyHint.Text = $"已设置：双击 {ModNameOf(up)} 呼出菜单（保存后生效）";
+        e.Handled = true;
+    }
+
+    private static ModifierKeys ModifierFor(Key k) => k switch
+    {
+        Key.LeftCtrl or Key.RightCtrl => ModifierKeys.Control,
+        Key.LeftAlt or Key.RightAlt => ModifierKeys.Alt,
+        Key.LeftShift or Key.RightShift => ModifierKeys.Shift,
+        _ => ModifierKeys.None
+    };
+
+    /// <summary>呼出热键展示名（单键 = 原名；组合 = 原串）。</summary>
+    private static string MenuHotkeyDisplay(string hotkey)
+    {
+        var parts = hotkey.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Length == 1 ? $"〔双击 {parts[0]}〕" : hotkey;
     }
 
     private void OnHotkeyCaptureClick(object sender, RoutedEventArgs e)
@@ -383,12 +465,13 @@ public partial class SettingsWindow : Window
         if (_capturing)
         {
             HotkeyBtn.Content = "请按键…";
-            HotkeyHint.Text = "请按下新的快捷键（仅支持 Ctrl / Alt / Shift / CapsLock / Win），按 Esc 取消";
+            HotkeyHint.Text = "按住 Ctrl/Alt/Shift 再按主键（如 Ctrl+Alt+Q）= 按下即呼出；单按一个键（如 CapsLock/F7）= 双击呼出；Esc 取消";
+            HotkeyBtn.Focus();
         }
         else
         {
-            HotkeyBtn.Content = _selectedHotkey;
-            HotkeyHint.Text = "点击右侧按钮，再直接按下 Ctrl / Alt / Shift / CapsLock / Win";
+            HotkeyBtn.Content = MenuHotkeyDisplay(_selectedHotkey);
+            HotkeyHint.Text = "当前：" + MenuHotkeyDisplay(_selectedHotkey);
         }
     }
 
@@ -405,8 +488,8 @@ public partial class SettingsWindow : Window
         if (_capturing)
         {
             _capturing = false;
-            HotkeyBtn.Content = _selectedHotkey;
-            HotkeyHint.Text = "已取消。点击右侧按钮后，再直接按下新快捷键";
+            HotkeyBtn.Content = MenuHotkeyDisplay(_selectedHotkey);
+            HotkeyHint.Text = "已取消。当前：" + MenuHotkeyDisplay(_selectedHotkey);
             return;
         }
         Close();

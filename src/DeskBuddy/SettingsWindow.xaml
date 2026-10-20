@@ -322,7 +322,7 @@
                                     <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
                                         <TextBlock Text="呼出快捷键" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
                                         <TextBlock x:Name="HotkeyHint"
-                                                   Text="点击右侧按钮，再直接按下 Ctrl / Alt / Shift / CapsLock / Win"
+                                                   Text="单键（如 Alt/CapsLock/F7）= 双击呼出；组合键（如 Ctrl+Alt+Q）= 按下即呼出"
                                                    FontSize="11" Foreground="{DynamicResource TextSecondary}"
                                                    Margin="0,3,0,0" TextWrapping="Wrap"/>
                                     </StackPanel>

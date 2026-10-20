@@ -3,7 +3,7 @@ namespace DeskBuddy.Models;
 /// <summary>应用配置（对应 DeskBuddy.config.json）。</summary>
 public class AppConfig
 {
-    /// <summary>双击呼出按键：Ctrl | Alt | Shift | CapsLock | Win</summary>
+    /// <summary>呼出热键：单键（Ctrl/Alt/CapsLock/F7/任意键）= 双击呼出；组合键（如 "Ctrl+Alt+Q"）= 按下即呼出。</summary>
     public string Hotkey { get; set; } = "Ctrl";
 
     /// <summary>两次按键视为“双击”的最大间隔（毫秒）。</summary>
