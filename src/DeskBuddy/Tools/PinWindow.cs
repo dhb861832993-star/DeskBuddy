@@ -33,17 +33,33 @@ public sealed class PinWindow : Window
     private double _scale = 1.0;
 
     // ===== 标注状态（常驻工具条，无"模式"概念）=====
-    private int _tool = 0;                // 0=无(拖动/缩放) 1=画笔 2=矩形
+    private int _tool = 0;                // 0=无(拖动/缩放) 1=画笔 2=矩形 3=箭头 4=文字
     private Color _penColor = Color.FromRgb(0xFF, 0x3B, 0x30);   // 默认红
     private double _penW = 3.0;
     private const double PenWMin = 1, PenWMax = 24;
+    private double _fontSize = 20;        // 文字字号（DIP）
+    private const double FontMin = 10, FontMax = 96;
 
     // 绘制中
     private bool _strokeActive;
     private Point _strokeAnchor;
     private Polyline? _currentStroke;
     private Rectangle? _currentRect;
+    private System.Windows.Shapes.Path? _currentArrow;          // 箭头（Path：线杆 + 填充三角头）
+    private TextBox? _editBox;            // 正在输入的文字框
+    private Color _editColor;             // 输入框起笔时的颜色（改色不影响已开始的这段）
+    private TextBlock? _editingBlock;     // 正在二次编辑的既有文字
     private readonly List<UIElement> _strokes = new();
+
+    // ===== 既有标注的选中 / 拖动 =====
+    private UIElement? _hitEl;            // 按下时命中的标注
+    private Point _hitDown;               // 按下点（_ink 坐标）
+    private bool _hitMoved;               // 是否已经拖动（用来区分“单击=编辑”和“拖动=位移”）
+    private double _moveL, _moveT;        // 文字的原始 Canvas 位置
+    private Point _moveA0, _moveB0;       // 箭头的原始端点
+
+    /// <summary>箭头端点（存在 Path.Tag），移动时整体平移。</summary>
+    private sealed class ArrowInfo { public Point A, B; }
 
     private Border? _toolPanel;
     private Window? _toolHost;            // 工具条独立悬浮窗（挂在贴图右下外侧）
@@ -55,7 +71,7 @@ public sealed class PinWindow : Window
     private double _dpi = 1.0;
     private bool _dragging; private Point _dragStart; private int _dragWinPX, _dragWinPY;
 
-    private const string ToolNone = "✥", ToolPen = "✏", ToolRect = "▭";
+    private const string ToolNone = "✥", ToolPen = "✏", ToolRect = "▭", ToolArrow = "↗", ToolText = "A";
 
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndAfter, int x, int y, int cx, int cy, uint flags);
     private const uint SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010, SWP_SHOWWINDOW = 0x0040;
@@ -115,7 +131,7 @@ public sealed class PinWindow : Window
         PreviewMouseRightButtonUp += (s2, e2) =>
         {
             // 菜单在右键【抬起】时绽放——绘制中吞掉，杜绝「取消+菜单同时出现」
-            if (_tool is 1 or 2) { e2.Handled = true; }
+            if (_tool is 1 or 2 or 3 or 4) { e2.Handled = true; }
         };
         MouseWheel += OnWheel;
         MouseDoubleClick += (_, _) => Close();
@@ -157,16 +173,26 @@ public sealed class PinWindow : Window
 
     private void OnKey(object s, KeyEventArgs e)
     {
+        // 正在输入文字：只有 Esc/Enter 归我们，其余按键必须交给输入框（含 IME、方向键）
+        if (_editBox != null)
+        {
+            if (e.Key == Key.Escape) { CancelText(); e.Handled = true; return; }
+            if (e.Key == Key.Enter) { CommitText(); e.Handled = true; return; }
+            return;
+        }
         if (e.Key == Key.Escape) { Close(); e.Handled = true; return; }
         if (e.Key == Key.C && Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) { CopyToClipboard(); e.Handled = true; return; }
         if (e.Key == Key.Z && Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) { UndoStroke(); e.Handled = true; return; }
-        // 1/2/3 快捷选工具
+        // 1/2/3/4/5 快捷选工具
         if (e.Key == Key.D1) { SetTool(0); e.Handled = true; return; }
         if (e.Key == Key.D2) { SetTool(1); e.Handled = true; return; }
         if (e.Key == Key.D3) { SetTool(2); e.Handled = true; return; }
-        if (e.Key >= Key.D4 && e.Key <= Key.D9)
+        if (e.Key == Key.D4) { SetTool(3); e.Handled = true; return; }
+        if (e.Key == Key.D5) { SetTool(4); e.Handled = true; return; }
+        // 颜色：Alt+1..6（原来占用 4~9，被新工具让出来）
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt) && e.Key >= Key.D1 && e.Key <= Key.D6)
         {
-            _penColor = (e.Key - Key.D4) switch
+            _penColor = (e.Key - Key.D1) switch
             {
                 0 => Color.FromRgb(0xFF, 0x3B, 0x30),
                 1 => Color.FromRgb(0xFF, 0xCC, 0x00),
@@ -199,14 +225,21 @@ public sealed class PinWindow : Window
         };
         var sp = new StackPanel { Orientation = Orientation.Horizontal };
 
-        // 工具按钮：拖动 / 画笔 / 矩形
+        // 工具按钮：拖动 / 画笔 / 矩形 / 箭头 / 文字
         // ★Button 的 Click 路由在本窗口（多层 Preview 拦截+CaptureMouse）下不可靠——
         //   换【Border+MouseLeftButtonDown 直挂】（色板同款，用户实测有效）
-        for (int t = 0; t <= 2; t++)
+        for (int t = 0; t <= 4; t++)
         {
             int tt = t;   // 闭包独立捕获
-            var glyph = t == 0 ? ToolNone : t == 1 ? ToolPen : ToolRect;
-            var tip = t == 0 ? "移动/缩放（1）" : t == 1 ? "画笔（2）" : "矩形（3）";
+            var glyph = t switch { 1 => ToolPen, 2 => ToolRect, 3 => ToolArrow, 4 => ToolText, _ => ToolNone };
+            var tip = t switch
+            {
+                1 => "画笔（2）",
+                2 => "矩形（3）",
+                3 => "箭头（4）· 滚轮调粗细",
+                4 => "文字（5）· 滚轮调字号",
+                _ => "移动/缩放（1）",
+            };
             var b = new Border
             {
                 Child = new TextBlock { Text = glyph, FontSize = 14, Foreground = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF5)) },
@@ -304,8 +337,15 @@ public sealed class PinWindow : Window
     private void SetTool(int t)
     {
         DebugLog.Write($"[PIN] SetTool {t}");
+        CommitText();                         // 切工具先把正在输入的文字落下
         _tool = t;
-        Cursor = t == 1 ? Cursors.Pen : t == 2 ? Cursors.Cross : Cursors.Arrow;
+        Cursor = t switch
+        {
+            1 => Cursors.Pen,
+            2 or 3 => Cursors.Cross,
+            4 => Cursors.IBeam,
+            _ => Cursors.Arrow,
+        };
         RefreshToolPanel();
     }
 
@@ -352,8 +392,30 @@ public sealed class PinWindow : Window
         var fromTb = IsFromToolPanel(e);
         DebugLog.Write($"[PIN] down: fromTool={fromTb} tool={_tool} src={e.OriginalSource?.GetType().Name}");
         if (fromTb) { e.Handled = false; return; }   // 工具条内部按钮自理
+        if (_editBox != null)
+        {
+            if (IsFromEditBox(e)) return;            // 点在输入框内：交给 TextBox 挪光标/选字
+            CommitText();                            // 点别处 = 提交本次输入
+            e.Handled = true;
+            return;
+        }
 
         var p = e.GetPosition(_ink);
+
+        // 先看有没有点中已有标注（文字/箭头）：拖动=位移，单击文字=再次编辑。
+        // 画笔/矩形模式不参与（要能直接在上面画）。
+        if (_tool is 0 or 3 or 4)
+        {
+            var hit = HitAnnotation(p);
+            if (hit != null)
+            {
+                StartHit(hit, p);
+                CaptureMouse();
+                e.Handled = true;
+                return;
+            }
+        }
+
         if (_tool == 1)
         {
             _strokeActive = true; _strokeAnchor = p;
@@ -380,6 +442,29 @@ public sealed class PinWindow : Window
             };
             _ink.Children.Add(_currentRect);
         }
+        else if (_tool == 3)
+        {
+            _strokeActive = true; _strokeAnchor = p;
+            _currentArrow = new System.Windows.Shapes.Path
+            {
+                Stroke = new SolidColorBrush(_penColor),
+                Fill = new SolidColorBrush(_penColor),   // 只填三角头（线杆那条 figure 标了 isFilled=false）
+                StrokeThickness = _penW,
+                StrokeStartLineCap = PenLineCap.Round,
+                StrokeEndLineCap = PenLineCap.Flat,      // 平头收在三角底边，粗线不会戳出尖端
+                StrokeLineJoin = PenLineJoin.Round,
+                IsHitTestVisible = false,
+                Data = ArrowPathGeometry(p, p, _penW),
+                Tag = new ArrowInfo { A = p, B = p },
+            };
+            _ink.Children.Add(_currentArrow);
+        }
+        else if (_tool == 4)
+        {
+            StartText(p);
+            e.Handled = true;
+            return;    // 文字不需要捕获鼠标（要能连续输入）
+        }
         else
         {
             // 拖动移动（物理像素）
@@ -389,6 +474,19 @@ public sealed class PinWindow : Window
         }
         CaptureMouse();
         e.Handled = true;
+    }
+
+    /// <summary>事件源是否在文字输入框内。</summary>
+    private bool IsFromEditBox(MouseButtonEventArgs e)
+    {
+        if (_editBox == null) return false;
+        var d = e.OriginalSource as DependencyObject;
+        while (d != null)
+        {
+            if (ReferenceEquals(d, _editBox)) return true;
+            try { d = System.Windows.Media.VisualTreeHelper.GetParent(d); } catch { return false; }
+        }
+        return false;
     }
 
     private bool IsFromToolPanel(MouseButtonEventArgs e)
@@ -404,6 +502,7 @@ public sealed class PinWindow : Window
 
     private void OnMove(object s, MouseEventArgs e)
     {
+        if (_hitEl != null) { MoveHit(e.GetPosition(_ink)); e.Handled = true; return; }
         if (_strokeActive)
         {
             var p = e.GetPosition(_ink);
@@ -423,6 +522,11 @@ public sealed class PinWindow : Window
                 _currentRect.SetValue(Canvas.TopProperty, y);
                 _currentRect.Width = w; _currentRect.Height = h;
             }
+            else if (_tool == 3 && _currentArrow != null)
+            {
+                _currentArrow.Data = ArrowPathGeometry(_strokeAnchor, p, _penW);
+                if (_currentArrow.Tag is ArrowInfo ci) ci.B = p;
+            }
             e.Handled = true;
             return;
         }
@@ -436,6 +540,17 @@ public sealed class PinWindow : Window
 
     private void OnUp(object s, MouseButtonEventArgs e)
     {
+        // 已有标注：拖动结束 / 单击文字进入编辑
+        if (_hitEl != null)
+        {
+            var el = _hitEl;
+            var moved = _hitMoved;
+            _hitEl = null; _hitMoved = false;
+            ReleaseMouseCapture();
+            if (!moved && el is TextBlock tb) EditText(tb);   // 没拖动 = 单击 → 改字
+            e.Handled = true;
+            return;
+        }
         if (_strokeActive)
         {
             if (_tool == 1)
@@ -456,6 +571,17 @@ public sealed class PinWindow : Window
                 }
                 _currentRect = null;
             }
+            else if (_tool == 3)
+            {
+                if (_currentArrow != null)
+                {
+                    var g = _currentArrow.Data.Bounds;
+                    // 太短的当误触丢掉（Bounds 是包围盒，用它判断比算长度省事）
+                    if (Math.Max(g.Width, g.Height) > 8) _strokes.Add(_currentArrow);
+                    else _ink.Children.Remove(_currentArrow);
+                }
+                _currentArrow = null;
+            }
             _strokeActive = false;
         }
         else
@@ -471,11 +597,13 @@ public sealed class PinWindow : Window
     private void OnRightDown(object s, MouseButtonEventArgs e)
     {
         if (IsFromToolPanelRight(e)) { e.Handled = false; return; }
+        if (_editBox != null) { CancelText(); e.Handled = true; return; }   // 输入中右键 = 丢弃这段文字
         if (_strokeActive)
         {
             // 丢弃正在画的一半
             if (_currentStroke != null) { _ink.Children.Remove(_currentStroke); _currentStroke = null; }
             if (_currentRect != null) { _ink.Children.Remove(_currentRect); _currentRect = null; }
+            if (_currentArrow != null) { _ink.Children.Remove(_currentArrow); _currentArrow = null; }
             _strokeActive = false;
             ReleaseMouseCapture();
             DebugLog.Write("[PIN] right-click: draft cancelled");
@@ -492,12 +620,22 @@ public sealed class PinWindow : Window
 
     private void OnWheel(object s, MouseWheelEventArgs e)
     {
-        // 有绘制工具时：滚轮调粗细；无工具：缩放
-        if (_tool is 1 or 2)
+        // 文字工具：滚轮调字号（输入中也能实时调）
+        if (_tool == 4)
+        {
+            double nf = Math.Clamp(_fontSize + (e.Delta > 0 ? 2 : -2), FontMin, FontMax);
+            _fontSize = nf;
+            if (_editBox != null) _editBox.FontSize = nf;
+            ShowBubble(e.GetPosition(_ink), $"{nf:0} px");
+            e.Handled = true;
+            return;
+        }
+        // 画笔/矩形/箭头：滚轮调粗细
+        if (_tool is 1 or 2 or 3)
         {
             var nw = _penW + (e.Delta > 0 ? 0.5 : -0.5);
             _penW = Math.Clamp(nw, PenWMin, PenWMax);
-            ShowThicknessBubble(e.GetPosition(_ink));
+            ShowBubble(e.GetPosition(_ink), $"{_penW:0.#} px");
             e.Handled = true;
             return;
         }
@@ -509,7 +647,7 @@ public sealed class PinWindow : Window
         e.Handled = true;
     }
 
-    private async void ShowThicknessBubble(Point at)
+    private async void ShowBubble(Point at, string text)
     {
         try
         {
@@ -524,7 +662,7 @@ public sealed class PinWindow : Window
                 };
             }
             if (_thickBubble.Parent is Panel p2) p2.Children.Remove(_thickBubble);
-            if (_thickBubble.Child is TextBlock tb) tb.Text = $"{_penW:0.#} px";
+            if (_thickBubble.Child is TextBlock tb) tb.Text = text;
             _uiCanvas.Children.Add(_thickBubble);
             _thickBubble.Measure(new Size(Math.Max(1, _layers.ActualWidth), Math.Max(1, _layers.ActualHeight)));
             _thickBubble.SetValue(Canvas.LeftProperty, Math.Max(4, Math.Min(at.X + 14, _layers.ActualWidth - _thickBubble.DesiredSize.Width - 4)));
@@ -533,6 +671,210 @@ public sealed class PinWindow : Window
             if (_thickBubble?.Parent is Panel p3) p3.Children.Remove(_thickBubble);
         }
         catch { }
+    }
+
+    // ==================== 箭头 / 文字 ====================
+
+    /// <summary>箭头几何：线杆只画到三角底边（粗线不会从尖端戳出来），头部随线宽变大。</summary>
+    private static (Point ShaftEnd, Point[] Head) ArrowGeo(Point s, Point e, double thickness)
+    {
+        double dx = e.X - s.X, dy = e.Y - s.Y;
+        double len = Math.Sqrt(dx * dx + dy * dy);
+        if (len < 0.001) return (e, Array.Empty<Point>());
+        double ux = dx / len, uy = dy / len;
+        double headLen = Math.Min(Math.Max(10, 18 + thickness * 2), len * 0.45);
+        double halfW = Math.Max(headLen * 0.45, thickness * 1.6);
+        var bc = new Point(e.X - ux * headLen, e.Y - uy * headLen);
+        var head = new[]
+        {
+            e,
+            new Point(bc.X - uy * halfW, bc.Y + ux * halfW),
+            new Point(bc.X + uy * halfW, bc.Y - ux * halfW),
+        };
+        double overlap = Math.Min(headLen * 0.2, thickness * 0.5);
+        return (new Point(bc.X + ux * overlap, bc.Y + uy * overlap), head);
+    }
+
+    private static Geometry ArrowPathGeometry(Point s, Point e, double thickness)
+    {
+        var (shaftEnd, head) = ArrowGeo(s, e, thickness);
+        var sg = new StreamGeometry();
+        using (var ctx = sg.Open())
+        {
+            ctx.BeginFigure(s, false, false);          // 线杆：不填充
+            ctx.LineTo(shaftEnd, true, false);
+            if (head.Length == 3)
+            {
+                ctx.BeginFigure(head[0], true, true);   // 三角头：填充 + 闭合
+                ctx.LineTo(head[1], true, false);
+                ctx.LineTo(head[2], true, false);
+            }
+        }
+        sg.Freeze();
+        return sg;
+    }
+
+    /// <summary>在落点起一个文字输入框（Enter 提交 / Esc 取消 / 点别处提交）。</summary>
+    private void StartText(Point p)
+    {
+        CommitText();
+        _editColor = _penColor;
+        OpenEditor(p.X, p.Y, "", _fontSize);
+    }
+
+    /// <summary>点中已有文字 → 原地再编辑（内容、字号、颜色都能改）。</summary>
+    private void EditText(TextBlock block)
+    {
+        CommitText();
+        _editingBlock = block;
+        _editColor = (block.Foreground as SolidColorBrush)?.Color ?? _penColor;
+        block.Visibility = Visibility.Hidden;    // 先藏起来，避免和输入框重影
+        OpenEditor(Canvas.GetLeft(block), Canvas.GetTop(block), block.Text, block.FontSize);
+        DebugLog.Write("[PIN] text re-edit: " + block.Text);
+    }
+
+    /// <summary>建输入框并抢焦点（新建与二次编辑共用）。</summary>
+    private void OpenEditor(double left, double top, string text, double fontSize)
+    {
+        var tb = new TextBox
+        {
+            Text = text,
+            FontFamily = new FontFamily("Microsoft YaHei"),
+            FontSize = fontSize,
+            Foreground = new SolidColorBrush(_editColor),
+            CaretBrush = new SolidColorBrush(_editColor),
+            Background = new SolidColorBrush(Color.FromArgb(0x22, 0x00, 0x00, 0x00)),
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(2, 0, 2, 0),
+            MinWidth = 70,
+            AcceptsReturn = false,
+            Focusable = true,
+        };
+        if (double.IsNaN(left)) left = 8;
+        if (double.IsNaN(top)) top = 8;
+        Canvas.SetLeft(tb, left); Canvas.SetTop(tb, top);
+        _ink.Children.Add(tb);
+        _editBox = tb;
+        try
+        {
+            Focusable = true; Focus(); tb.Focus(); Keyboard.Focus(tb);
+            tb.CaretIndex = tb.Text.Length;
+        }
+        catch { }
+        // 兜底抢焦点（窗口激活可能把焦点吞掉）
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+        {
+            try { if (ReferenceEquals(_editBox, tb)) { tb.Focus(); Keyboard.Focus(tb); } } catch { }
+        }));
+        DebugLog.Write("[PIN] text edit start");
+    }
+
+    private void CommitText()
+    {
+        var tb = _editBox; if (tb == null) return;
+        _editBox = null;
+        var txt = (tb.Text ?? "").Trim();
+        double lx = Canvas.GetLeft(tb), ly = Canvas.GetTop(tb);
+        double fs = tb.FontSize;
+        _ink.Children.Remove(tb);
+
+        // 二次编辑：改回原来那个 TextBlock（清空 = 删掉这条）
+        var editing = _editingBlock;
+        _editingBlock = null;
+        if (editing != null)
+        {
+            if (txt.Length == 0) { _ink.Children.Remove(editing); _strokes.Remove(editing); return; }
+            editing.Text = txt;
+            editing.FontSize = fs;
+            editing.Foreground = new SolidColorBrush(_editColor);
+            Canvas.SetLeft(editing, lx); Canvas.SetTop(editing, ly);
+            editing.Visibility = Visibility.Visible;
+            DebugLog.Write($"[PIN] text update: {txt}");
+            return;
+        }
+
+        if (txt.Length == 0) return;
+        var block = new TextBlock
+        {
+            Text = txt,
+            FontFamily = new FontFamily("Microsoft YaHei"),
+            FontSize = fs,
+            Foreground = new SolidColorBrush(_editColor),
+            IsHitTestVisible = false,
+        };
+        Canvas.SetLeft(block, lx); Canvas.SetTop(block, ly);
+        _ink.Children.Add(block);
+        _strokes.Add(block);
+        DebugLog.Write($"[PIN] text commit: {txt}");
+    }
+
+    private void CancelText()
+    {
+        var tb = _editBox; if (tb == null) return;
+        _editBox = null;
+        _ink.Children.Remove(tb);
+        if (_editingBlock != null) { _editingBlock.Visibility = Visibility.Visible; _editingBlock = null; }
+        DebugLog.Write("[PIN] text cancel");
+    }
+
+    // ==================== 已有标注的命中 / 拖动 ====================
+
+    /// <summary>点中哪个已有标注（文字按包围盒，箭头按到线段的距离）。后加的优先。</summary>
+    private UIElement? HitAnnotation(Point p)
+    {
+        for (int i = _strokes.Count - 1; i >= 0; i--)
+        {
+            var el = _strokes[i];
+            if (el is TextBlock tb && tb.Visibility == Visibility.Visible)
+            {
+                double l = Canvas.GetLeft(tb), t = Canvas.GetTop(tb);
+                if (double.IsNaN(l) || double.IsNaN(t)) continue;
+                var r = new Rect(l, t, Math.Max(1, tb.ActualWidth), Math.Max(1, tb.ActualHeight));
+                r.Inflate(3, 3);
+                if (r.Contains(p)) return tb;
+            }
+            else if (el is System.Windows.Shapes.Path pa && pa.Tag is ArrowInfo ai)
+            {
+                if (DistToSegment(p, ai.A, ai.B) <= Math.Max(6, pa.StrokeThickness + 4)) return pa;
+            }
+        }
+        return null;
+    }
+
+    private static double DistToSegment(Point p, Point a, Point b)
+    {
+        double dx = b.X - a.X, dy = b.Y - a.Y;
+        double len2 = dx * dx + dy * dy;
+        if (len2 < 0.0001) return (p - a).Length;
+        double t = Math.Clamp(((p.X - a.X) * dx + (p.Y - a.Y) * dy) / len2, 0, 1);
+        return (p - new Point(a.X + t * dx, a.Y + t * dy)).Length;
+    }
+
+    private void StartHit(UIElement el, Point p)
+    {
+        _hitEl = el; _hitDown = p; _hitMoved = false;
+        if (el is TextBlock tb) { _moveL = Canvas.GetLeft(tb); _moveT = Canvas.GetTop(tb); }
+        else if (el is System.Windows.Shapes.Path pa && pa.Tag is ArrowInfo ai) { _moveA0 = ai.A; _moveB0 = ai.B; }
+    }
+
+    /// <summary>拖动已有标注：文字改 Canvas 位置，箭头整体平移两端点。</summary>
+    private void MoveHit(Point p)
+    {
+        if (_hitEl == null) return;
+        double dx = p.X - _hitDown.X, dy = p.Y - _hitDown.Y;
+        if (!_hitMoved && Math.Abs(dx) + Math.Abs(dy) < 3) return;   // 3px 内仍算“单击”
+        _hitMoved = true;
+        if (_hitEl is TextBlock tb)
+        {
+            Canvas.SetLeft(tb, _moveL + dx);
+            Canvas.SetTop(tb, _moveT + dy);
+        }
+        else if (_hitEl is System.Windows.Shapes.Path pa && pa.Tag is ArrowInfo ai)
+        {
+            ai.A = new Point(_moveA0.X + dx, _moveA0.Y + dy);
+            ai.B = new Point(_moveB0.X + dx, _moveB0.Y + dy);
+            pa.Data = ArrowPathGeometry(ai.A, ai.B, pa.StrokeThickness);
+        }
     }
 
     // ==================== 菜单 / 输出 ====================
@@ -553,9 +895,9 @@ public sealed class PinWindow : Window
     /// <summary>右键打开菜单前拦截：绘制中右键语义=取消（OnRightDown 已消化）。</summary>
     protected override void OnContextMenuOpening(ContextMenuEventArgs e)
     {
-        if (_tool is 1 or 2)
+        if (_tool is 1 or 2 or 3 or 4 || _editBox != null)
         {
-            e.Handled = true;   // 绘制工具激活时不弹菜单（右键专属取消）
+            e.Handled = true;   // 绘制/输入文字时不弹菜单（右键专属取消）
             return;
         }
         base.OnContextMenuOpening(e);
@@ -596,6 +938,7 @@ public sealed class PinWindow : Window
     {
         try
         {
+            CommitText();   // 正在输入的文字先落下，避免复制漏掉
             if (_strokes.Count == 0) Clipboard.SetImage(_src);
             else
             {
@@ -609,6 +952,7 @@ public sealed class PinWindow : Window
 
     private void Save()
     {
+        CommitText();
         var dlg = new Microsoft.Win32.SaveFileDialog { Filter = "PNG 图片 (*.png)|*.png", Title = "保存贴图", FileName = "贴图_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") };
         if (dlg.ShowDialog(this) != true) return;
         try

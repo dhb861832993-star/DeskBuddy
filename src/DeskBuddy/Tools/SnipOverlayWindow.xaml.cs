@@ -131,18 +131,21 @@ public partial class SnipOverlayWindow : Window
             // 阶段1：先截屏（含布局枚举），纯内存
             EnumPhys();
             _mw.Clear(); _shots.Clear(); _hwnds.Clear();
-            var prepared = new List<(SD.Rectangle Phys, Rect Dip, System.Windows.Media.Imaging.BitmapSource Src, SD.Bitmap Bmp)>();
-            foreach (var phys in _physRects)
+            var prepared = new List<(SD.Rectangle Phys, Rect Dip, Size WinDip, System.Windows.Media.Imaging.BitmapSource Src, SD.Bitmap Bmp)>();
+            for (int i = 0; i < _physRects.Count; i++)
             {
+                var phys = _physRects[i];
                 var bmp = new SD.Bitmap(phys.Width, phys.Height);
                 using (var g = SD.Graphics.FromImage(bmp))
                     g.CopyFromScreen(phys.X, phys.Y, 0, 0, new SD.Size(phys.Width, phys.Height));
                 var dip = new Rect(phys.X / _mainDpi, phys.Y / _mainDpi, phys.Width / _mainDpi, phys.Height / _mainDpi);
-                prepared.Add((phys, dip, ToSource(bmp), bmp));
+                // 窗口尺寸用该屏自己的缩放，混合 DPI 下每屏都能铺满（100% 时与 dip 相同）
+                var sc = ScaleOf(i);
+                prepared.Add((phys, dip, new Size(phys.Width / sc, phys.Height / sc), ToSource(bmp), bmp));
             }
             DebugLog.Write($"[SNIP] captured {prepared.Count} screens (pre-window)");
             // 阶段2：建窗 + 立即挂图 + 显示（全新窗口状态机可靠）
-            foreach (var (phys, dip, src, bmp) in prepared)
+            foreach (var (phys, dip, winDip, src, bmp) in prepared)
             {
                 var win = new Window
                 {
@@ -154,7 +157,7 @@ public partial class SnipOverlayWindow : Window
                     Background = Brushes.Black,
                     // 关键：WPF 布局尺寸显式给（否则 ActualWidth=0，Image 渲染 0×0 → 全黑）
                     Left = dip.X, Top = dip.Y,
-                    Width = dip.Width, Height = dip.Height,
+                    Width = winDip.Width, Height = winDip.Height,
                 };
                 var img = new Image { Source = src, Stretch = Stretch.Fill };   // 建窗即带图
                 var canvas = new Canvas();
@@ -169,12 +172,21 @@ public partial class SnipOverlayWindow : Window
                 win.SourceInitialized += (s2, e2) =>
                 {
                     var h = new WindowInteropHelper(win).Handle;
-                    // Win32 按物理像素校准位置 + 顶置；尺寸 WPF 管理（两套状态不打架）
-                    SetWindowPos(h, new IntPtr(-1) /*HWND_TOPMOST*/, ph.X, ph.Y, 0, 0,
-                        SWP_NOACTIVATE | SWP_SHOWWINDOW | 0x0001 /*SWP_NOSIZE*/);
                     _hwnds.Add(h);
+                    PinGeometry(win, h, ph);
                 };
                 win.Show();
+                // Show 之后 WPF 可能按自己的 DPI 重新排一次布局/尺寸（混合 DPI 下会把窗口放大 1.5 倍，
+                // 冻结图被拉伸 = 用户看到“竖屏分辨率变了”）——这里在消息循环空闲后再钉一次物理像素。
+                win.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+                {
+                    try
+                    {
+                        var h = new WindowInteropHelper(win).Handle;
+                        if (h != IntPtr.Zero) PinGeometry(win, h, ph);
+                    }
+                    catch { }
+                }));
                 var mw = new MonWindow { Win = win, Img = img, Canvas = canvas, Dip = dip, MainDpi = _mainDpi, Phys = phys };
                 _mw.Add(mw);
                 _shots.Add((mw, bmp));
@@ -258,33 +270,87 @@ public partial class SnipOverlayWindow : Window
 
     private static bool CollectPhys(IntPtr hMon, IntPtr hdcMon, ref RECT r, IntPtr data)
     {
-        var act = (Action<RECT>)GCHandle.FromIntPtr(data).Target!;
-        act(r);
+        var act = (Action<RECT, IntPtr>)GCHandle.FromIntPtr(data).Target!;
+        act(r, hMon);
         return true;
     }
 
     // ==================== 截屏（预创建窗口 + 激活换图） ====================
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndAfter, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("shcore.dll")] private static extern int GetDpiForMonitor(IntPtr hmon, int dpiType, out uint dpiX, out uint dpiY);
     private const int SW_HIDE = 0, SW_SHOW = 5, SW_SHOWNOACTIVATE = 4;
     private const uint SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010, SWP_SHOWWINDOW = 0x0040, SWP_HIDEWINDOW = 0x0080;
     private readonly List<IntPtr> _hwnds = new();
 
     private readonly List<(MonWindow MW, SD.Bitmap Bmp)> _shots = new();
     private List<SD.Rectangle> _physRects = new();
-    private double _mainDpi = 1.5;
+    private List<double> _monScales = new();          // 每个屏的 effective 缩放（1.0 = 100%）
+    private double _mainDpi = 1.0;                    // 全局 DIP 基准 = 主屏缩放
 
-    /// <summary>枚举物理屏（预创建时算好，激活时直接复用）。</summary>
+    /// <summary>取某显示器的 effective DPI（Win8.1+；拿不到按 96 处理）。</summary>
+    private static uint DpiOf(IntPtr hmon)
+    {
+        try
+        {
+            if (GetDpiForMonitor(hmon, 0 /*MDT_EFFECTIVE_DPI*/, out var dx, out _) == 0 && dx > 0) return dx;
+        }
+        catch { }
+        return 96;
+    }
+
+    /// <summary>该屏自己的缩放比（与 _physRects 同下标）。</summary>
+    private double ScaleOf(int i) => (i >= 0 && i < _monScales.Count && _monScales[i] > 0.1) ? _monScales[i] : _mainDpi;
+
+    /// <summary>
+    /// 把覆盖窗口钉成「该屏的物理像素矩形」。
+    /// 必须用物理像素而不是 WPF 的 DIP 尺寸：窗口创建时的 DPI 与落屏后的 DPI 不一致时，
+    /// WPF 会把 1080 DIP 建成 1620 px（1.5 倍），冻结图被拉伸 —— 这就是“竖屏分辨率变了”的来源。
+    /// 尺寸改由 Win32 钉死，WPF 的 DPI 只影响内部 DIP 换算（会互相抵消，仍是 1:1）。
+    /// </summary>
+    private void PinGeometry(Window win, IntPtr h, SD.Rectangle ph)
+    {
+        SetWindowPos(h, new IntPtr(-1) /*HWND_TOPMOST*/, ph.X, ph.Y, ph.Width, ph.Height,
+            SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        if (HwndSource.FromHwnd(h) is not HwndSource hs) return;
+        hs.AddHook((IntPtr hwnd, int msg, IntPtr w, IntPtr l, ref bool handled) =>
+        {
+            // WPF 收到 WM_DPICHANGED 会按“建议矩形”Resize，跨屏时又把窗口改大/改小 → 延后压回去。
+            // 不拦这个消息（要让 WPF 更新自己的 DPI，绘制比例才对），只做收尾。
+            if (msg == 0x02E0 /*WM_DPICHANGED*/)
+            {
+                win.Dispatcher.BeginInvoke(DispatcherPriority.Send, new Action(() =>
+                {
+                    try { SetWindowPos(hwnd, new IntPtr(-1), ph.X, ph.Y, ph.Width, ph.Height, SWP_NOACTIVATE | SWP_SHOWWINDOW); }
+                    catch { }
+                }));
+            }
+            return IntPtr.Zero;
+        });
+    }
+
+    /// <summary>枚举物理屏 + 每屏真实缩放（预创建时算好，激活时直接复用）。</summary>
     private void EnumPhys()
     {
         _physRects = new List<SD.Rectangle>();
-        var act = (Action<RECT>)(r => _physRects.Add(new SD.Rectangle(r.L, r.T, r.R - r.L, r.B - r.T)));
+        _monScales = new List<double>();
+        var act = (Action<RECT, IntPtr>)((r, hmon) =>
+        {
+            _physRects.Add(new SD.Rectangle(r.L, r.T, r.R - r.L, r.B - r.T));
+            _monScales.Add(DpiOf(hmon) / 96.0);
+        });
         var gc = GCHandle.Alloc(act);
         try { EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, CollectPhys, GCHandle.ToIntPtr(gc)); }
         finally { gc.Free(); }
-        var mainPhys = _physRects.FirstOrDefault(r => r.X == 0 && r.Y == 0);
-        var mainDipW = SystemParameters.PrimaryScreenWidth;
-        _mainDpi = (mainPhys.Width > 0 && mainDipW > 0) ? mainPhys.Width / mainDipW : 1.0;
+
+        // 全局 DIP 基准取主屏的 **effective DPI**。
+        // ⚠ 不能用 SystemParameters.PrimaryScreenWidth：它按「系统 DPI」换算，
+        // 用户改过缩放后注册表 AppliedDPI 会留下旧值，与实际显示器 DPI 不一致，
+        // 会让每屏覆盖窗口尺寸和裁剪区域被放大 1.5 倍 —— 竖屏因此框不到、截不出。
+        var mainIdx = _physRects.FindIndex(r => r.X == 0 && r.Y == 0);
+        if (mainIdx < 0 && _physRects.Count > 0) mainIdx = 0;
+        _mainDpi = ScaleOf(mainIdx);
+        DebugLog.Write($"[SNIP] monitors: {string.Join(" | ", _physRects.Select((r, i) => $"{r.X},{r.Y} {r.Width}x{r.Height}@{ScaleOf(i):0.##}x"))} mainDpi={_mainDpi:0.##}");
     }
 
     /// <summary>预创建：只建窗口骨架（每屏子窗口 + 事件），不截屏。
@@ -294,9 +360,12 @@ public partial class SnipOverlayWindow : Window
         EnumPhys();   // 无论 capture 与否都先枚举（否则首激活误判布局变更）
         _mw.Clear(); _shots.Clear(); _hwnds.Clear();
         int wi = 0;
-        foreach (var phys in _physRects)
+        for (int i = 0; i < _physRects.Count; i++)
         {
+            var phys = _physRects[i];
+            // 全局 DIP 是统一基准；窗口自身尺寸用它自己的缩放，混合 DPI 下每屏才铺满
             var dip = new Rect(phys.X / _mainDpi, phys.Y / _mainDpi, phys.Width / _mainDpi, phys.Height / _mainDpi);
+            var sc = ScaleOf(i);
             var win = new Window
             {
                 WindowStyle = WindowStyle.None,
@@ -305,6 +374,8 @@ public partial class SnipOverlayWindow : Window
                 ResizeMode = ResizeMode.NoResize,
                 Cursor = Cursors.Cross,
                 Background = Brushes.Black,
+                Left = dip.X, Top = dip.Y,
+                Width = phys.Width / sc, Height = phys.Height / sc,
             };
             var img = new Image { Stretch = Stretch.Fill };
             var canvas = new Canvas();
@@ -319,10 +390,10 @@ public partial class SnipOverlayWindow : Window
             win.SourceInitialized += (s2, e2) =>
             {
                 var h = new WindowInteropHelper(win).Handle;
-                // 摆好位置 + 顶置（隐藏态由 WPF Visibility 管理，不走 Win32 Hide）
+                _hwnds.Add(h);
+                // 物理像素钉死位置与尺寸（同 BuildAllAndShow 的说明）
                 SetWindowPos(h, new IntPtr(-1) /*HWND_TOPMOST*/, phys.X, phys.Y, phys.Width, phys.Height,
                     SWP_NOACTIVATE | (isCapture ? SWP_SHOWWINDOW : 0));
-                _hwnds.Add(h);
             };
             if (capture)
             {
@@ -429,11 +500,12 @@ public partial class SnipOverlayWindow : Window
         double h = m.Win.ActualHeight > 1 ? m.Win.ActualHeight : m.Dip.Height;
         return new Point(dx * w / m.Phys.Width, dy * h / m.Phys.Height);
     }
-    /// <summary>窗口局部 DIP → 虚拟屏全局 DIP（经物理像素，绝对一致）。</summary>
+    /// <summary>窗口局部 DIP → 虚拟屏全局 DIP（经物理像素，绝对一致）。
+    /// ⚠必须叠加该屏的物理原点，否则副屏（如左侧竖屏 x=-1080）的点击会被当成主屏坐标。</summary>
     private static Point ToVirtual(MonWindow m, Point local)
     {
         var p = LocalToPhys(m, local);
-        return new Point(p.X / m.MainDpi, p.Y / m.MainDpi);
+        return new Point((p.X + m.Phys.X) / m.MainDpi, (p.Y + m.Phys.Y) / m.MainDpi);
     }
 
     private Color GetPixelAt(double vx, double vy)
@@ -613,6 +685,7 @@ public partial class SnipOverlayWindow : Window
         }
     }
 
+
     // ==================== UI 重建（每次交互全量重画到当前屏） ====================
     /// <summary>全局虚拟 DIP → 窗口局部 DIP（经物理像素，跨屏一致）。</summary>
     private static Rect ToLocal(MonWindow m, Rect r)
@@ -676,9 +749,11 @@ public partial class SnipOverlayWindow : Window
                 }
             }
             // 尺寸
+            // 尺寸标注给「导出后的像素尺寸」（全局 DIP × _mainDpi = 物理像素），
+            // 而不是 DIP —— 混合 DPI 下 DIP 数字和实际截图大小对不上，容易让人以为框错了
             if (sel.Width > 4)
             {
-                _sizeLabel.Text = $"{(int)Math.Round(sel.Width)} × {(int)Math.Round(sel.Height)}";
+                _sizeLabel.Text = $"{(int)Math.Round(sel.Width * _mainDpi)} × {(int)Math.Round(sel.Height * _mainDpi)}";
                 var bg = _sizeBg!;
                 var lbl = L(sel);
                 double lx = lbl.X, ly = lbl.Y - 30;
@@ -756,11 +831,10 @@ public partial class SnipOverlayWindow : Window
                 Padding = new Thickness(6, 5, 6, 5)
             };
             var sp = new StackPanel { Orientation = Orientation.Horizontal };
-            sp.Children.Add(MkToolBtn("复制", "复制到剪贴板 (Enter)", CopySelection, Color.FromRgb(0x4A, 0x90, 0xFF)));
-            sp.Children.Add(MkSep());
-            sp.Children.Add(MkToolBtn("保存", "保存为 PNG (Ctrl+S)", SaveSelection, Color.FromRgb(0x30, 0xD1, 0x58)));
-            sp.Children.Add(MkSep());
-            sp.Children.Add(MkToolBtn("贴图", "贴图置顶悬浮（滚轮缩放）", PinSelection, Color.FromRgb(0xFF, 0x9F, 0x0A)));
+            // 截图条只做「复制 / 保存 / 贴图」；箭头、文字等标注在贴图窗口里做
+            sp.Children.Add(MkIconBtn("copy", "复制到剪贴板 (Enter)", CopySelection, Color.FromRgb(0x4A, 0x90, 0xFF)));
+            sp.Children.Add(MkIconBtn("save", "保存为 PNG (Ctrl+S)", SaveSelection, Color.FromRgb(0x30, 0xD1, 0x58)));
+            sp.Children.Add(MkIconBtn("pin", "贴图置顶悬浮（可在贴图上继续标注）", PinSelection, Color.FromRgb(0xFF, 0x9F, 0x0A)));
             _toolbar.Child = sp;
         }
         if (_toolbar.Parent is Panel p) p.Children.Remove(_toolbar);
@@ -776,41 +850,60 @@ public partial class SnipOverlayWindow : Window
         Canvas.SetLeft(_toolbar, x); Canvas.SetTop(_toolbar, y);
     }
 
-    /// <summary>图标 + 文字 的双信息按钮（一眼看懂，不用猜）。</summary>
-    private Button MkToolBtn(string label, string tip, Action act, Color accent)
+    /// <summary>20×20 坐标系里的纯矢量图标（只用描边，不依赖任何字体/中文）。</summary>
+    private static string IconData(string kind) => kind switch
     {
-        var sp = new StackPanel { Orientation = Orientation.Horizontal };
-        // 图标点（彩色圆点，像 Snipaste 的彩色按钮）
-        sp.Children.Add(new Ellipse { Width = 10, Height = 10, Fill = new SolidColorBrush(accent), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
-        sp.Children.Add(new TextBlock { Text = label, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF)), VerticalAlignment = VerticalAlignment.Center });
+        "copy" => "M 7,3 H 16 V 12 M 3,8 H 12 V 17 H 3 Z",                                         // 两张纸：复制
+        "save" => "M 3,3 H 13.5 L 17,6.5 V 17 H 3 Z M 7,3 V 8 H 13 V 3 M 6.5,17 V 12 H 13.5 V 17", // 软盘：保存
+        "pin" => "M 6.5,4 H 13.5 M 8,4 L 7.2,11 H 12.8 L 12,4 M 10,11 V 17",                       // 图钉：贴图
+        _ => "M 3,3 H 17 V 17 H 3 Z"
+    };
 
+    private static System.Windows.Shapes.Path MkIcon(string kind, Color color) => new()
+    {
+        Data = Geometry.Parse(IconData(kind)),
+        Stroke = new SolidColorBrush(color),
+        StrokeThickness = 1.7,
+        StrokeStartLineCap = PenLineCap.Round,
+        StrokeEndLineCap = PenLineCap.Round,
+        StrokeLineJoin = PenLineJoin.Round,
+        Fill = Brushes.Transparent,
+        Width = 20, Height = 20,
+        Stretch = Stretch.None,
+        IsHitTestVisible = false
+    };
+
+    /// <summary>操作条图标按钮：按下并在按钮内抬起算一次
+    /// （不绑 Click，避免 Click + PreviewMouseUp 双触发）。</summary>
+    private Button MkIconBtn(string kind, string tip, Action act, Color accent)
+    {
+        var icon = MkIcon(kind, accent);
         var b = new Button
         {
-            Content = sp,
+            Content = icon,
+            Tag = icon,
             ToolTip = tip,
-            Background = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
-            Foreground = Brushes.White,
-            BorderThickness = new Thickness(0),
-            Padding = new Thickness(12, 7, 12, 7),
+            Background = new SolidColorBrush(Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF)),
+            BorderThickness = new Thickness(1),
+            BorderBrush = Brushes.Transparent,
+            Padding = new Thickness(0),
+            Width = 34, Height = 32,
             Cursor = Cursors.Hand,
             Focusable = false
         };
-        b.Click += (s, e) => { DebugLog.Write("[SNIP] toolbtn click: " + label); act(); e.Handled = true; };
-        b.PreviewMouseLeftButtonUp += (s, e) => { if (b.IsMouseOver) { DebugLog.Write("[SNIP] toolbtn previewup: " + label); act(); e.Handled = true; } };
-        return b;
-    }
-
-    private static System.Windows.Shapes.Path MkSep()
-    {
-        var sep = new System.Windows.Shapes.Path
+        var downInside = false;
+        b.PreviewMouseLeftButtonDown += (s, e) => { downInside = true; e.Handled = true; };   // 别让画布抢去起选区
+        b.PreviewMouseLeftButtonUp += (s, e) =>
         {
-            Data = Geometry.Parse("M 0 0 L 0 18"),
-            Stroke = new SolidColorBrush(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)),
-            StrokeThickness = 1,
-            Margin = new Thickness(4, 0, 4, 0),
-            VerticalAlignment = VerticalAlignment.Center
+            if (downInside)
+            {
+                downInside = false;
+                DebugLog.Write($"[SNIP] icon-btn: {kind}");
+                act();
+            }
+            e.Handled = true;
         };
-        return sep;
+        return b;
     }
 
     // ==================== 输出（原始物理像素，零重采样 = 不糊） ====================

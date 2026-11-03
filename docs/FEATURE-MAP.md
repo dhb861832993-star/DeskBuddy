@@ -77,9 +77,11 @@
 |---|---|
 | 触发 | 组合热键（默认 F1，设置→通用→截图热键自定义）· 工具箱 ✂ 按钮 |
 | 流程 | 冻结双屏(每屏一窗,物理像素) → 拖选/8控制点/方向键微调 → 9×9 放大镜取色(HEX/RGB) |
-| 操作条 | 选区右下 ●复制(蓝) ●保存(绿) ●贴图(橙)；Enter=复制 Ctrl+S=保存 Esc=取消 |
-| 贴图 | `PinWindow`：置顶悬浮 · 淡绿渐变描边 · 拖动(零抖动) · 滚轮以鼠标为锚缩放 · 双击/Esc 关 |
-| 输出 | 原始物理像素裁剪（4K 不糊） |
+| 操作条 | 选区右下**纯矢量图标条**（无文字，只有 3 个）：`⧉` 复制(蓝) · 软盘 保存(绿) · 图钉 贴图(橙)；Enter=复制 Ctrl+S=保存 Esc=取消。**截图阶段不做标注**——箭头/文字/画笔都在贴图窗口里做 |
+| 贴图（含标注） | `PinWindow`：置顶悬浮 · 淡绿渐变描边 · 拖动(零抖动) · 无工具时滚轮以鼠标为锚缩放 · 双击/Esc 关。右下悬浮工具条（独立小窗）：`✥`移动 `✏`画笔 `▭`矩形 `↗`箭头 `A`文字 ｜ 6 色板 ｜ `↩`撤销；1~5 切工具，Alt+1~6 切色，Ctrl+Z 撤销，滚轮=调粗细/字号，右键=取消绘制 |
+| 贴图标注实现 | 全部画在 `_ink` Canvas 上（`_strokes` 记录以便撤销）：画笔=Polyline、矩形=Rectangle、箭头=`ArrowPathGeometry`（线杆 figure 不填充、三角头 figure 填充，线杆只到三角底边所以粗线不戳出尖端）、文字=先 TextBox 输入再落成 TextBlock；`Compose()` 用 RenderTargetBitmap 合成，复制/保存都带上标注 |
+| 标注二次编辑 | 移动/选择模式（`✥`）下点已有标注即命中（`HitAnnotation`：文字按包围盒、箭头按到线段距离）：**拖动=位移**（文字改 Canvas 位置 / 箭头平移两端点 `ArrowInfo`）、**单击文字=原地再编辑**（`EditText`，原 TextBlock 先隐藏，提交时改回去，清空则删除）；3px 内算单击、超过才算拖动 |
+| 输出 | 原始物理像素裁剪（4K 不糊）；贴图侧按 RenderTargetBitmap 合成标注 |
 
 ### 7. 独立小窗
 | 窗口 | 用途 | 触发 |
@@ -112,6 +114,7 @@
 | 加设置项 | `SettingsWindow.xaml` 对应 `Panel*` 页签 + `.xaml.cs` 读写（605 行附近保存块） |
 | 挂全局热键 | `App.xaml.cs` `OnGlobalKeyDown` + `ParseSnipHotkey` 模式 |
 | 截图功能迭代 | `SnipOverlayWindow.xaml.cs`（覆盖层/选区/操作条） `RenderSelection/BuildAllAndShow` |
+| 贴图标注迭代 | `PinWindow.cs`：`BuildToolPanel`（工具条）· `SetTool`（工具切换）· `ArrowPathGeometry`（箭头）· `StartText/CommitText`（文字）· `Compose`（合成输出） |
 | 贴图迭代 | `PinWindow.cs`（`MovePhys`拖动 / `SetScale`锚点缩放） |
 | AI 对话迭代 | `ChatWindow.xaml.cs` + `HarnessClient.cs`（`RpcAsync` 信封/`AskAsync` WS/`session/page` 分页） |
 | DSH 鉴权 | `DshAuth.cs`（自签 cookie；注意 DSH 升级可能变协议） |
