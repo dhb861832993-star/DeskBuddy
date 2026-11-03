@@ -11,7 +11,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"/>
-  <img src="https://img.shields.io/badge/version-2.3.0-brightgreen.svg" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-2.4.0-brightgreen.svg" alt="Version"/>
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-blue.svg" alt="Platform"/>
   <img src="https://img.shields.io/badge/engine-USN%20%E5%BC%95%E6%93%8E-orange.svg" alt="USN Engine"/>
   <a href="https://github.com/dhb861832993-star/DeskBuddy/releases">
@@ -68,6 +68,7 @@
 | 🗂️ **自有 USN 文件引擎** | 读 NTFS USN 日志独立建索引（Listary 同技术），**不依赖 Windows Search**，千万级文件秒搜；首次构建数十秒，之后毫秒级 |
 | 🤖 **AI 对话** | 默认**本机 Harness** 零配置对话（流式输出、工具状态、授权/提问）；也支持 OpenAI 兼容 API |
 | 📝 **备忘录** | 右侧独立面板随手记录待办，双击编辑、勾选完成自动归档到历史，可搜索/恢复/清空 |
+| ✂ **截图 & 贴图** | 热键框选 + 放大镜取色；贴图后在图上画笔/矩形/箭头/文字标注，箭头文字支持二次编辑与拖动，复制/保存自动合成 |
 | 🧩 **五种条目类型** | `app` 程序 / `url` 网页 / `folder` 文件夹 / `file` 文件 / `command` 命令 |
 | 📦 **自动提取图标** | 程序条目自动提取 exe 图标；AI 智能启动（服务在跑→开页面，没跑→脚本拉起） |
 | 🖱️ **拖拽添加** | 从桌面/资源管理器把文件、快捷方式、文件夹、网址拖进菜单，自动识别类型 |
@@ -123,6 +124,21 @@
 - 自动保存到 `DeskBuddy.memo.json`，并保留 `.bak` 备份
 
 ---
+
+## ✂️ 截图 & 贴图：框选、再标注
+
+**一次热键 → 框选 → 贴图 → 在贴图上标注**，截完的图不用再开别的画图工具。
+
+- **框选**：默认 `F1`（设置 → 通用 → 截图热键 可改成任意组合键）。冻结整屏后拖选，8 个控制点微调，方向键 1px 微移（按住 `Ctrl` 10px）
+- **放大镜取色**：鼠标旁实时显示 9×9 像素网格 + HEX / RGB 值，做 UI 时直接抄色号
+- **操作条**：选区右下角三个图标 —— 复制 / 保存 / 贴图（`Enter` 复制、`Ctrl+S` 保存、`Esc` 取消）
+- **贴图**：贴到屏幕上置顶悬浮，滚轮以鼠标为锚缩放、拖动移动、双击或 `Esc` 关闭
+- **在贴图上继续标注**：画笔、矩形、箭头、文字四件套 + 6 色色板 + 撤销
+  - 箭头和文字支持**二次编辑**：单击文字就能原地改字，拖动文字 / 箭头直接挪位置
+  - 滚轮调粗细和字号，`Ctrl+Z` 撤销，右键取消当前这一笔
+- **输出**：复制 / 保存都会把标注合成进去，并按屏幕原始物理像素裁剪，4K 屏不糊
+
+多屏（含竖屏）混合 DPI 也做了适配：每个屏一个覆盖窗口、按各自缩放铺设，副屏框选不会再算错坐标。
 
 ## 🤖 AI 对话
 
@@ -221,5 +237,5 @@
 <p align="center">
   Made with ❤️ · 双击 Ctrl，马上开始～
 </p>
-## ���ܵ�ͼ
-��ϸ�Ĺ���ҳ�������� [docs/FEATURE-MAP.md](docs/FEATURE-MAP.md)������ҳ��/�ȼ�/������Ȩ�����ձ�����
+## 功能地图
+详细的功能页面索引见 [docs/FEATURE-MAP.md](docs/FEATURE-MAP.md)（所有页面/热键/接入点的权威对照表）。
