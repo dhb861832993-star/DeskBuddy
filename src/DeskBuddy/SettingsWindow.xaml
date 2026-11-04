@@ -395,6 +395,10 @@
                                           FontSize="12" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
                                 <TextBlock Text="判定方式：独占全屏（Direct3D）或前台窗口铺满所在显示器时生效；Alt+Tab 切出游戏后快捷键立即恢复。"
                                            FontSize="10.5" Foreground="{DynamicResource TextSecondary}" Margin="24,4,0,0" TextWrapping="Wrap"/>
+                                <CheckBox x:Name="GalleryBox" Margin="0,12,0,0" Content="顶边画廊（光标顶到屏幕上沿时，滑出最近收藏的截图）"
+                                          FontSize="12" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                                <TextBlock Text="截图后把贴图往上拖到屏幕顶部即可收进画廊；点缩略图会还原成可继续编辑的贴图。关闭后顶部不再弹出，已有图片仍保留在 gallery 目录。"
+                                           FontSize="10.5" Foreground="{DynamicResource TextSecondary}" Margin="24,4,0,0" TextWrapping="Wrap"/>
                                 <Button x:Name="ClearMemoArchiveBtn" Content="清空已完成备忘录"
                                         Margin="0,14,0,0" HorizontalAlignment="Left"
                                         Click="OnClearMemoArchive" Style="{StaticResource MacButton}"/>

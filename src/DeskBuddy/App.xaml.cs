@@ -70,6 +70,7 @@ public partial class App : Application
         // ---- 配置 ----
         _config = ConfigManager.Load();
         GameMode.Enabled = _config.GameModeEnabled;
+        Tools.GalleryWindow.Enabled = _config.GalleryEnabled;
         _mainWindow = new MainWindow();
         _mainWindow.ConfigChanged += OnConfigChanged;
         UpdateMcpPipe(); // 按配置决定是否监听 MCP 管道
@@ -183,6 +184,8 @@ public partial class App : Application
         }
         _tray?.UpdateHotkeyText(HotkeyDisplay(cfg.Hotkey));
         GameMode.Enabled = cfg.GameModeEnabled;   // 游戏模式开关
+        Tools.GalleryWindow.Enabled = cfg.GalleryEnabled;   // 顶边画廊开关
+        if (!cfg.GalleryEnabled) Tools.GalleryWindow.Current?.HideNow();
         UpdateMcpPipe(); // MCP 开关变化时启停管道监听
     }
 
@@ -191,6 +194,12 @@ public partial class App : Application
     /// <summary>每 120ms 看一次光标：顶到屏幕最上沿约 280ms 滑出画廊，离开面板即收起。</summary>
     private void PollTopEdge()
     {
+        if (!Tools.GalleryWindow.Enabled)
+        {
+            _topSince = 0;
+            Tools.GalleryWindow.Current?.HideAnimated();
+            return;
+        }
         if (GameMode.ShouldBlock || Tools.SnipOverlayWindow.IsReallyActive())
         {
             _topSince = 0;

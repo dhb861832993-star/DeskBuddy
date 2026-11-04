@@ -100,7 +100,8 @@
 | 收藏 | 贴图中拖到离屏顶 150 DIP 内 → 画廊自动滑出；松手落在面板内 → `PinWindow.SaveToGallery()`（含标注合成）→ 关掉贴图并刷新画廊 |
 | 还原 | 点缩略图 → `Gallery.LoadFull` 读原图 → 新建 `PinWindow` 居中显示（最多占工作区 60%），可继续标注 |
 | 动效 | 内容层 `TranslateTransform` 从 -(H+28) 滑到 0（220ms CubicEase Out）+ 透明度淡入；卡片 hover 缩放 1.05（110ms）；隐藏 150ms 收回后置 Collapsed |
-| 互斥 | 游戏模式生效 / 截图进行中 时不弹出；截图开始时自动收起，免得被拍进去 |
+| 互斥 | 游戏模式生效 / 截图进行中 / **设置里关掉了 GalleryEnabled** 时不弹出；截图开始时自动收起，免得被拍进去 |
+| 开关 | AppConfig.GalleryEnabled（默认开）→ App 启动与保存设置时写入 GalleryWindow.Enabled；关掉后 ShowOn 直接 return，顶部不再弹出、也不接受拖入，gallery\ 里的图不动 |
 
 ## 三、全局热键表（唯一入口 `App.OnGlobalKeyDown`）
 | 键 | 功能 | 配置字段 |

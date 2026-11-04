@@ -83,6 +83,7 @@ public partial class SettingsWindow : Window
         MemoEnabledBox.IsChecked = config.MemoPanelOpen ?? config.MemoEnabled;
         ToolsEnabledBox.IsChecked = config.ToolsPanelOpen ?? config.ToolsEnabled;
         GameModeBox.IsChecked = config.GameModeEnabled;
+        GalleryBox.IsChecked = config.GalleryEnabled;
 
         // 截图热键（组合键捕获式，格式 "Ctrl+Alt+S"）
         _snipHotkey = string.IsNullOrWhiteSpace(config.SnipHotkey) ? "F1" : config.SnipHotkey;
@@ -692,6 +693,7 @@ public partial class SettingsWindow : Window
             ToolsEnabled = ToolsEnabledBox.IsChecked == true,
             ToolsPanelOpen = ToolsEnabledBox.IsChecked == true,
             GameModeEnabled = GameModeBox.IsChecked == true,
+            GalleryEnabled = GalleryBox.IsChecked == true,
             SnipHotkey = _snipHotkey,
             EnableFileSearch = EnableFileSearchBox.IsChecked == true,
             SearchRoots = SearchRootsBox.Text

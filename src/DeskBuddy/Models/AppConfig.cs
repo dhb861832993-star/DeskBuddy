@@ -90,6 +90,11 @@ public class AppConfig
     /// <summary>游戏模式：检测到游戏/全屏程序在前台时，自动屏蔽所有全局快捷键（默认开启）。</summary>
     public bool GameModeEnabled { get; set; } = true;
 
+    // ===== 顶边画廊 =====
+
+    /// <summary>顶边画廊：光标顶到屏幕上沿时滑出最近的截图（默认开启）。</summary>
+    public bool GalleryEnabled { get; set; } = true;
+
     // ===== 截图 =====
 
     /// <summary>截图热键：F1 | F2 | F3 | F4 | PrintScreen（默认 F1）。</summary>

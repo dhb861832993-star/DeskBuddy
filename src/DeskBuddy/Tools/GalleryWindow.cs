@@ -31,6 +31,9 @@ public sealed class GalleryWindow : Window
     /// <summary>点了某张缩略图（path）——App 启动时挂上「还原成贴图」。</summary>
     public static Action<string>? OnPicked;
 
+    /// <summary>总开关（设置 → 通用 → 顶边画廊）：关掉后不再从顶部弹出，也不再接受贴图拖入。</summary>
+    public static bool Enabled { get; set; } = true;
+
     /// <summary>懒创建单例（顶边触发和贴图拖放都走这里，避免谁先谁后的问题）。</summary>
     public static GalleryWindow Ensure()
     {
@@ -200,6 +203,7 @@ public sealed class GalleryWindow : Window
     /// <summary>在鼠标所在显示器顶部居中弹出（物理像素坐标）。</summary>
     public void ShowOn(int physX, int physY)
     {
+        if (!Enabled) return;        // 设置里关掉了
         if (_shown) return;          // 已经露出就不重复读盘/重排
         Refresh();
         var (mon, scale) = MonitorOf(physX, physY);
