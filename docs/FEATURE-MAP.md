@@ -66,7 +66,7 @@
 ### 5. ⚙ 设置窗口（左侧目录五页签）
 | 页签 | 代码 `Panel*` | 功能 |
 |---|---|---|
-| **通用** | `PanelGeneral` L313 | 呼出键捕获 · 双击间隔 · 主题 · 面板开关(与图标同步) · 备忘录清理 · **截图热键**（点按钮按组合键） |
+| **通用** | `PanelGeneral` L313 | 呼出键捕获 · 双击间隔 · 主题 · 面板开关(与图标同步) · **游戏模式开关** · 备忘录清理 · **截图热键**（点按钮按组合键） |
 | **搜索** | `PanelSearch` L409 | 文件搜索开关 · 根目录 · 后端(Windows Search/内置) |
 | **AI** | `PanelAi` L438 | Harness 地址/会话策略 · 显示全部会话 · 或 OpenAI 模式(baseurl/key/model) |
 | **MCP** | `PanelMcp` L478 | MCP 管道开关（AI 工具管理菜单） |
@@ -98,6 +98,11 @@
 | `SnipHotkey`（默认 F1） | 截图 | `SnipHotkey`（支持 Ctrl/Alt/Shift+任意键） |
 | Esc（全局） | 退出当前层：截图→右键菜单→AI→编辑器→设置→主面板 | — |
 
+> **游戏模式**（`Services/GameMode.cs` · 开关 `GameModeEnabled`）：检测到「游戏 / 全屏程序」在前台时，
+> `OnGlobalKeyDown` 在最前面直接 return，**上表所有热键一律不响应**（按键本身仍照常交给游戏）。
+> 判定：`SHQueryUserNotificationState` = D3D 独占全屏(3) / 演示模式(4)，或前台窗口矩形铺满所在显示器（容差 2px）；
+> 排除自己的窗口（按 pid）和 Progman/WorkerW/Shell_TrayWnd。结果缓存 800ms，进出各写一条 `[GAME]` 日志。
+
 ## 四、数据/配置文件
 
 | 文件 | 内容 | 位置 |
@@ -113,6 +118,7 @@
 | 加启动器功能/面板 | `MainWindow.xaml`（三栏结构）+ `.xaml.cs` |
 | 加设置项 | `SettingsWindow.xaml` 对应 `Panel*` 页签 + `.xaml.cs` 读写（605 行附近保存块） |
 | 挂全局热键 | `App.xaml.cs` `OnGlobalKeyDown` + `ParseSnipHotkey` 模式 |
+| 屏蔽热键/加拦截条件 | `Services/GameMode.cs`（`ShouldBlock` 在 `OnGlobalKeyDown` 首行 + `KeyUp` 里各拦一次） |
 | 截图功能迭代 | `SnipOverlayWindow.xaml.cs`（覆盖层/选区/操作条） `RenderSelection/BuildAllAndShow` |
 | 贴图标注迭代 | `PinWindow.cs`：`BuildToolPanel`（工具条）· `SetTool`（工具切换）· `ArrowPathGeometry`（箭头）· `StartText/CommitText`（文字）· `Compose`（合成输出） |
 | 贴图迭代 | `PinWindow.cs`（`MovePhys`拖动 / `SetScale`锚点缩放） |

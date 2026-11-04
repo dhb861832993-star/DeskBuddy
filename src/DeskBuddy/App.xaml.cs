@@ -66,6 +66,7 @@ public partial class App : Application
 
         // ---- 配置 ----
         _config = ConfigManager.Load();
+        GameMode.Enabled = _config.GameModeEnabled;
         _mainWindow = new MainWindow();
         _mainWindow.ConfigChanged += OnConfigChanged;
         UpdateMcpPipe(); // 按配置决定是否监听 MCP 管道
@@ -90,7 +91,7 @@ public partial class App : Application
         _detector.DoubleTapped += ToggleMenu;
         _hook = new KeyboardHook();
         _hook.KeyDown += OnGlobalKeyDown;
-        _hook.KeyUp += k => _detector.OnKeyUp(k);
+        _hook.KeyUp += k => { if (!GameMode.ShouldBlock) _detector.OnKeyUp(k); };
 
         // 启动时立即解析截图热键（否则 SnipVk/_snipMods 停留在默认值，配置里的组合键不生效）
         ParseSnipHotkey(_config.SnipHotkey);
@@ -172,6 +173,7 @@ public partial class App : Application
             }
         }
         _tray?.UpdateHotkeyText(HotkeyDisplay(cfg.Hotkey));
+        GameMode.Enabled = cfg.GameModeEnabled;   // 游戏模式开关
         UpdateMcpPipe(); // MCP 开关变化时启停管道监听
     }
 
@@ -269,6 +271,9 @@ public partial class App : Application
     /// <summary>全局按键处理：呼出（单键双击/组合单击）+ 截图热键 + 全局 Esc 退出。</summary>
     private void OnGlobalKeyDown(int vkCode)
     {
+        // 游戏模式：前台是游戏/全屏程序时，所有快捷键一律不响应（按键本身照常交给游戏）
+        if (GameMode.ShouldBlock) return;
+
         _detector.OnKeyDown(vkCode);   // 单键模式（组合模式 vk=0 永不匹配）
         if (vkCode == 0x1B) HandleGlobalEscape();
         // 呼出：组合键模式 → 主键按下且修饰键精确匹配 → 立即呼出（节流 350ms 防自动重复连发）

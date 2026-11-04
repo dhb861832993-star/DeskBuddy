@@ -85,6 +85,11 @@ public class AppConfig
     /// <summary>工具箱面板展开状态记忆（用户点图标的最近状态；null=未操作过，用 ToolsEnabled 作初始）。</summary>
     public bool? ToolsPanelOpen { get; set; }
 
+    // ===== 游戏模式 =====
+
+    /// <summary>游戏模式：检测到游戏/全屏程序在前台时，自动屏蔽所有全局快捷键（默认开启）。</summary>
+    public bool GameModeEnabled { get; set; } = true;
+
     // ===== 截图 =====
 
     /// <summary>截图热键：F1 | F2 | F3 | F4 | PrintScreen（默认 F1）。</summary>
