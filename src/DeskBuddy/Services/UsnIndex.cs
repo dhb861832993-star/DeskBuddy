@@ -98,12 +98,20 @@ public static class UsnIndex
         var prefixBuckets = new Dictionary<string, List<long>>();
         var rootDrives = new Dictionary<long, string>();
         long sw = Environment.TickCount64;
+        int count = 0;                                  // 已收录文件数（仅用于日志/上限）
+        const int MaxEntries = 4_000_000;               // 安全上限：极端卷也不把内存吃穿
 
         foreach (var vol in volumes)
         {
             string drive = vol.Substring(4, 2); // "\\.\E:" -> "E:"
             IntPtr h = CreateFile(vol, GENERIC_READ, 0x1 | 0x2, IntPtr.Zero, 3, 0x80, IntPtr.Zero);
-            if (h == new IntPtr(-1)) continue;
+            if (h == new IntPtr(-1))
+            {
+                int err = Marshal.GetLastWin32Error();
+                DebugLog.Write($"[USN] 打开卷失败 {vol} err={err}"
+                    + (err == 5 ? "（需要管理员权限：以管理员身份运行才能建 USN 索引）" : ""));
+                continue;
+            }
 
             ulong startRef = 0; long highUsn = long.MaxValue;
             while (true)
@@ -117,7 +125,19 @@ public static class UsnIndex
                 Marshal.FreeHGlobal(inBuf);
                 if (!ok || returned == 0) { Marshal.FreeHGlobal(outBuf); break; }
 
-                // 跳过前 8 字节前缀，从偏移 8 开始解析 V2 记录
+                // ★下一批的起始引用在输出缓冲区【头部 8 字节】，
+                //   必须用它推进（原来靠最后一条记录的 fileRef 推进，
+                //   一旦这批末尾的记录被跳过就会原地打转 → 死循环 + 内存暴涨）
+                ulong nextStart = (ulong)Marshal.ReadInt64(outBuf, 0);
+                if (nextStart <= startRef)
+                {
+                    Marshal.FreeHGlobal(outBuf);
+                    DebugLog.Write($"[USN] {drive} 枚举不再前进（start={startRef} next={nextStart}），停止");
+                    break;
+                }
+                startRef = nextStart;
+
+                // 解析 V2 记录（跳过前 8 字节前缀）
                 int off = 8;
                 while (off + 60 <= (int)returned)
                 {
@@ -130,15 +150,26 @@ public static class UsnIndex
                     short attrs = (short)Marshal.ReadInt32(outBuf, off + 52);
                     short nameLen = Marshal.ReadInt16(outBuf, off + 56);
                     short nameOff = Marshal.ReadInt16(outBuf, off + 58);
-                    if (nameLen > 0 && nameLen < 2000 && off + nameOff + nameLen <= (int)returned)
+
+                    // ★卷根（$Root）：MFT 第 5 号记录，parent 可能指向自己、也可能是 0（不同版本行为不一），
+                    //   而且【名字长度为 0】。原来把这段放在 nameLen>0 里面，$Root 永远进不来 →
+                    //   rootDrives 常年为空 → 还原的路径没有盘符 → 被 MatchesRoot 全过滤，
+                    //   表现为"文件明明在，怎么搜都是 0 条"。
+                    if (fileRef == 5 || parentRef == fileRef || parentRef == 0)
+                    {
+                        rootDrives[fileRef] = drive;
+                    }
+                    else if (nameLen > 0 && nameLen < 2000 && off + nameOff + nameLen <= (int)returned)
                     {
                         string name = Marshal.PtrToStringUni(outBuf + off + nameOff, nameLen / 2) ?? "";
                         if (name.Length > 0)
                         {
                             names[fileRef] = name;
                             parent[fileRef] = parentRef;
-                            // 只有普通文件（非目录）进入搜索桶
-                            if ((attrs & 0x10) == 0)
+                            // 只有普通文件（非目录）进入搜索桶；且跳过版本库/依赖目录里的东西
+                            // （.svn\pristine 会把每个文件再复制一份，能吃掉成百上千万条配额）
+                            if ((attrs & 0x10) == 0
+                                && !(names.TryGetValue(parentRef, out var pname) && IsNoiseName(pname)))
                             {
                                 var c = char.ToLowerInvariant(name[0]);
                                 if (!buckets.TryGetValue(c, out var list))
@@ -157,8 +188,8 @@ public static class UsnIndex
                                     prefixBuckets[pkey] = plist;
                                 }
                                 plist.Add(fileRef);
+                                count++;
                             }
-                            startRef = (ulong)fileRef;
                         }
                         else
                         {
@@ -169,6 +200,15 @@ public static class UsnIndex
                     off += recordLength;
                 }
                 Marshal.FreeHGlobal(outBuf);
+
+                // 进度日志（每 20 万条）+ 内存安全上限
+                if (count > 0 && count % 200_000 == 0)
+                    DebugLog.Write($"[USN] {drive} 已收录 {count} 条… ({(Environment.TickCount64 - sw) / 1000.0:F1}s)");
+                if (count > MaxEntries)
+                {
+                    DebugLog.Write($"[USN] {drive} 达到上限 {MaxEntries}，停止枚举");
+                    break;
+                }
             }
             CloseHandle(h);
         }
@@ -270,6 +310,10 @@ public static class UsnIndex
         }
     }
 
+    /// <summary>这些目录里的文件不进索引（版本库副本、依赖、构建产物）。</summary>
+    private static bool IsNoiseName(string name) => name is ".svn" or ".git" or ".hg"
+        or "node_modules" or "bin" or "obj" or ".vs" or "$RECYCLE.BIN" or "System Volume Information";
+
     private static bool MatchesRoot(string path, string[] rootFilters)
     {
         if (rootFilters == null || rootFilters.Length == 0) return true;
@@ -318,8 +362,26 @@ public static class UsnIndex
             }
         }
         parts.Reverse();
-        var path = drive != null ? drive + "\\" + string.Join("\\", parts) : string.Join("\\", parts);
+        if (drive == null)
+        {
+            // 兜底：只有一个卷时直接用它（$Root 记录万一没被枚举出来也不会整盘搜不到）
+            if (_volumes.Length == 1 && _volumes[0].Length >= 6)
+                drive = _volumes[0].Substring(4, 2);
+        }
+        if (drive == null)
+        {
+            // 找不到卷根 → 没有盘符，路径不可用（返回 null 让上层跳过，并记一次日志便于定位）
+            if (!_warnedNoDrive)
+            {
+                _warnedNoDrive = true;
+                DebugLog.Write($"[USN] 警告：还原路径找不到盘符（fileRef={fileRef}, parts={parts.Count}, 卷数={_volumes.Length}），搜索结果会被过滤");
+            }
+            return null;
+        }
+        var path = drive + "\\" + string.Join("\\", parts);
         if (path.Length > 0) _dirPathCache[fileRef] = path;
         return path;
     }
+
+    private static bool _warnedNoDrive;
 }

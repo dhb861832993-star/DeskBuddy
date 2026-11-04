@@ -161,6 +161,8 @@ public static class FileIndex
         NoteChange(e.FullPath);
     }
 
+    private static long _lastChangeLogAt;
+
     private static void NoteChange(string path)
     {
         if (string.IsNullOrEmpty(path)) return;
@@ -169,7 +171,14 @@ public static class FileIndex
         {
             PendingChanges.Add(path);
         }
-        DebugLog.Write($"FileIndex.NoteChange: {path}");
+        // ⚠别每次变化都写日志：SVN/SVN 这类高频写入会瞬间刷出十几万行、还每次抢文件锁。
+        // 2 秒最多记一条，够定位问题即可。
+        var now = Environment.TickCount64;
+        if (now - _lastChangeLogAt > 2000)
+        {
+            _lastChangeLogAt = now;
+            DebugLog.Write($"FileIndex.NoteChange: {path}（同类高频日志已限流）");
+        }
         ScheduleApply();
     }
 

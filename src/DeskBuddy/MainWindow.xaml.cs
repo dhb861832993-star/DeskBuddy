@@ -533,6 +533,7 @@ public partial class MainWindow : Window
         FileIndex.EnsureBuilding(roots); // 后台构建/刷新索引，不阻塞
 
         var backend = _config.FileSearchBackend;
+        DebugLog.Write($"[SEARCH] q='{query}' backend={backend} usnReady={UsnIndex.IsReady} roots={roots.Length} fileIndexReady={FileIndex.IsReady}");
 
         // USN 引擎就绪 → 同步搜索（前缀桶毫秒级），结果与击键同一帧显示
         if (backend == "usn" || (backend == "auto" && UsnIndex.IsReady))
@@ -545,6 +546,7 @@ public partial class MainWindow : Window
                     .ToList();
             }
             catch { found = new List<(string, string)>(); }
+            DebugLog.Write($"[SEARCH] usn hits={found.Count}");
 
             if (found.Count == 0 && backend == "auto")
             {
@@ -556,9 +558,20 @@ public partial class MainWindow : Window
                     if (WindowsSearch.IsAvailable())
                         fb = await Task.Run(() => WindowsSearch.Search(q, rts, MaxFileResults));
                     if (fb.Count == 0 && FileIndex.IsReady) fb = FileIndex.Search(q, MaxFileResults);
-                    if (SearchBox.Text?.Trim() != q) return;
+                    // 索引都没命中 → 直接按根目录深搜（异步 + 8 秒上限）。
+                    // 索引有条目上限，超大工程盘会截断，这一步保证"根目录下真实存在的文件一定能搜到"。
+                    if (fb.Count == 0)
+                    {
+                        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+                        try { fb = await Task.Run(() => FileSearcher.Search(rts, q, timeout.Token, maxResults: MaxFileResults), timeout.Token); }
+                        catch { }
+                        DebugLog.Write($"[SEARCH] 实时扫描兜底 hits={fb.Count} q='{q}'");
+                    }
+                    // ⚠只能在 UI 线程读 SearchBox.Text（后台线程读 DependencyObject 会抛跨线程异常，
+                    //   异常被 Task 吞掉 → 结果永远应用不上，表现为"搜到 0 条"）
                     Dispatcher.BeginInvoke(() =>
                     {
+                        if (SearchBox.Text?.Trim() != q) return;
                         ApplyFileResults(fb, q);
                         RebuildDisplay(SearchBox.Text?.Trim() ?? "", true);
                     });

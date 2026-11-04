@@ -8,7 +8,9 @@ namespace DeskBuddy.Services;
 /// </summary>
 public static class FileSearcher
 {
-    private const int DefaultMaxDepth = 5;
+    // 目录深度上限：原来 5 层，UE/工程类目录（res\scene\instance\xxx_content\hlod\file）到 6 层就搜不到了。
+    // 放宽到 12（靠"噪音目录跳过 + IndexEntryCap 上限"兜住性能与内存）。
+    private const int DefaultMaxDepth = 12;
     private const int DefaultMaxResults = 12;
     private const int IndexEntryCap = 300000; // 索引条目上限，防止极端目录撑爆内存
 
