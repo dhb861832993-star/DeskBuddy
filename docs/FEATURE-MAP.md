@@ -122,6 +122,7 @@
 | `DeskBuddy.config.json` | 全部设置+启动项+面板状态 | `%LOCALAPPDATA%\Programs\QuickMenu` |
 | `DeskBuddy.memo.json` | 备忘录数据 | 同上 |
 | `gallery\*.png` | 画廊里收藏的截图（原图，含标注） | 同上 |
+| `index\usn.idx` | USN 文件索引（紧凑二进制，约 210 MB / 550 万条）；启动直接读盘 + USN 日志增量 | 同上 |
 | `~/.dsh/.credentials.yaml` | DSH 鉴权 secret（`DshAuth` 读） | 用户目录 |
 
 ## 五、开发接入点速查
