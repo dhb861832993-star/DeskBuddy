@@ -90,9 +90,19 @@
 | `ItemEditorWindow` | 启动项编辑（名称/路径/参数） | 主面板右键→编辑 |
 | `RenameDialogWindow` | 重命名启动项 | 列表右键→重命名 |
 | `IndexProgressWindow` | 文件索引进度 | 搜索根目录变更后重建 |
+| `GalleryWindow` | **顶边画廊**：最近截图缩略图，点开还原成可编辑贴图，悬停 × 删除 | 光标顶到屏幕上沿 ~280ms / 贴图往上拖到顶部 |
+
+### 8. 🖼 顶边画廊（`Tools/GalleryWindow.cs` + `Services/Gallery.cs`）
+| 项 | 说明 |
+|---|---|
+| 存储 | `gallery\shot_yyyyMMdd_HHmmss_fff.png`（程序同级），按修改时间倒序取最近 12 张；缩略图解码到 360px 宽省内存 |
+| 呼出 | `App.PollTopEdge` 每 120ms 查光标：顶到某屏上沿 3px 内持续 280ms → `ShowOn`（按该屏 DPI 用 SetWindowPos 钉物理矩形，顶部居中）；离开面板即收起 |
+| 收藏 | 贴图中拖到离屏顶 150 DIP 内 → 画廊自动滑出；松手落在面板内 → `PinWindow.SaveToGallery()`（含标注合成）→ 关掉贴图并刷新画廊 |
+| 还原 | 点缩略图 → `Gallery.LoadFull` 读原图 → 新建 `PinWindow` 居中显示（最多占工作区 60%），可继续标注 |
+| 动效 | 内容层 `TranslateTransform` 从 -(H+28) 滑到 0（220ms CubicEase Out）+ 透明度淡入；卡片 hover 缩放 1.05（110ms）；隐藏 150ms 收回后置 Collapsed |
+| 互斥 | 游戏模式生效 / 截图进行中 时不弹出；截图开始时自动收起，免得被拍进去 |
 
 ## 三、全局热键表（唯一入口 `App.OnGlobalKeyDown`）
-
 | 键 | 功能 | 配置字段 |
 |---|---|---|
 | 双击 Alt（默认） | 呼出主面板 | `Hotkey` + `DoubleTapIntervalMs` |
@@ -110,6 +120,7 @@
 |---|---|---|
 | `DeskBuddy.config.json` | 全部设置+启动项+面板状态 | `%LOCALAPPDATA%\Programs\QuickMenu` |
 | `DeskBuddy.memo.json` | 备忘录数据 | 同上 |
+| `gallery\*.png` | 画廊里收藏的截图（原图，含标注） | 同上 |
 | `~/.dsh/.credentials.yaml` | DSH 鉴权 secret（`DshAuth` 读） | 用户目录 |
 
 ## 五、开发接入点速查

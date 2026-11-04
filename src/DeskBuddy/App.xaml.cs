@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
 using System.Windows;
+using System.Windows.Threading;
 using DeskBuddy.Models;
 using DeskBuddy.Services;
 
@@ -24,6 +25,8 @@ public partial class App : Application
     private ChatWindow? _chatWindow;
     private AppConfig _config = new();
     private MainWindow? _mainWindow;
+    private DispatcherTimer? _topEdgeTimer;
+    private long _topSince;
 
     /// <summary>当前配置（供聊天窗口等读取）。</summary>
     public AppConfig CurrentConfig => _config;
@@ -95,6 +98,12 @@ public partial class App : Application
 
         // 启动时立即解析截图热键（否则 SnipVk/_snipMods 停留在默认值，配置里的组合键不生效）
         ParseSnipHotkey(_config.SnipHotkey);
+
+        // ---- 顶边画廊：光标顶到屏幕最上沿时滑出 ----
+        Tools.GalleryWindow.OnPicked = path => Dispatcher.BeginInvoke(new Action(() => RestoreFromGallery(path)));
+        _topEdgeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+        _topEdgeTimer.Tick += (_, _) => PollTopEdge();
+        _topEdgeTimer.Start();
 
         // 预创建截图覆盖窗口（含每屏子窗口，隐藏待命）→ F1 激活接近 0ms
         Tools.SnipOverlayWindow.PreCreate();
@@ -175,6 +184,60 @@ public partial class App : Application
         _tray?.UpdateHotkeyText(HotkeyDisplay(cfg.Hotkey));
         GameMode.Enabled = cfg.GameModeEnabled;   // 游戏模式开关
         UpdateMcpPipe(); // MCP 开关变化时启停管道监听
+    }
+
+    // ==================== 顶边画廊 ====================
+
+    /// <summary>每 120ms 看一次光标：顶到屏幕最上沿约 280ms 滑出画廊，离开面板即收起。</summary>
+    private void PollTopEdge()
+    {
+        if (GameMode.ShouldBlock || Tools.SnipOverlayWindow.IsReallyActive())
+        {
+            _topSince = 0;
+            Tools.GalleryWindow.Current?.HideAnimated();
+            return;
+        }
+        if (!TryGetCursor(out int cx, out int cy)) return;
+
+        if (Tools.GalleryWindow.InTopBand(cx, cy))
+        {
+            var now = Environment.TickCount64;
+            if (_topSince == 0) _topSince = now;
+            if (now - _topSince >= 280 && Tools.GalleryWindow.Current is not { IsShown: true })
+                Tools.GalleryWindow.Ensure().ShowOn(cx, cy);
+            return;
+        }
+
+        _topSince = 0;
+        if (Tools.GalleryWindow.Current is { IsShown: true } gal && !gal.ContainsPhysical(cx, cy))
+            gal.HideAnimated();
+    }
+
+    /// <summary>点画廊里的图 → 还原成一张可继续编辑的贴图（居中，最大占工作区 60%）。</summary>
+    private void RestoreFromGallery(string path)
+    {
+        var src = Gallery.LoadFull(path);
+        if (src == null) { DebugLog.Write("[GALLERY] 读图失败: " + path); return; }
+        var area = SystemParameters.WorkArea;
+        double scale = Math.Min(1.0, Math.Min(area.Width * 0.6 / src.PixelWidth, area.Height * 0.6 / src.PixelHeight));
+        double w = Math.Max(80, src.PixelWidth * scale);
+        double h = Math.Max(60, src.PixelHeight * scale);
+        var pin = new Tools.PinWindow(src, area.Left + (area.Width - w) / 2, area.Top + (area.Height - h) / 2, w, h);
+        pin.Show();
+        DebugLog.Write($"[GALLERY] 还原为贴图: {path} ({w:F0}x{h:F0})");
+    }
+
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out CURSOR_POINT p);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct CURSOR_POINT { public int X, Y; }
+
+    private static bool TryGetCursor(out int x, out int y)
+    {
+        x = y = 0;
+        if (!GetCursorPos(out var p)) return false;
+        x = p.X; y = p.Y;
+        return true;
     }
 
     // ==================== MCP（AI 快捷添加菜单） ====================
@@ -358,6 +421,7 @@ public partial class App : Application
         _snipActive = true;
         try
         {
+            Tools.GalleryWindow.Current?.HideNow();   // 截图前收起画廊，免得被拍进去
             _mainWindow?.HideMenu();
             var win = Tools.SnipOverlayWindow.Activate();   // 新建实例（截屏+建窗+显示）
             win.Closed += (_, _) => _snipActive = false;    // 新实例会真 Close → Closed 正常触发

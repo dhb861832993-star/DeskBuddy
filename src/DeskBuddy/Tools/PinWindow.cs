@@ -536,6 +536,9 @@ public sealed class PinWindow : Window
         MovePhys(_dragWinPX + (int)Math.Round(cur.X - _dragStartScreen.X),
                 _dragWinPY + (int)Math.Round(cur.Y - _dragStartScreen.Y),
                 _pw, _ph);
+        // 拖到屏幕顶部附近 → 露出画廊，松手就收进去
+        if (GalleryWindow.NearTopForDrag((int)cur.X, (int)cur.Y))
+            GalleryWindow.Current?.ShowOn((int)cur.X, (int)cur.Y);
         e.Handled = true;
     }
 
@@ -587,6 +590,20 @@ public sealed class PinWindow : Window
         }
         else
         {
+            // 拖拽结束：如果松手时在画廊面板上 → 收藏
+            if (_dragging && GalleryWindow.Current is { IsShown: true } gal)
+            {
+                var cur = GetCursorPosPhys();
+                if (gal.ContainsPhysical((int)cur.X, (int)cur.Y))
+                {
+                    _dragging = false;
+                    ReleaseMouseCapture();
+                    Cursor = ToolCursor;
+                    SaveToGallery();
+                    e.Handled = true;
+                    return;
+                }
+            }
             _dragging = false;
         }
         ReleaseMouseCapture();
@@ -959,6 +976,24 @@ public sealed class PinWindow : Window
             ai.B = new Point(_moveB0.X + dx, _moveB0.Y + dy);
             pa.Data = ArrowPathGeometry(ai.A, ai.B, pa.StrokeThickness);
         }
+    }
+
+    /// <summary>把当前贴图（含标注）存进画廊，然后关掉自己。</summary>
+    public void SaveToGallery()
+    {
+        try
+        {
+            CommitText();
+            var img = _strokes.Count > 0 ? (Compose() ?? _src) : _src;
+            var path = Gallery.Save(img);
+            DebugLog.Write(path != null ? "[PIN] 已收藏到画廊: " + path : "[PIN] 收藏失败");
+            if (path != null)
+            {
+                GalleryWindow.Current?.Refresh();   // 立刻看到刚收进来的这张
+                Close();
+            }
+        }
+        catch (Exception ex) { DebugLog.Write("[PIN] 收藏异常: " + ex.Message); }
     }
 
     // ==================== 菜单 / 输出 ====================
