@@ -49,6 +49,11 @@
 | 呼出 | 双击修饰键 / 托盘 / MCP `show` |
 | 隐藏 | Esc / 失焦自动隐藏 |
 
+> **启动规则（`Services/Launcher.cs` · `Launch`）**
+> 1. **工作目录 = exe 所在目录**（等同双击）。很多 Electron 启动器/游戏客户端靠当前目录找同目录 dll 与资源，不设就会一闪即退。
+> 2. DeskBuddy 以**管理员**权限运行时，子进程会继承管理员权限；部分程序（游戏启动器、带反作弊的客户端）在此权限下会**静默退出**。此时改为交给 `explorer.exe` 以**普通权限**启动，和桌面双击一致。需要提权的条目请用 `command` 类型 + `Start-Process -Verb RunAs`。
+> 3. 同名进程已有可见窗口 → 只聚焦，不重复启动。
+
 ### 3. 📝 备忘录面板（右侧）
 | 代码 | `MainWindow.xaml` L541 `MemoPanel` · `MemoArchives`（`.memo.json`） |
 |---|---|

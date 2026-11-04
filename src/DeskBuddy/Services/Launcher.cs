@@ -12,6 +12,25 @@ public static class Launcher
 {
     private static readonly Dictionary<string, string?> ResolveCache = new(StringComparer.OrdinalIgnoreCase);
 
+    private static bool? _elevated;
+
+    /// <summary>本程序是否以管理员权限运行（决定启动子进程时要不要降权）。</summary>
+    public static bool IsElevated
+    {
+        get
+        {
+            if (_elevated.HasValue) return _elevated.Value;
+            try
+            {
+                using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+                var principal = new System.Security.Principal.WindowsPrincipal(identity);
+                _elevated = principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+            }
+            catch { _elevated = false; }
+            return _elevated.Value;
+        }
+    }
+
     /// <summary>把“程序名”解析为完整 exe 路径（PATH + 常见安装目录）。</summary>
     public static string? Resolve(string nameOrPath)
     {
@@ -64,6 +83,7 @@ public static class Launcher
     /// <summary>启动条目。返回是否成功。</summary>
     public static bool Launch(DeskBuddyItem item)
     {
+        DebugLog.Write($"[LAUNCH] request name={item.Name} type={item.Type} elevated={IsElevated} path={item.Path}");
         try
         {
             var psi = new ProcessStartInfo { UseShellExecute = true };
@@ -114,6 +134,27 @@ public static class Launcher
                     }
                     // 程序已在运行 → 只把它弹出到前台，不重复启动
                     if (BringExistingToFront(exe)) return true;
+
+                    // 工作目录必须是 exe 所在目录：双击时 Explorer 就是这么做的，
+                    // 很多程序（Electron 启动器、游戏客户端）会按当前目录找同目录的 dll/资源，
+                    // 之前不设 → 继承了 DeskBuddy 的目录 → 起不来或一闪就退。
+                    try
+                    {
+                        var dir = Path.GetDirectoryName(exe);
+                        if (!string.IsNullOrEmpty(dir)) psi.WorkingDirectory = dir;
+                    }
+                    catch { }
+
+                    // DeskBuddy 自己是管理员时，子进程会继承管理员权限 —— 有些程序（游戏启动器/
+                    // 带反作弊的客户端）在这种权限下会静默退出。桌面双击是"普通权限"，
+                    // 所以这里也交给 Explorer 启动，保持和双击一致。
+                    if (IsElevated && string.IsNullOrWhiteSpace(item.Args))
+                    {
+                        DebugLog.Write($"[LAUNCH] 管理员模式 → 交给 Explorer 以普通权限启动: {exe}");
+                        Process.Start(new ProcessStartInfo { FileName = "explorer.exe", Arguments = $"\"{exe}\"", UseShellExecute = true });
+                        return true;
+                    }
+
                     psi.FileName = exe;
                     if (!string.IsNullOrWhiteSpace(item.Args)) psi.Arguments = item.Args;
                     break;
