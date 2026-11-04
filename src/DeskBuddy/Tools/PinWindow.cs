@@ -58,6 +58,10 @@ public sealed class PinWindow : Window
     private double _moveL, _moveT;        // 文字的原始 Canvas 位置
     private Point _moveA0, _moveB0;       // 箭头的原始端点
 
+    // ===== 悬停反馈（告诉用户这里能拖）=====
+    private UIElement? _hoverEl;          // 当前悬停的标注
+    private Rectangle? _hoverRect;        // 悬停虚线框（画在 _dock，不进输出）
+
     /// <summary>箭头端点（存在 Path.Tag），移动时整体平移。</summary>
     private sealed class ArrowInfo { public Point A, B; }
 
@@ -134,6 +138,7 @@ public sealed class PinWindow : Window
             if (_tool is 1 or 2 or 3 or 4) { e2.Handled = true; }
         };
         MouseWheel += OnWheel;
+        MouseLeave += (_, _) => { ShowHover(null); Cursor = ToolCursor; };
         MouseDoubleClick += (_, _) => Close();
         PreviewKeyDown += OnKey;
         // 工具条设计：不占独立停靠行（会形成一条白横杠很丑）——
@@ -238,7 +243,7 @@ public sealed class PinWindow : Window
                 2 => "矩形（3）",
                 3 => "箭头（4）· 滚轮调粗细",
                 4 => "文字（5）· 滚轮调字号",
-                _ => "移动/缩放（1）",
+                _ => "移动/缩放（1）· 点已有文字或箭头可拖动，单击文字可改字",
             };
             var b = new Border
             {
@@ -338,14 +343,9 @@ public sealed class PinWindow : Window
     {
         DebugLog.Write($"[PIN] SetTool {t}");
         CommitText();                         // 切工具先把正在输入的文字落下
+        ShowHover(null);
         _tool = t;
-        Cursor = t switch
-        {
-            1 => Cursors.Pen,
-            2 or 3 => Cursors.Cross,
-            4 => Cursors.IBeam,
-            _ => Cursors.Arrow,
-        };
+        Cursor = ToolCursor;
         RefreshToolPanel();
     }
 
@@ -401,10 +401,11 @@ public sealed class PinWindow : Window
         }
 
         var p = e.GetPosition(_ink);
+        ShowHover(null);   // 按下就收起悬停提示（开始画/拖了）
 
         // 先看有没有点中已有标注（文字/箭头）：拖动=位移，单击文字=再次编辑。
         // 画笔/矩形模式不参与（要能直接在上面画）。
-        if (_tool is 0 or 3 or 4)
+        if (CanGrabAnnotations)
         {
             var hit = HitAnnotation(p);
             if (hit != null)
@@ -530,7 +531,7 @@ public sealed class PinWindow : Window
             e.Handled = true;
             return;
         }
-        if (!_dragging) return;
+        if (!_dragging) { UpdateHover(e.GetPosition(_ink)); return; }
         var cur = GetCursorPosPhys();
         MovePhys(_dragWinPX + (int)Math.Round(cur.X - _dragStartScreen.X),
                 _dragWinPY + (int)Math.Round(cur.Y - _dragStartScreen.Y),
@@ -589,6 +590,7 @@ public sealed class PinWindow : Window
             _dragging = false;
         }
         ReleaseMouseCapture();
+        Cursor = ToolCursor;    // 拖完恢复工具光标，下一次移动会重新判定悬停
         e.Handled = true;
     }
 
@@ -819,7 +821,37 @@ public sealed class PinWindow : Window
 
     // ==================== 已有标注的命中 / 拖动 ====================
 
-    /// <summary>点中哪个已有标注（文字按包围盒，箭头按到线段的距离）。后加的优先。</summary>
+    /// <summary>文字的可拖动/可单击范围：比文字本身大一圈，方便在左下角这种边角位置抓到。</summary>
+    private static Rect HitBoxOf(TextBlock tb)
+    {
+        double l = Canvas.GetLeft(tb), t = Canvas.GetTop(tb);
+        if (double.IsNaN(l) || double.IsNaN(t)) return Rect.Empty;
+        double padX = Math.Max(12, tb.FontSize * 0.5);
+        double padY = Math.Max(10, tb.FontSize * 0.55);
+        var r = new Rect(l, t, Math.Max(1, tb.ActualWidth), Math.Max(1, tb.ActualHeight));
+        r.Inflate(padX, padY);
+        return r;
+    }
+
+    /// <summary>标注的视觉包围盒（用于悬停虚线框与命中高亮）。</summary>
+    private static Rect BoundsOf(UIElement el)
+    {
+        if (el is TextBlock tb)
+        {
+            double l = Canvas.GetLeft(tb), t = Canvas.GetTop(tb);
+            if (double.IsNaN(l) || double.IsNaN(t)) return Rect.Empty;
+            return new Rect(l, t, Math.Max(1, tb.ActualWidth), Math.Max(1, tb.ActualHeight));
+        }
+        if (el is System.Windows.Shapes.Path pa && pa.Data != null)
+        {
+            var b = pa.Data.Bounds;
+            if (!b.IsEmpty) b.Inflate(2, 2);
+            return b;
+        }
+        return Rect.Empty;
+    }
+
+    /// <summary>点中哪个已有标注（文字按放大后的包围盒，箭头按到线段的距离）。后加的优先。</summary>
     private UIElement? HitAnnotation(Point p)
     {
         for (int i = _strokes.Count - 1; i >= 0; i--)
@@ -827,15 +859,13 @@ public sealed class PinWindow : Window
             var el = _strokes[i];
             if (el is TextBlock tb && tb.Visibility == Visibility.Visible)
             {
-                double l = Canvas.GetLeft(tb), t = Canvas.GetTop(tb);
-                if (double.IsNaN(l) || double.IsNaN(t)) continue;
-                var r = new Rect(l, t, Math.Max(1, tb.ActualWidth), Math.Max(1, tb.ActualHeight));
-                r.Inflate(3, 3);
-                if (r.Contains(p)) return tb;
+                var hit = HitBoxOf(tb);
+                if (!hit.IsEmpty && hit.Contains(p)) return tb;
             }
             else if (el is System.Windows.Shapes.Path pa && pa.Tag is ArrowInfo ai)
             {
-                if (DistToSegment(p, ai.A, ai.B) <= Math.Max(6, pa.StrokeThickness + 4)) return pa;
+                // 线越粗越好点，另外再给 8px 容差
+                if (DistToSegment(p, ai.A, ai.B) <= Math.Max(10, pa.StrokeThickness * 1.2 + 8)) return pa;
             }
         }
         return null;
@@ -852,9 +882,63 @@ public sealed class PinWindow : Window
 
     private void StartHit(UIElement el, Point p)
     {
+        ShowHover(null);                       // 开始拖了就不用再提示
         _hitEl = el; _hitDown = p; _hitMoved = false;
         if (el is TextBlock tb) { _moveL = Canvas.GetLeft(tb); _moveT = Canvas.GetTop(tb); }
         else if (el is System.Windows.Shapes.Path pa && pa.Tag is ArrowInfo ai) { _moveA0 = ai.A; _moveB0 = ai.B; }
+        Cursor = Cursors.SizeAll;
+    }
+
+    // ==================== 悬停反馈 ====================
+
+    /// <summary>当前工具是否允许“抓已有标注”（画笔/矩形模式下点在标注上是画画，不提示）。</summary>
+    private bool CanGrabAnnotations => _tool is 0 or 3 or 4;
+
+    private Cursor ToolCursor => _tool switch
+    {
+        1 => Cursors.Pen,
+        2 or 3 => Cursors.Cross,
+        4 => Cursors.IBeam,
+        _ => Cursors.Arrow,
+    };
+
+    /// <summary>空闲移动时更新悬停提示：命中就画虚线框 + 移动光标。</summary>
+    private void UpdateHover(Point p)
+    {
+        if (!CanGrabAnnotations || _editBox != null) { ShowHover(null); return; }
+        var hit = HitAnnotation(p);
+        ShowHover(hit);
+        Cursor = hit != null ? Cursors.SizeAll : ToolCursor;
+    }
+
+    /// <summary>在 _dock（不参与合成输出）上画/收悬停虚线框。</summary>
+    private void ShowHover(UIElement? el)
+    {
+        if (ReferenceEquals(_hoverEl, el)) return;
+        _hoverEl = el;
+        if (el == null)
+        {
+            if (_hoverRect != null) _hoverRect.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var b = BoundsOf(el);
+        if (b.IsEmpty) { if (_hoverRect != null) _hoverRect.Visibility = Visibility.Collapsed; return; }
+
+        _hoverRect ??= new Rectangle
+        {
+            Stroke = new SolidColorBrush(Color.FromRgb(0x5C, 0xE8, 0xA0)),
+            StrokeThickness = 1.5,
+            StrokeDashArray = new DoubleCollection { 4, 3 },
+            Fill = Brushes.Transparent,
+            IsHitTestVisible = false,
+        };
+        _hoverRect.Width = Math.Max(1, b.Width);
+        _hoverRect.Height = Math.Max(1, b.Height);
+        Canvas.SetLeft(_hoverRect, b.X);
+        Canvas.SetTop(_hoverRect, b.Y);
+        if (_hoverRect.Parent is Panel pp) pp.Children.Remove(_hoverRect);
+        _dock.Children.Add(_hoverRect);
+        _hoverRect.Visibility = Visibility.Visible;
     }
 
     /// <summary>拖动已有标注：文字改 Canvas 位置，箭头整体平移两端点。</summary>
