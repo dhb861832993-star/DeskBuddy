@@ -55,6 +55,12 @@
 ### AI 对话 —— 直连本机 DeepSeek Harness
 <p align="center"><img src="screenshots/chat.png" alt="AI 对话" width="680"/></p>
 
+### 截图 —— 框选区域，右侧实时取色
+<p align="center"><img src="screenshots/snip.png" alt="截图" width="680"/></p>
+
+### 贴图标注 —— 画笔 / 矩形 / 箭头 / 文字，箭头和文字还能再改
+<p align="center"><img src="screenshots/pin.png" alt="贴图标注" width="680"/></p>
+
 ---
 
 ## ✨ 功能特性
@@ -63,6 +69,7 @@
 | --- | --- |
 | ⌨️ **双击热键呼出** | 默认双击 `Ctrl`，可改 Alt / Shift / CapsLock / Win；间隔可调 |
 | 🖱️ **单击即开** | 点击任意图标直接启动；已打开的程序（含托盘隐藏）**只弹出不重复启动** |
+| 🎮 **游戏模式** | 检测到游戏 / 全屏程序在前台时**自动屏蔽所有快捷键**，Alt+Tab 切出立即恢复（设置里可关掉） |
 | 🍎 **苹果风 UI** | 圆角卡片 + 亚克力毛玻璃，浅色/深色自动跟随系统 |
 | 🔍 **实时搜索** | 中文、拼音、路径关键词过滤；`↑↓←→` 选择，`Enter` 打开 |
 | 🗂️ **自有 USN 文件引擎** | 读 NTFS USN 日志独立建索引（Listary 同技术），**不依赖 Windows Search**，千万级文件秒搜；首次构建数十秒，之后毫秒级 |
@@ -128,6 +135,9 @@
 ## ✂️ 截图 & 贴图：框选、再标注
 
 **一次热键 → 框选 → 贴图 → 在贴图上标注**，截完的图不用再开别的画图工具。
+
+<p align="center"><img src="screenshots/snip.png" alt="框选" width="620"/></p>
+<p align="center"><img src="screenshots/pin.png" alt="贴图标注" width="620"/></p>
 
 - **框选**：默认 `F1`（设置 → 通用 → 截图热键 可改成任意组合键）。冻结整屏后拖选，8 个控制点微调，方向键 1px 微移（按住 `Ctrl` 10px）
 - **放大镜取色**：鼠标旁实时显示 9×9 像素网格 + HEX / RGB 值，做 UI 时直接抄色号
