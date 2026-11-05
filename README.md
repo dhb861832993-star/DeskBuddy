@@ -11,7 +11,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"/>
-  <img src="https://img.shields.io/badge/version-2.4.0-brightgreen.svg" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-2.5.0-brightgreen.svg" alt="Version"/>
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-blue.svg" alt="Platform"/>
   <img src="https://img.shields.io/badge/engine-USN%20%E5%BC%95%E6%93%8E-orange.svg" alt="USN Engine"/>
   <a href="https://github.com/dhb861832993-star/DeskBuddy/releases">
