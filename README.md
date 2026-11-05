@@ -89,11 +89,15 @@
 
 ## 📥 快速安装
 
-> ⬇️ **[Releases 页面](https://github.com/dhb861832993-star/DeskBuddy/releases)** 提供 `DeskBuddy-Setup.exe`（安装包）与 `DeskBuddy.exe`（绿色版）。
+> ⬇️ **[最新版本 v2.5.0](https://github.com/dhb861832993-star/DeskBuddy/releases/latest)** · **[所有版本](https://github.com/dhb861832993-star/DeskBuddy/releases)**
+>
+> 直链下载：
+> **[DeskBuddy-Setup-2.5.0.exe](https://github.com/dhb861832993-star/DeskBuddy/releases/download/v2.5.0/DeskBuddy-Setup-2.5.0.exe)**（安装包，59.5 MB）
+> · **[DeskBuddy-2.5.0-portable.exe](https://github.com/dhb861832993-star/DeskBuddy/releases/download/v2.5.0/DeskBuddy-2.5.0-portable.exe)**（绿色版，64.2 MB）
 
 | 方式 | 做法 |
 | --- | --- |
-| ✅ **安装包（推荐）** | 运行 `DeskBuddy-Setup.exe`，一路下一步，可选开机自启 / 桌面快捷方式 |
+| ✅ **安装包（推荐）** | 运行 `DeskBuddy-Setup.exe`，一路下一步，可选开机自启 / 桌面快捷方式（免管理员，装到当前用户目录） |
 | 📦 **便携版** | 双击 `installer/安装DeskBuddy.bat`，自动装到 `%LOCALAPPDATA%\DeskBuddy` 并注册自启 |
 | 🟢 **绿色直用** | 复制 `DeskBuddy.exe` 到任意位置双击运行，首次自动生成配置 |
 
