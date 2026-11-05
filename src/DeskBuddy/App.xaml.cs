@@ -37,6 +37,9 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // ---- 计划任务辅助：以管理员短命实例注册/删除「开机静默提权」任务 ----
+        if (Services.AdminTask.HandleStartupArg(e.Args)) return;
+
         // ---- MCP 无头模式：DeskBuddy.exe --mcp（供 AI 工具通过 MCP 调用）----
         if (e.Args.Contains("--mcp", StringComparer.OrdinalIgnoreCase))
         {
@@ -71,6 +74,8 @@ public partial class App : Application
         _config = ConfigManager.Load();
         GameMode.Enabled = _config.GameModeEnabled;
         Tools.GalleryWindow.Enabled = _config.GalleryEnabled;
+        _adminMode = _config.RunAsAdmin;
+        if (_config.RunAsAdmin) AutoStart.EnsureTaskPathCurrent();   // 升级/搬家后校正计划任务路径
         _mainWindow = new MainWindow();
         _mainWindow.ConfigChanged += OnConfigChanged;
         UpdateMcpPipe(); // 按配置决定是否监听 MCP 管道
@@ -85,7 +90,11 @@ public partial class App : Application
             _config = ConfigManager.Load();
             _mainWindow.ShowMenu();
         };
-        _tray.AutoStartChanged += enabled => AutoStart.Set(enabled);
+        _tray.AutoStartChanged += enabled =>
+        {
+            if (!AutoStart.Set(enabled, _config.RunAsAdmin, out var err))
+                System.Windows.MessageBox.Show(err, "DeskBuddy");
+        };
         _tray.ExitRequested += ExitApp;
         _tray.UpdateHotkeyText(HotkeyDisplay(_config.Hotkey));
 
@@ -186,8 +195,22 @@ public partial class App : Application
         GameMode.Enabled = cfg.GameModeEnabled;   // 游戏模式开关
         Tools.GalleryWindow.Enabled = cfg.GalleryEnabled;   // 顶边画廊开关
         if (!cfg.GalleryEnabled) Tools.GalleryWindow.Current?.HideNow();
+
+        // 开机自启方式：管理员（计划任务，静默提权）/ 普通（Run 键）
+        if (_adminMode != cfg.RunAsAdmin)
+        {
+            _adminMode = cfg.RunAsAdmin;
+            if (AutoStart.IsEnabled())
+            {
+                if (!AutoStart.Set(true, cfg.RunAsAdmin, out var err))
+                    System.Windows.MessageBox.Show(err, "DeskBuddy");
+            }
+        }
         UpdateMcpPipe(); // MCP 开关变化时启停管道监听
     }
+
+    /// <summary>当前生效的自启方式（true=管理员计划任务），用于判断设置是否变化。</summary>
+    private bool _adminMode;
 
     // ==================== 顶边画廊 ====================
 

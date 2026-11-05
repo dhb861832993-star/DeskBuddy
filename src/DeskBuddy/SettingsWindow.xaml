@@ -399,6 +399,10 @@
                                           FontSize="12" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
                                 <TextBlock Text="截图后把贴图往上拖到屏幕顶部即可收进画廊；点缩略图会还原成可继续编辑的贴图。关闭后顶部不再弹出，已有图片仍保留在 gallery 目录。"
                                            FontSize="10.5" Foreground="{DynamicResource TextSecondary}" Margin="24,4,0,0" TextWrapping="Wrap"/>
+                                <CheckBox x:Name="AdminStartBox" Margin="0,12,0,0" Content="开机以管理员身份静默启动（计划任务，不弹 UAC）"
+                                          FontSize="12" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                                <TextBlock Text="开启后由计划任务在登录时以最高权限拉起（登记时需要授权一次），文件索引（USN）和需要提权的启动项才能正常工作。开启这个会同时把「开机自启」交给计划任务；注意：管理员模式下无法再从资源管理器拖文件进菜单。"
+                                           FontSize="10.5" Foreground="{DynamicResource TextSecondary}" Margin="24,4,0,0" TextWrapping="Wrap"/>
                                 <Button x:Name="ClearMemoArchiveBtn" Content="清空已完成备忘录"
                                         Margin="0,14,0,0" HorizontalAlignment="Left"
                                         Click="OnClearMemoArchive" Style="{StaticResource MacButton}"/>

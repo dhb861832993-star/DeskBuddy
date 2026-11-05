@@ -128,6 +128,7 @@
 | `DeskBuddy.memo.json` | 备忘录数据 | 同上 |
 | `gallery\*.png` | 画廊里收藏的截图（原图，含标注） | 同上 |
 | `index\usn.idx` | USN 文件索引（紧凑二进制，约 210 MB / 550 万条）；启动直接读盘 + USN 日志增量 | 同上 |
+| 计划任务 `\DeskBuddy` | 开机静默提权（`RunLevel=HighestAvailable`，登录触发）。设置→通用「开机以管理员身份静默启动」勾选后创建；与 HKCU Run 键互斥 | Windows 任务计划程序 |
 | `~/.dsh/.credentials.yaml` | DSH 鉴权 secret（`DshAuth` 读） | 用户目录 |
 
 ## 五、开发接入点速查

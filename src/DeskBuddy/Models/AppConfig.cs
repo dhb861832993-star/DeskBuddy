@@ -95,6 +95,12 @@ public class AppConfig
     /// <summary>顶边画廊：光标顶到屏幕上沿时滑出最近的截图（默认开启）。</summary>
     public bool GalleryEnabled { get; set; } = true;
 
+    /// <summary>
+    /// 开机以管理员身份静默启动（计划任务，HighestAvailable，不弹 UAC）。
+    /// 开启后文件索引才具备写入权限（USN 日志需要管理员），启动项也能处理需要提权的程序。
+    /// </summary>
+    public bool RunAsAdmin { get; set; }
+
     // ===== 截图 =====
 
     /// <summary>截图热键：F1 | F2 | F3 | F4 | PrintScreen（默认 F1）。</summary>
